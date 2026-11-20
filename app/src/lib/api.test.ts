@@ -1,12 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { CommandError, unwrap } from "./api";
 import type { AppError } from "./bindings";
+import { setLanguagePreference } from "./i18n";
 
 describe("unwrap", () => {
-  it("后端给的 AppError 原样带出来", () => {
+  beforeEach(async () => {
+    await setLanguagePreference("zh-CN");
+  });
+
+  it("中文界面下把后端给的 AppError 原样带出来", () => {
     const error = { code: "worlds.notFound", message: "找不到这个世界", detail: null };
     expect(() => unwrap({ status: "error", error })).toThrow(
       expect.objectContaining({ code: "worlds.notFound", message: "找不到这个世界" }),
+    );
+  });
+
+  it("英文界面下按错误码本地化并保留原始 message", async () => {
+    await setLanguagePreference("en");
+    const error = { code: "worlds.notFound", message: "找不到这个世界", detail: null };
+    expect(() => unwrap({ status: "error", error })).toThrow(
+      expect.objectContaining({
+        code: "worlds.notFound",
+        rawMessage: "找不到这个世界",
+      }),
     );
   });
 

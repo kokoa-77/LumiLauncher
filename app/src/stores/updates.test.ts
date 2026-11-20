@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { commands, events } from "@/lib/bindings";
+import { setLanguagePreference } from "@/lib/i18n";
 import { useUpdateStore } from "./updates";
 
 vi.mock("@/lib/bindings", () => ({
@@ -13,6 +14,10 @@ vi.mock("@/lib/bindings", () => ({
 }));
 
 const offer = { version: "0.7.0", notes: "本次修复了启动问题。" };
+
+beforeEach(async () => {
+  await setLanguagePreference("zh-CN");
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
