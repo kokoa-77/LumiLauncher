@@ -1,0 +1,143 @@
+name: Windows 发行候选
+
+on:
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: 使用 CI 密钥签署更新安装器，并生成更新清单
+        type: boolean
+        default: false
+      publish:
+        description: 创建 GitHub Release 草稿（需要签名）
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - name: 核对发行输入
+        env:
+          SIGN_RELEASE: ${{ inputs.sign }}
+          CREATE_DRAFT: ${{ inputs.publish }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if ($env:CREATE_DRAFT -eq 'true' -and $env:SIGN_RELEASE -ne 'true') {
+            throw '创建草稿需要开启更新签名。'
+          }
+          if ($env:SIGN_RELEASE -eq 'true' -and ($env:GITHUB_REPOSITORY -ne 'kokoa-77/LumiLauncher' -or $env:GITHUB_REF -ne "refs/heads/$env:DEFAULT_BRANCH")) {
+            throw '更新签名须从 LumiLauncher 的默认分支触发。'
+          }
+          "CARGO_TARGET_DIR=$(Join-Path $env:RUNNER_TEMP 'lumi-build')" >> $env:GITHUB_ENV
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - uses: pnpm/action-setup@v6
+
+      - name: 安装选定的 Rust 工具链
+        run: rustup show
+
+      - name: 安装锁定的前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 检查 Rust 和界面
+        run: pnpm check
+
+      - name: 检查提交的前端绑定和锁文件
+        run: git diff --exit-code -- app/src/lib/bindings.ts Cargo.lock pnpm-lock.yaml
+
+      - name: 核对应用版本
+        run: |
+          $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
+          $rustVersion = ($metadata.packages | Where-Object name -eq 'launcher-app').version
+          $uiVersion = (Get-Content -LiteralPath app/package.json -Raw | ConvertFrom-Json).version
+          $tauriVersion = (Get-Content -LiteralPath app/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if (!$rustVersion -or $rustVersion -cne $uiVersion -or $rustVersion -cne $tauriVersion) {
+            throw 'Cargo、界面与 Tauri 的版本须一致。'
+          }
+
+      - name: 构建未签名的验收安装器
+        if: ${{ !inputs.sign }}
+        env:
+          LUMI_MICROSOFT_CLIENT_ID: ${{ vars.LUMI_MICROSOFT_CLIENT_ID }}
+        run: pnpm --dir app tauri build --ci --bundles nsis --target x86_64-pc-windows-msvc -- --locked
+
+      - name: 生成内置更新公钥的程序
+        if: ${{ inputs.sign }}
+        env:
+          LUMI_UPDATER_PUBKEY: ${{ vars.LUMI_UPDATER_PUBKEY }}
+          LUMI_MICROSOFT_CLIENT_ID: ${{ vars.LUMI_MICROSOFT_CLIENT_ID }}
+        run: |
+          $env:LUMI_UPDATER_PUBKEY = ([string] $env:LUMI_UPDATER_PUBKEY).Trim()
+          $config = Join-Path $env:RUNNER_TEMP 'lumi-release.conf.json'
+          ./scripts/release/New-TauriReleaseConfig.ps1 -OutputPath $config
+          pnpm --dir app tauri build --ci --no-bundle --config $config --target x86_64-pc-windows-msvc -- --locked
+
+      - name: 打包并签署 NSIS 更新安装器
+        if: ${{ inputs.sign }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if (!$env:TAURI_SIGNING_PRIVATE_KEY) {
+            throw '缺少 TAURI_SIGNING_PRIVATE_KEY。'
+          }
+          $config = Join-Path $env:RUNNER_TEMP 'lumi-release.conf.json'
+          pnpm --dir app tauri bundle --ci --bundles nsis --config $config --target x86_64-pc-windows-msvc
+
+      - name: 汇集发行文件
+        env:
+          SIGN_RELEASE: ${{ inputs.sign }}
+          LUMI_UPDATER_PUBKEY: ${{ vars.LUMI_UPDATER_PUBKEY }}
+        run: |
+          $target = Join-Path $env:CARGO_TARGET_DIR 'x86_64-pc-windows-msvc'
+          $output = Join-Path $env:RUNNER_TEMP 'lumi-release'
+          ./scripts/release/New-WindowsRelease.ps1 -TargetDirectory $target -OutputDirectory $output -Unsigned:($env:SIGN_RELEASE -ne 'true')
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lumi-windows-x64
+          path: ${{ runner.temp }}/lumi-release/
+          if-no-files-found: error
+          compression-level: 0
+
+  draft:
+    if: ${{ inputs.publish && inputs.sign }}
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: lumi-windows-x64
+          path: lumi-windows-x64
+
+      - name: 创建仅仓库维护者可见的发行草稿
+        working-directory: lumi-windows-x64
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          sha256sum --strict --check SHA256SUMS.txt
+          version="$(jq -er '.version' latest.json)"
+          installer="Lumi_${version}_x64-setup.exe"
+          portable="Lumi_${version}_x64-portable.zip"
+          gh release create "v${version}" "$installer" "$installer.sig" "$portable" latest.json SHA256SUMS.txt \
+            --target "$GITHUB_SHA" --draft --title "Lumi v${version}" \
+            --notes $'Lumi Windows 发布候选草稿（请先校验 SHA256SUMS.txt 并确认已使用获批的 Mojang AppID 完成正版实机回归后再公开发布）。\n\nLumi 是独立第三方 Minecraft Java 版启动器，与 Mojang Studios 和 Microsoft 无隶属关系。'

@@ -1,0 +1,31 @@
+name: Feature Request · 功能建议
+description: Suggest an improvement or new capability / 提出改进想法或新功能建议
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lumi focuses on staying fast, clean, and compliant with Minecraft's EULA. Please note that offline/bypass auth, unofficial capes, and bypassing CurseForge creator restrictions are out of scope.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or goal · 想解决什么问题
+      description: Describe the workflow or pain point you encountered / 描述你遇到的场景或痛点
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution · 期望的实现方式
+      description: How would you like Lumi to handle this? / 你希望 Lumi 怎样处理这个需求？
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context · 补充信息
+      description: Optional mockups, references, or examples / 可附参考截图或示例

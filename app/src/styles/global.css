@@ -1,0 +1,593 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* 去掉 Tailwind 自带的整套调色板和圆角档位：组件里只能用下面这些语义名字 */
+@theme {
+  --color-*: initial;
+  --radius-*: initial;
+  /*
+   * 字号表（D17f，开发合同第 5 节）：只用 11（text-2xs，角标）、12（xs）、14（sm，正文）、16（base）、
+   * 18（lg，弹窗标题）、20（xl，首页大按钮的字）、24（2xl，页面标题）、30（3xl，横幅标题）、
+   * 56（text-hero，首页世界名）
+   */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 16px;
+  --text-hero: 56px;
+  --text-hero--line-height: 1.15;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-overlay: var(--overlay);
+  --color-surface-hover: var(--surface-hover);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--on-accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-on-danger: var(--on-danger);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-scrim: var(--scrim);
+  --color-hero-scrim: var(--hero-scrim);
+  --color-hero-tint: var(--hero-tint);
+  --color-on-hero: var(--on-hero);
+  --color-on-hero-muted: var(--on-hero-muted);
+  --color-hero-chip: var(--hero-chip);
+  --color-hero-chip-hover: var(--hero-chip-hover);
+  --color-hero-chip-line: var(--hero-chip-line);
+  --color-sky-top: var(--sky-top);
+  --color-sky-bottom: var(--sky-bottom);
+  --color-glow: var(--glow);
+  --color-mote: var(--mote);
+  --color-mote-core: var(--mote-core);
+
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-code);
+
+  /* 圆角分级（tokens.css）：rounded-row / control / panel / dialog / cta / icon / tag / inner / item */
+  --radius-row: var(--r-row);
+  --radius-control: var(--r-control);
+  --radius-panel: var(--r-panel);
+  --radius-dialog: var(--r-dialog);
+  --radius-cta: var(--r-cta);
+  --radius-icon: var(--r-icon);
+  --radius-tag: var(--r-tag);
+  --radius-inner: var(--r-inner);
+  --radius-item: var(--r-item);
+
+  --ease-out: var(--motion-ease-out);
+  --ease-in: var(--motion-ease-in);
+  --ease-in-out: var(--motion-ease-in-out);
+
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
+  --shadow-dialog: var(--shadow-dialog);
+  --shadow-cta: var(--shadow-cta);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.57;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  input,
+  textarea {
+    user-select: text;
+  }
+
+  /* 能点的东西，鼠标移上去变成手（Tailwind 4 的按钮默认是箭头）；点不了的（禁用的）照旧是箭头 */
+  button:not(:disabled),
+  a[href],
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="switch"]:not([aria-disabled="true"]),
+  label:has(> input:not(:disabled)) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: var(--line);
+    background-clip: padding-box;
+  }
+
+  /* 滑块（ui/Slider）：胶囊轨道，左边已选的部分是主色（--fill 由组件给出），圆形把手 */
+  .ui-slider {
+    appearance: none;
+    height: 20px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .ui-slider:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+  .ui-slider::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: var(--r-control);
+    background: linear-gradient(
+      to right,
+      var(--accent) var(--fill, 0%),
+      var(--surface-hover) var(--fill, 0%)
+    );
+  }
+  .ui-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    margin-top: -6px;
+    border: 2px solid var(--accent);
+    border-radius: var(--r-icon);
+    background: var(--surface);
+    box-shadow: var(--shadow-raised);
+    transition: transform var(--motion-press) var(--motion-ease-out);
+  }
+  .ui-slider:active::-webkit-slider-thumb {
+    transform: scale(1.12);
+  }
+  .ui-slider:focus-visible {
+    outline: none;
+  }
+  .ui-slider:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* 项目介绍（作者写的 Markdown / HTML，已清洗）：只用令牌排版 */
+  .rich-text {
+    color: var(--fg);
+    font-size: 14px;
+    line-height: 1.75;
+    overflow-wrap: anywhere;
+    user-select: text;
+  }
+  .rich-text > * + * {
+    margin-top: 0.85em;
+  }
+  .rich-text h1,
+  .rich-text h2,
+  .rich-text h3,
+  .rich-text h4 {
+    font-weight: 600;
+    line-height: 1.35;
+    margin-top: 1.4em;
+  }
+  .rich-text h1 {
+    font-size: 1.5em;
+  }
+  .rich-text h2 {
+    font-size: 1.3em;
+  }
+  .rich-text h3 {
+    font-size: 1.12em;
+  }
+  .rich-text a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+  .rich-text img {
+    display: inline-block;
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--r-row);
+  }
+  /* 地址不是 https、被清洗掉的图片：不显示一个坏图标 */
+  .rich-text img:not([src]) {
+    display: none;
+  }
+  .rich-text ul,
+  .rich-text ol {
+    padding-left: 1.4em;
+  }
+  .rich-text ul {
+    list-style: disc;
+  }
+  .rich-text ol {
+    list-style: decimal;
+  }
+  .rich-text li + li {
+    margin-top: 0.3em;
+  }
+  .rich-text blockquote {
+    border-left: 3px solid var(--line);
+    padding-left: 1em;
+    color: var(--fg-muted);
+  }
+  .rich-text code {
+    font-family: var(--font-code);
+    font-size: 0.9em;
+    background: var(--surface-hover);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+  .rich-text pre {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-row);
+    padding: 0.8em 1em;
+    overflow-x: auto;
+  }
+  .rich-text pre code {
+    background: none;
+    padding: 0;
+  }
+  .rich-text hr {
+    border: 0;
+    border-top: 1px solid var(--line);
+  }
+  .rich-text table {
+    border-collapse: collapse;
+    display: block;
+    overflow-x: auto;
+  }
+  .rich-text th,
+  .rich-text td {
+    border: 1px solid var(--line);
+    padding: 0.4em 0.7em;
+  }
+  .rich-text center,
+  .rich-text [align="center"] {
+    text-align: center;
+  }
+
+  /*
+   * 微光的光点（D19c，开发合同第 6 节「环境光效」）：一颗颗柔光慢慢往上飘、亮起又淡掉。
+   * 只动 transform 和 opacity；时长、延迟、位置由组件写在 style 里（--mote-*）。
+   * 流畅模式、减少动效（系统的和应用的）下停住，留一半亮度当静态的装饰。
+   */
+  .mote {
+    position: absolute;
+    border-radius: 9999px;
+    background: radial-gradient(circle, var(--mote) 0%, var(--mote-core) 28%, transparent 70%);
+    opacity: 0;
+    animation: mote-drift var(--mote-duration, 9s) ease-in-out var(--mote-delay, 0s) infinite;
+    will-change: transform, opacity;
+  }
+  [data-fx="lite"] .mote,
+  [data-reduce-motion="true"] .mote {
+    animation: none !important;
+    opacity: 0.5;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mote {
+      animation: none !important;
+      opacity: 0.5;
+    }
+  }
+
+  .lumi-cta-breath,
+  .lumi-cta-press,
+  .lumi-progress-shimmer {
+    display: none;
+  }
+
+  .lumi-icon-lit {
+    filter: drop-shadow(0 0 2px var(--mote));
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    :root[data-fx="rich"]:not([data-reduce-motion="true"]) {
+      & .lumi-cta-breath {
+        display: block;
+        animation: lumi-breathe 3s var(--motion-ease-in-out) infinite;
+      }
+
+      & .lumi-cta-icon {
+        transition: transform var(--motion-press) var(--motion-ease-out);
+      }
+
+      & .lumi-cta:hover .lumi-cta-icon {
+        transform: translateX(2px);
+      }
+
+      & .lumi-cta:hover .lumi-cta-breath {
+        animation: none;
+        opacity: 1;
+      }
+
+      & .lumi-cta-press {
+        display: block;
+      }
+
+      & .lumi-cta-ring {
+        animation: lumi-press-ring var(--motion-enter) var(--motion-ease-out) both;
+      }
+
+      & .lumi-cta-particle {
+        background: radial-gradient(
+          circle,
+          var(--on-accent) 0%,
+          var(--mote) 35%,
+          var(--accent) 68%,
+          transparent 100%
+        );
+        animation: lumi-particle var(--motion-page) var(--motion-ease-out) both;
+      }
+
+      & .lumi-hero-breathe {
+        animation: lumi-hero-breathe 24s var(--motion-ease-in-out) infinite;
+        will-change: transform;
+      }
+
+      & .lumi-progress-shimmer {
+        display: block;
+        animation: lumi-progress-shimmer 1.8s var(--motion-ease-in-out) infinite;
+      }
+
+      & .lumi-skeleton {
+        animation: lumi-skeleton-pulse 1.6s var(--motion-ease-in-out) infinite;
+      }
+
+      & .lumi-nav-hover {
+        transition: transform var(--motion-press) var(--motion-ease-out);
+      }
+
+      & .lumi-nav-link:hover .lumi-nav-hover {
+        transform: translateY(-1px);
+      }
+
+      & .lumi-rail-active {
+        animation: lumi-pulse var(--motion-toggle) var(--motion-ease-out);
+      }
+
+      & .lumi-spinner-dot {
+        animation: lumi-orbit 1.2s linear infinite;
+      }
+
+      & .lumi-download-arrival {
+        animation: lumi-download-arrival var(--motion-enter) var(--motion-ease-out) both;
+      }
+
+      & .lumi-install-fill {
+        transition: transform var(--motion-enter) var(--motion-ease-out);
+      }
+
+      & .lumi-launch-light {
+        animation: lumi-launch-light var(--motion-page) var(--motion-ease-out) both;
+      }
+    }
+  }
+
+  /* 光轨只是进入世界时的一次反馈，静态模式保留原来的成功图标。 */
+  .lumi-launch-light {
+    opacity: 0;
+  }
+
+  :root[data-fx="lite"] .lumi-cta:active,
+  :root[data-reduce-motion="true"] .lumi-cta:active {
+    scale: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lumi-cta:active {
+      scale: none;
+    }
+  }
+
+  /* 流畅模式：悬停时图片放大这类缩放动效关掉（开发合同第 6 节） */
+  [data-fx="lite"] .hover-zoom {
+    scale: none !important;
+  }
+
+  /* 减少动效：跟随系统，也可以在设置里手动打开 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 1ms !important;
+      transition-duration: 1ms !important;
+    }
+  }
+
+  [data-reduce-motion="true"] *,
+  [data-reduce-motion="true"] ::before,
+  [data-reduce-motion="true"] ::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/*
+ * 右下角的提示条（D17f）：组件库自带的是纯黑 / 纯白、圆角 8，改成和别的浮层一套：
+ * 不透明的浮层底色、面板圆角、细线、浮层阴影；成功的勾用主色，失败用红色。
+ * 组件库的样式不在层里，这里也不放进层，并且多一级选择器才盖得住。
+ */
+:root [data-sonner-toaster][data-sonner-theme] {
+  --normal-bg: var(--overlay);
+  --normal-bg-hover: var(--surface-hover);
+  --normal-border: var(--line);
+  --normal-border-hover: var(--line);
+  --normal-text: var(--fg);
+  --border-radius: var(--r-panel);
+  font-family: var(--font-ui);
+}
+:root [data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+  box-shadow: var(--shadow-overlay);
+}
+:root [data-sonner-toaster] [data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--accent);
+}
+:root [data-sonner-toaster] [data-sonner-toast][data-type="error"] [data-icon] {
+  color: var(--danger);
+}
+:root [data-sonner-toaster] [data-sonner-toast] [data-description] {
+  color: var(--fg-muted);
+}
+
+@keyframes lumi-breathe {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.84);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(1.12);
+  }
+}
+
+@keyframes lumi-press-ring {
+  from {
+    opacity: 0.65;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.1, 1.22);
+  }
+}
+
+@keyframes lumi-particle {
+  from {
+    opacity: 0.95;
+    transform: translateX(10px) scale(0.75);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(54px) scale(0.45);
+  }
+}
+
+@keyframes lumi-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  55% {
+    transform: scale(1.16);
+  }
+}
+
+@keyframes lumi-orbit {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes lumi-download-arrival {
+  from {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lumi-launch-light {
+  0% {
+    opacity: 0;
+    transform: translateX(-115%);
+  }
+  38% {
+    opacity: 0.95;
+  }
+  82% {
+    opacity: 0.75;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(45%);
+  }
+}
+
+/* 光点：从下面淡入、往上飘一小段、再淡掉（开发合同第 6 节「环境光效」） */
+@keyframes mote-drift {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.6);
+  }
+  30% {
+    opacity: var(--mote-alpha, 0.9);
+  }
+  70% {
+    opacity: var(--mote-alpha, 0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--mote-sway, 6px), var(--mote-rise, -48px), 0) scale(1);
+  }
+}
+
+/* 首页世界封面极慢呼吸推近（D25c）：只动 transform，流畅与减少动效下静止 */
+@keyframes lumi-hero-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+/* 进度条精美微光流过（D25c）：只动 transform 和 opacity */
+@keyframes lumi-progress-shimmer {
+  0% {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  30% {
+    opacity: 0.7;
+  }
+  70% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(220%);
+  }
+}
+
+/* 发现内容骨架屏低对比度呼吸（D25c）：只动 opacity */
+@keyframes lumi-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}

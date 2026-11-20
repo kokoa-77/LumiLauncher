@@ -1,0 +1,2 @@
+# Use LF in both Windows and Unix checkouts for formatted source.
+* text=auto eol=lf

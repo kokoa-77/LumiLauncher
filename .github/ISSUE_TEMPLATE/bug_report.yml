@@ -1,0 +1,53 @@
+name: Bug Report · 问题反馈
+description: Report a crash, launch failure, or unexpected behavior in Lumi / 报告崩溃、启动失败或界面异常
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please make sure **no personal tokens, emails, or credentials** are included in logs or screenshots.
+        感谢反馈！提交前请确认截图和日志中不含任何个人令牌或敏感信息（Lumi 导出的诊断包已自动脱敏）。
+
+  - type: input
+    id: version
+    attributes:
+      label: Lumi Version · 启动器版本
+      description: Found in Settings → About / 可在「设置 → 关于」查看
+      placeholder: e.g. v0.6.0
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System · 操作系统
+      placeholder: e.g. Windows 11 24H2 (x64)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened? · 问题描述
+      description: A clear and concise description of the bug / 简明描述发生了什么，以及预期行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce · 复现步骤
+      placeholder: |
+        1. Open Lumi and select instance '...'
+        2. Click '...'
+        3. See error '...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or mclo.gs link · 脱敏日志或 mclo.gs 链接
+      description: Paste relevant redacted log lines or an mclo.gs link / 粘贴脱敏后的关键日志或 mclo.gs 链接
+      render: text

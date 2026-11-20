@@ -1,0 +1,16 @@
+# Rust
+/target/
+
+# Node
+node_modules/
+dist/
+
+# Local debug data
+.mcl/
+*.log
+
+# Editor & OS files
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

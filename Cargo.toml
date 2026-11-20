@@ -1,0 +1,112 @@
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/cli", "crates/winmem", "app/src-tauri"]
+
+[workspace.package]
+version = "0.6.0"
+edition = "2024"
+rust-version = "1.99"
+license = "GPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+launcher-core = { path = "crates/core" }
+winmem = { path = "crates/winmem" }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+encoding_rs = "0.8"
+# 解压 level.dat（gzip）。压缩包库已经在用它，这里只是直接引用，不多编译东西
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+futures-util = "0.3"
+md-5 = "0.11"
+regex = "1"
+# 默认功能：rustls + 系统证书校验 + HTTP/2 + 跟随 Windows 系统代理 + SOCKS5 代理支持
+reqwest = { version = "0.13", features = ["stream", "socks"] }
+# 读 Modrinth App 的实例清单（它存在 SQLite 数据库里，D19）。bundled：自带 SQLite，不依赖电脑上装没装；
+# 0.41.1 发布满两周（0.42、0.43 是这几天才出的）
+rusqlite = { version = "0.41", features = ["bundled"] }
+sha1 = "0.11"
+getrandom = "0.4"
+# Microsoft 刷新令牌存 Windows 凭据管理器。keyring 4 只引用核心与 Windows 存储。
+# Windows 那个用的是界面框架已经在用的 windows-sys 0.61
+keyring-core = "1.0"
+windows-native-keyring-store = "1.1"
+base64 = "0.23"
+sha2 = "0.11"
+# 截图缩成窗口大小再交给界面（省网页内核的内存）；只开 PNG、JPEG，ICO 给桌面快捷方式的图标
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "ico"] }
+# 只用来读电脑的总内存和空闲内存（自动分配内存）；只开 system 功能
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", default-features = false }
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1", features = ["v4"] }
+winreg = "0.56"
+# 只给 crates/winmem（整理内存）用：界面框架已经带了这个版本，只多开几个功能
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+# 自动封面（D17d）：xcap 找游戏窗口、看它在不在最前面；win-screenshot 只截窗口内容区（不带标题栏）。
+# 两个都只在 Windows 上编译，用的是界面框架已经在用的 windows 0.62；xcap 不开默认功能（不要录屏、WGC）
+xcap = { version = "0.9", default-features = false }
+win-screenshot = "4"
+# 删除实例时移到回收站（D17i）。Windows 上用系统的文件操作接口，放不进回收站时系统会弹窗问，不会悄悄永久删除；
+# 用的是界面框架已经在用的 windows 0.62。不开默认功能（只在 Linux 上用得到）
+trash = { version = "5.3", default-features = false, features = ["coinit_apartmentthreaded"] }
+# 只要解压，用纯 Rust 实现，不编译 C 代码
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tempfile = "3"
+
+# Tauri 2 稳定版；类型生成工具仍是预览版，版本必须精确锁定且三者配套
+tauri = { version = "2.12", features = [] }
+tauri-build = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-updater = { version = "=2.14.1", default-features = false, features = ["rustls-tls", "system-proxy"] }
+specta = { version = "=2.0.0-rc.26", features = ["derive"] }
+specta-typescript = "=0.0.13"
+tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
+windows-version = "0.1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+dbg_macro = "warn"
+todo = "warn"
+
+# 开发模式只保留行号级调试信息，依赖不带调试信息：编译更省内存、target 目录小很多
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+# 压缩和哈希不开优化时慢很多（导出整合包时 9620 个文件要一分多钟），开发版也给这两个库开优化：
+# 只是多编译一次，调试我们自己的代码不受影响
+[profile.dev.package.zlib-rs]
+opt-level = 3
+
+[profile.dev.package.sha1]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+strip = true
