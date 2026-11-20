@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check-windows:
+    name: Windows Rust + UI Checks
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - uses: pnpm/action-setup@v6
+
+      - name: Show pinned Rust toolchain
+        run: rustup show
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run full check suite
+        run: pnpm check
+
+      - name: Build production UI bundle
+        run: pnpm --dir app build
+
+      - name: Verify generated bindings and lockfiles are clean
+        run: git diff --exit-code -- app/src/lib/bindings.ts Cargo.lock pnpm-lock.yaml

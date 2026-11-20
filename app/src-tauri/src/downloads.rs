@@ -1,0 +1,418 @@
+//! 下载中心（D18）：下载历史、重试、测速、DoH 测试、补件盯的文件夹。
+//!
+//! 每种能重试的任务开始时带一份 [`Retry`] 配方（存在历史文件里，界面拿不到：本地整合包的配方里有路径）。
+//! 「重试」按配方再开一个同样的任务，新任务接替历史里的旧记录；下载过的文件校验通过不重下，
+//! 整合包导入的临时目录按 [`Retry::resume_key`] 固定，失败、取消后留着，重试时接着用。
+
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::time::Duration;
+
+use launcher_core::content::ContentSource;
+use launcher_core::content::UpdateInfo;
+use launcher_core::content::modrinth::PlanItem;
+use launcher_core::instance::{LoaderKind, LoaderRef};
+use launcher_core::jobs::{JobMeta, JobRegistry, JobSnapshot, JobSource, JobState};
+use launcher_core::modpack;
+use launcher_core::net::{DnsProbe, SpeedTest};
+use launcher_core::paths::GameDir;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager, State};
+
+use crate::discover::ServerJoin;
+use crate::error::AppError;
+use crate::state::AppState;
+
+/// 没做完的整合包导入留多久（过了就删，重试时从头来）
+const KEEP_UNFINISHED: Duration = Duration::from_secs(7 * 24 * 3600);
+
+/// 「重试」配方：怎么把这个任务再开一次
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Retry {
+    #[serde(rename_all = "camelCase")]
+    CreateInstance {
+        name: String,
+        game_version: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        loader: Option<LoaderRef>,
+        // D19 及以前的任务只有 NeoForge 版本号。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        neoforge: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    ContentInstall {
+        instance_id: String,
+        plan: Vec<PlanItem>,
+    },
+    #[serde(rename_all = "camelCase")]
+    ContentUpdate {
+        instance_id: String,
+        updates: Vec<UpdateInfo>,
+    },
+    #[serde(rename_all = "camelCase")]
+    MapInstall {
+        instance_id: String,
+        project_id: String,
+        title: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    ModpackInstall {
+        project_id: String,
+        version_id: String,
+        title: String,
+        name: Option<String>,
+        source: ContentSource,
+        join_server: Option<ServerJoin>,
+    },
+    /// 本地整合包文件（路径只在后端）
+    #[serde(rename_all = "camelCase")]
+    ModpackFile {
+        path: PathBuf,
+        name: Option<String>,
+    },
+    Java {
+        major: u32,
+    },
+}
+
+impl Retry {
+    pub fn to_value(&self) -> Option<serde_json::Value> {
+        match serde_json::to_value(self) {
+            Ok(value) => Some(value),
+            Err(error) => {
+                tracing::warn!(%error, "重试配方存不下来，这个任务不能重试");
+                None
+            }
+        }
+    }
+
+    /// 整合包导入接着装用的键（临时目录名）；别的任务没有
+    pub fn resume_key(&self) -> Option<String> {
+        match self {
+            Retry::ModpackInstall {
+                version_id, source, ..
+            } => Some(match source {
+                ContentSource::Modrinth => format!("mr-{version_id}"),
+                ContentSource::CurseForge => format!("cf-{version_id}"),
+            }),
+            Retry::ModpackFile { path, .. } => Some(modpack::file_resume_key(path)),
+            _ => None,
+        }
+    }
+}
+
+/// 开任务时的说明：来源、实例、图标、重试配方
+pub(crate) fn meta(
+    source: JobSource,
+    instance_id: Option<&str>,
+    icon_url: Option<String>,
+    retry: Option<&Retry>,
+) -> JobMeta {
+    JobMeta {
+        source,
+        instance_id: instance_id.map(str::to_owned),
+        icon_url,
+        retry: retry.and_then(Retry::to_value),
+        transient: false,
+    }
+}
+
+pub(crate) fn content_source(source: ContentSource) -> JobSource {
+    match source {
+        ContentSource::Modrinth => JobSource::Modrinth,
+        ContentSource::CurseForge => JobSource::CurseForge,
+    }
+}
+
+/// 下载历史：正在进行的在前，然后新的在前（关掉启动器再打开还在）
+#[tauri::command]
+#[specta::specta]
+pub fn jobs_history(state: State<'_, AppState>) -> Vec<JobSnapshot> {
+    state.jobs.history()
+}
+
+/// 清空下载历史（正在进行的不动）。没做完的整合包导入的临时文件一起删掉（没法重试了）
+#[tauri::command]
+#[specta::specta]
+pub fn jobs_clear_history(state: State<'_, AppState>) {
+    state.jobs.clear_finished();
+    let game = state.game();
+    let keep = kept_staging(&state.jobs);
+    tauri::async_runtime::spawn_blocking(move || clean_imports(&game, &keep, true));
+}
+
+/// 重试一个失败或取消的任务，返回新任务的编号。新任务接替历史里的旧记录
+#[tauri::command]
+#[specta::specta]
+pub async fn jobs_retry(app: AppHandle, id: String) -> Result<String, AppError> {
+    let state = app.state::<AppState>();
+    let (job, recipe) = state
+        .jobs
+        .find(&id)
+        .ok_or_else(|| AppError::new("jobs.not_found", "找不到这个任务，可能已经清掉了"))?;
+    if !matches!(
+        job.state,
+        JobState::Failed | JobState::Cancelled | JobState::Interrupted
+    ) {
+        return Err(AppError::new(
+            "jobs.not_retryable",
+            "只有失败或取消的任务能重试",
+        ));
+    }
+    let retry: Retry = recipe
+        .and_then(|value| serde_json::from_value(value).ok())
+        .ok_or_else(|| AppError::new("jobs.not_retryable", "这个任务不能重试，请重新操作一次"))?;
+    tracing::info!(job = %id, title = %job.title, "重试任务");
+    let new_id = match retry {
+        Retry::CreateInstance {
+            name,
+            game_version,
+            loader,
+            neoforge,
+        } => {
+            let loader = loader.or_else(|| {
+                neoforge.map(|version| LoaderRef {
+                    kind: LoaderKind::NeoForge,
+                    version,
+                })
+            });
+            crate::game::instances_create(app.clone(), state, name, game_version, loader)?
+        }
+        Retry::ContentInstall { instance_id, plan } => {
+            crate::game::content_install(app.clone(), state, instance_id, plan)?
+        }
+        Retry::ContentUpdate {
+            instance_id,
+            updates,
+        } => crate::game::content_update(app.clone(), state, instance_id, updates)?,
+        Retry::MapInstall {
+            instance_id,
+            project_id,
+            title,
+        } => crate::discover::maps_install(app.clone(), state, instance_id, project_id, title)?,
+        Retry::ModpackInstall {
+            project_id,
+            version_id,
+            title,
+            name,
+            source,
+            join_server,
+        } => crate::game::modpack_install(
+            app.clone(),
+            state,
+            project_id,
+            version_id,
+            title,
+            name,
+            source,
+            join_server,
+        )?,
+        Retry::ModpackFile { path, name } => {
+            if !path.is_file() {
+                return Err(AppError::new(
+                    "jobs.pack_missing",
+                    "整合包文件不在原来的位置了，请重新导入",
+                ));
+            }
+            crate::game::import_file(&app, path, name).await?
+        }
+        Retry::Java { major } => crate::system::java_install(app.clone(), state, major)?,
+    };
+    app.state::<AppState>().jobs.remove(&id);
+    Ok(new_id)
+}
+
+/// 从下载历史里删掉一条已结束的（正在进行的删不掉）
+#[tauri::command]
+#[specta::specta]
+pub fn jobs_remove(state: State<'_, AppState>, id: String) -> bool {
+    state.jobs.remove(&id)
+}
+
+/// 正在用、或者还能重试的整合包导入的临时目录名（这些不删）
+pub(crate) fn kept_staging(jobs: &JobRegistry) -> HashSet<String> {
+    jobs.history()
+        .into_iter()
+        .filter(|job| {
+            job.state == JobState::Running
+                || (job.retryable
+                    && matches!(
+                        job.state,
+                        JobState::Failed | JobState::Cancelled | JobState::Interrupted
+                    ))
+        })
+        .filter_map(|job| jobs.find(&job.id))
+        .filter_map(|(_, recipe)| serde_json::from_value::<Retry>(recipe?).ok())
+        .filter_map(|retry| retry.resume_key())
+        .filter_map(|key| {
+            modpack::staging_dir(std::path::Path::new(""), &key)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+        })
+        .collect()
+}
+
+/// 清掉整合包导入的临时目录：不在 `keep` 里的删掉；`all` 为假时（启动时）还在 `keep` 里但放了太久的也删
+pub(crate) fn clean_imports(game: &GameDir, keep: &HashSet<String>, all: bool) {
+    let temp = game.root().join(".mcl-tmp");
+    let Ok(entries) = std::fs::read_dir(&temp) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with(modpack::STAGING_PREFIX) {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > KEEP_UNFINISHED);
+        if keep.contains(&name) && !(stale && !all) {
+            continue;
+        }
+        let dir = entry.path();
+        match std::fs::remove_dir_all(&dir) {
+            Ok(()) => tracing::info!(dir = %dir.display(), "已清理没做完的整合包导入"),
+            Err(error) => {
+                tracing::warn!(%error, dir = %dir.display(), "清理整合包导入的临时目录失败")
+            }
+        }
+    }
+}
+
+/// 设置里的「测速」：官方和 BMCLAPI 各下一次版本清单，看谁快（「自动」接下来就先用快的）
+#[tauri::command]
+#[specta::specta]
+pub async fn net_speed_test(state: State<'_, AppState>) -> Result<SpeedTest, AppError> {
+    Ok(state.sources.measure().await)
+}
+
+/// 最近一次测速（自动选源时测的也算）；还没测过为空
+#[tauri::command]
+#[specta::specta]
+pub fn net_speed_last(state: State<'_, AppState>) -> Option<SpeedTest> {
+    state.sources.last()
+}
+
+/// 设置里的「测试 DoH」：每个 DoH 服务和系统 DNS 各问一次
+#[tauri::command]
+#[specta::specta]
+pub async fn net_doh_test(state: State<'_, AppState>) -> Result<Vec<DnsProbe>, AppError> {
+    Ok(state.doh.test().await)
+}
+
+/// 设置里的「网络连通性检测」（D26a）：并行探测 6 个核心服务端点
+#[tauri::command]
+#[specta::specta]
+pub async fn net_diagnostics(
+    state: State<'_, AppState>,
+) -> Result<Vec<launcher_core::net::EndpointProbe>, AppError> {
+    let client = state.http_client();
+    Ok(launcher_core::net::probe_endpoints(&client).await)
+}
+
+/// 补件时盯的文件夹（显示用）
+#[derive(Debug, Clone, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaimFolderInfo {
+    /// 完整路径；系统的「下载」文件夹也找不到时为空
+    pub path: Option<String>,
+    /// 是自己选的（不是系统的「下载」文件夹）
+    pub custom: bool,
+}
+
+/// 补件时真正盯的文件夹：设置里选的（还在的话），不然系统的「下载」文件夹
+pub(crate) fn claim_folder(state: &AppState) -> Option<PathBuf> {
+    state
+        .settings
+        .get()
+        .download
+        .claim_folder
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .or_else(|| state.downloads_dir.clone())
+}
+
+fn claim_folder_info_of(state: &AppState) -> ClaimFolderInfo {
+    let custom = state.settings.get().download.claim_folder.is_some();
+    ClaimFolderInfo {
+        path: claim_folder(state).map(|p| p.display().to_string()),
+        custom,
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn claim_folder_info(state: State<'_, AppState>) -> ClaimFolderInfo {
+    claim_folder_info_of(&state)
+}
+
+/// 弹出「选择文件夹」换补件盯的文件夹；用户取消时返回 `None`
+#[tauri::command]
+#[specta::specta]
+pub async fn claim_folder_choose(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<ClaimFolderInfo>, AppError> {
+    let Some(path) = crate::game::pick(&app, crate::game::Pick::Folder).await? else {
+        return Ok(None);
+    };
+    let mut settings = state.settings.get();
+    settings.download.claim_folder = Some(path.display().to_string());
+    state.settings.set(settings)?;
+    tracing::info!(dir = %path.display(), "补件改盯这个文件夹");
+    Ok(Some(claim_folder_info_of(&state)))
+}
+
+/// 改回系统的「下载」文件夹
+#[tauri::command]
+#[specta::specta]
+pub fn claim_folder_reset(state: State<'_, AppState>) -> Result<ClaimFolderInfo, AppError> {
+    let mut settings = state.settings.get();
+    settings.download.claim_folder = None;
+    state.settings.set(settings)?;
+    Ok(claim_folder_info_of(&state))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recipes_round_trip_and_know_their_resume_keys() {
+        let retry = Retry::ModpackInstall {
+            project_id: "p".to_owned(),
+            version_id: "v1".to_owned(),
+            title: "整合包".to_owned(),
+            name: None,
+            source: ContentSource::Modrinth,
+            join_server: None,
+        };
+        let value = retry.to_value().unwrap();
+        assert_eq!(value["kind"], "modpackInstall");
+        let back: Retry = serde_json::from_value(value).unwrap();
+        assert_eq!(back, retry);
+        assert_eq!(retry.resume_key().as_deref(), Some("mr-v1"));
+        assert_eq!(Retry::Java { major: 21 }.resume_key(), None);
+    }
+
+    #[test]
+    fn cleaning_keeps_resumable_imports_until_they_are_stale() {
+        let root =
+            std::env::temp_dir().join(format!("mcl-clean-{}", uuid::Uuid::new_v4().simple()));
+        let game = GameDir::new(&root);
+        let temp = root.join(".mcl-tmp");
+        for name in ["import-mr-a", "import-mr-b", "other"] {
+            std::fs::create_dir_all(temp.join(name)).unwrap();
+        }
+        let keep: HashSet<String> = ["import-mr-a".to_owned()].into();
+        clean_imports(&game, &keep, false);
+        assert!(temp.join("import-mr-a").exists(), "还能重试的留着");
+        assert!(!temp.join("import-mr-b").exists(), "没人要的删掉");
+        assert!(temp.join("other").exists(), "别的临时文件不归这里管");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

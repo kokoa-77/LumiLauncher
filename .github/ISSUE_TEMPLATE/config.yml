@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions · 社区讨论与提问
+    url: https://github.com/kokoa-77/LumiLauncher/discussions
+    about: Ask general questions, share feedback, or discuss ideas / 常规提问、交流与想法讨论
+  - name: Security Advisory · 私密安全报告
+    url: https://github.com/kokoa-77/LumiLauncher/security/advisories/new
+    about: Report a security vulnerability privately / 私下提交安全漏洞（切勿在公开 Issue 披露）
