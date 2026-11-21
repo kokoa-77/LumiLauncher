@@ -1,6 +1,9 @@
 <div align="center">
-  <img src="app/src-tauri/icons/128x128@2x.png" width="96" height="96" alt="Lumi 图标" />
-  <h1>Lumi 微光</h1>
+  <img src="docs/screenshots/social-preview.png" alt="Lumi Launcher 微光启动器" width="100%" />
+
+  <br />
+  <br />
+
   <p><strong>独立、轻快、开源的 Windows Minecraft Java 版启动器</strong></p>
   <p>点亮你的世界 · 打开就有游戏可以点</p>
 
@@ -27,10 +30,6 @@
 > **独立声明**：Lumi 是独立第三方启动器，**并非 Minecraft 官方产品**，**与 Mojang Studios 及 Microsoft 无隶属关系，亦未获得其认可**。游玩需要合法拥有 Minecraft Java 版游玩权的 Microsoft 正版账户。
 
 ## 界面一览
-
-<p align="center">
-  <img src="docs/screenshots/01-home-dark.png" alt="Lumi 沉浸式世界封面首页与一键直达" width="100%" />
-</p>
 
 <table>
   <tr>
