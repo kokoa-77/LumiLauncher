@@ -1,8 +1,7 @@
 <div align="center">
   <img src="docs/screenshots/social-preview.png" alt="Lumi Launcher 微光启动器" width="100%" />
 
-  <br />
-  <br />
+  <h1>Lumi Launcher · 微光</h1>
 
   <p><strong>独立、轻快、开源的 Windows Minecraft Java 版启动器</strong></p>
   <p>点亮你的世界 · 打开就有游戏可以点</p>
@@ -12,16 +11,10 @@
   </p>
 
   <p>
-    <a href="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml">
-      <img src="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml/badge.svg" alt="Lumi Desktop CI" />
-    </a>
-    <a href="LICENSE">
-      <img src="https://img.shields.io/badge/license-GPL--3.0--only-blue.svg" alt="许可证: GPL-3.0-only" />
-    </a>
+    <a href="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml"><img src="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml/badge.svg" alt="Lumi Desktop CI" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--only-blue.svg" alt="许可证: GPL-3.0-only" /></a>
     <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6.svg" alt="支持平台: Windows 10/11" />
-    <a href="https://github.com/kokoa-77/LumiLauncher/releases">
-      <img src="https://img.shields.io/github/v/release/kokoa-77/LumiLauncher?include_prereleases&label=release" alt="最新版本" />
-    </a>
+    <a href="https://github.com/kokoa-77/LumiLauncher/releases"><img src="https://img.shields.io/github/v/release/kokoa-77/LumiLauncher?include_prereleases&label=release" alt="最新版本" /></a>
   </p>
 </div>
 

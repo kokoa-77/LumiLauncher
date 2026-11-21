@@ -1,8 +1,7 @@
 <div align="center">
   <img src="docs/screenshots/social-preview.png" alt="Lumi Launcher — Independent Minecraft: Java Edition Launcher" width="100%" />
 
-  <br />
-  <br />
+  <h1>Lumi Launcher</h1>
 
   <p><strong>An independent, fast, open-source Minecraft: Java Edition launcher for Windows.</strong></p>
   <p>Open the launcher and jump straight back into your world.</p>
@@ -12,16 +11,10 @@
   </p>
 
   <p>
-    <a href="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml">
-      <img src="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml/badge.svg" alt="Lumi Desktop CI" />
-    </a>
-    <a href="LICENSE">
-      <img src="https://img.shields.io/badge/license-GPL--3.0--only-blue.svg" alt="License: GPL-3.0-only" />
-    </a>
+    <a href="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml"><img src="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml/badge.svg" alt="Lumi Desktop CI" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--only-blue.svg" alt="License: GPL-3.0-only" /></a>
     <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6.svg" alt="Platform: Windows 10/11" />
-    <a href="https://github.com/kokoa-77/LumiLauncher/releases">
-      <img src="https://img.shields.io/github/v/release/kokoa-77/LumiLauncher?include_prereleases&label=release" alt="Release" />
-    </a>
+    <a href="https://github.com/kokoa-77/LumiLauncher/releases"><img src="https://img.shields.io/github/v/release/kokoa-77/LumiLauncher?include_prereleases&label=release" alt="Release" /></a>
   </p>
 </div>
 
