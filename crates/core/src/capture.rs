@@ -1,4 +1,4 @@
-//! 截游戏窗口的画面（自动封面用，D17d）。
+//! 截游戏窗口的画面（自动封面用）。
 //!
 //! Windows 上用系统自带的 PrintWindow（`PW_RENDERFULLCONTENT | PW_CLIENTONLY`）：
 //! 不用游戏配合、不按 F2、不抢焦点，只截窗口的内容区（不带标题栏和边框）。

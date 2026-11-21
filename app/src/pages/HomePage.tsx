@@ -53,7 +53,7 @@ function isAutomaticInstanceName({ name, gameVersion, loader, pack }: InstanceSu
   return normalize(name) === normalize(`${gameVersion}-${loader}`);
 }
 
-/** 首页优先接着玩最近的存档，也支持切换或直达多人服务器（D25d）。没有世界与服务器时，仍沿用同一套首页布局。 */
+/** 首页优先接着玩最近的存档，也支持切换或直达多人服务器。没有世界与服务器时，仍沿用同一套首页布局。 */
 export function HomePage() {
   const { t } = useTranslation();
   const instances = useGameStore((s) => s.instances);

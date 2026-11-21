@@ -57,7 +57,7 @@ fn now() -> f64 {
 /// 下载器：CurseForge 的 CDN 要带 Key（只对 CurseForge 的域名带）
 pub(crate) fn downloader(state: &AppState) -> Downloader {
     let settings = state.settings.get();
-    // 模组文件官方 CDN 下不了时退到 MCIM（D18b）；那一行选了「仅官方源」就不退
+    // 模组文件官方 CDN 下不了时退到 MCIM；那一行选了「仅官方源」就不退
     let mod_mirrors = launcher_core::net::ModMirrors {
         modrinth: settings.download.modrinth_source
             != launcher_core::config::DownloadSource::OfficialOnly,
@@ -93,7 +93,7 @@ pub(crate) fn content_of(state: &AppState, id: &str) -> Result<InstanceContent, 
 /// 下载进度 → 任务进度
 /// 下载进度 → 任务进度（和计数说明一起节流，几千个文件也不会刷爆事件）
 pub(crate) fn report(job: &JobHandle, label: &str, p: &DownloadProgress) {
-    // 换了一步（「下载整合包」→「下载整合包文件」）就记进步骤里（D18 下载历史展开看每一步）
+    // 换了一步（「下载整合包」→「下载整合包文件」）就记进步骤里（下载历史展开看每一步）
     job.set_step(label);
     job.set_download_progress(
         p.done_bytes as f64,
@@ -104,7 +104,7 @@ pub(crate) fn report(job: &JobHandle, label: &str, p: &DownloadProgress) {
     );
 }
 
-/// 补全游戏文件的几段各叫什么（D18 下载历史里一段一步，进度条不会在几段之间来回跳着看不懂）
+/// 补全游戏文件的几段各叫什么（下载历史里一段一步，进度条不会在几段之间来回跳着看不懂）
 pub(crate) fn phase_label(phase: InstallPhase) -> &'static str {
     match phase {
         InstallPhase::AssetIndex => "下载资源索引",
@@ -142,7 +142,7 @@ pub struct InstanceSummary {
     pub group: Option<String>,
     /// 置顶的时间；没置顶为空
     pub pinned_at: Option<f64>,
-    /// 挂上的别家版本：是哪家的（D19）；本启动器自己的实例为空
+    /// 挂上的别家版本：是哪家的；本启动器自己的实例为空
     pub linked: Option<launcher_core::external::Launcher>,
 }
 
@@ -628,7 +628,7 @@ pub fn launch_start(
                 );
             }
         };
-        // 这一次的完整记录（D17c）：读模组列表要一点时间，放在后台，不拖慢点击
+        // 这一次的完整记录：读模组列表要一点时间，放在后台，不拖慢点击
         let recorder = records::begin(&state, &instance, quick_play_record);
         if let Some(record_id) = records::id(&recorder)
             && let Some(snapshot) = state.sessions.set_record(&instance_id, &record_id)
@@ -640,7 +640,7 @@ pub fn launch_start(
         let temp_root = game.root().join(".mcl-tmp");
         let cancel = job.cancel_token();
         let java_locator = state.java_locator();
-        // 全局设置 + 这个实例自己的设置（D17i / D26c），没单独设的那组跟全局
+        // 全局设置 + 这个实例自己的设置，没单独设的那组跟全局
         let resolved = instance::resolve(&settings.game, &instance.config.overrides);
         let hook_ctx = launcher_core::launch::hooks::HookContext {
             instance_id: instance.id.clone(),
@@ -679,7 +679,7 @@ pub fn launch_start(
         };
         let prepared = async {
             let account = verify_account().await?;
-            // 启动前钩子（D26c）：非空时先执行，失败中止启动
+            // 启动前钩子：非空时先执行，失败中止启动
             if !resolved.hooks.pre_launch.is_empty() {
                 job.set_step("执行启动前钩子");
                 launcher_core::launch::hooks::run_hook(&resolved.hooks.pre_launch, &hook_ctx)
@@ -694,7 +694,7 @@ pub fn launch_start(
             if let Some(QuickPlay::World(folder)) = &quick_play {
                 crate::backups::before_play(&state, &job, &instance_id, folder).await;
             }
-            // 启动前将本机共享同步库增量拉取到该实例（开启总开关且未脱离同步时生效，D26b）
+            // 启动前将本机共享同步库增量拉取到该实例（开启总开关且未脱离同步时生效）
             crate::sync::before_launch(&state, &instance).await;
             let prepare_account = async |account: &launcher_core::auth::LaunchAccount,
                                          quick_play| {
@@ -794,11 +794,11 @@ pub fn launch_start(
 
         // 这次有没有进过世界（「永不玩坏」：进过世界并且正常退出，才算这个状态能玩）
         let reached_world = std::sync::atomic::AtomicBool::new(false);
-        // 这次从什么时候开始玩（自动备份按它找这次玩过的世界，D17j）
+        // 这次从什么时候开始玩（自动备份按它找这次玩过的世界）
         let started_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-        // 自动封面（D17d）：进程起来后开始跟着游戏状态截图，游戏结束时发送端一丢就停
+        // 自动封面：进程起来后开始跟着游戏状态截图，游戏结束时发送端一丢就停
         let (cover_state, cover_watch) = tokio::sync::watch::channel(GameState::Starting);
         let mut cover_watch = Some(cover_watch);
         let mut game_pid: Option<u32> = None;
@@ -807,7 +807,7 @@ pub fn launch_start(
         let should_maximize = resolved.window.mode == launcher_core::config::WindowMode::Maximized;
         let mut release_id = None;
         let mut minimized_by_launch = false;
-        // Discord 活动状态（D26c，默认关闭，纯本地管道，未运行 Discord 时静默跳过）
+        // Discord 活动状态（默认关闭，纯本地管道，未运行 Discord 时静默跳过）
         let discord_task = if discord_enabled {
             let name = hook_ctx.instance_name.clone();
             let ver = hook_ctx.game_version.clone();
@@ -838,7 +838,7 @@ pub fn launch_start(
             GameEvent::Log(line) => pending.lock().unwrap_or_else(|e| e.into_inner()).push(line),
             GameEvent::State(game_state) => {
                 cover_state.send_replace(game_state.clone());
-                // 自定义游戏窗口标题（D26c）：游戏窗口出现与进入主菜单时更新一次标题
+                // 自定义游戏窗口标题：游戏窗口出现与进入主菜单时更新一次标题
                 if let (Some(pid), Some(title)) = (game_pid, custom_title.as_ref())
                     && matches!(
                         game_state,
@@ -850,7 +850,7 @@ pub fn launch_start(
                         let _ = winmem::set_process_window_title(pid, &title);
                     });
                 }
-                // 启动时最大化游戏窗口（D26c）：窗口就绪后仅执行一次，绝不干扰玩家后续手动调整
+                // 启动时最大化游戏窗口：窗口就绪后仅执行一次，绝不干扰玩家后续手动调整
                 if should_maximize
                     && !maximized_once
                     && let Some(pid) = game_pid
@@ -921,7 +921,7 @@ pub fn launch_start(
         } else if minimized_by_launch || state.settings.get().game.refocus_on_exit {
             crate::window::open_main(&app);
         }
-        // 退出后钩子（D26c）：异步运行，失败仅记日志不阻塞退出收尾
+        // 退出后钩子：异步运行，失败仅记日志不阻塞退出收尾
         if !resolved.hooks.post_exit.is_empty() {
             let cmd = resolved.hooks.post_exit.clone();
             let ctx = hook_ctx.clone();
@@ -932,7 +932,7 @@ pub fn launch_start(
             });
         }
         match result {
-            // 正常退出：把该实例改动的按键/设置与服务器增量回写共享库（即使只在主菜单改过设置也回写，D26b）
+            // 正常退出：把该实例改动的按键/设置与服务器增量回写共享库（即使只在主菜单改过设置也回写）
             Ok(GameState::Exited { code: Some(0) }) => {
                 crate::sync::after_exit(&state, &instance_id).await;
                 if reached_world.load(std::sync::atomic::Ordering::Relaxed) {
@@ -947,7 +947,7 @@ pub fn launch_start(
                             tracing::warn!(error = %error.message, "记下能玩的状态失败")
                         }
                     }
-                    // 自动备份这次玩过的世界（设置里开着时，D17j）
+                    // 自动备份这次玩过的世界（设置里开着时）
                     crate::backups::after_game(&app, &instance_id, started_ms);
                 }
             }
@@ -1013,7 +1013,7 @@ fn flush_logs(
     );
 }
 
-/// 启动前极速本地预检（D25d）：只读本地元信息，拦截缺前置、重复 modId、加载器错配和手动 Java 过旧。
+/// 启动前极速本地预检：只读本地元信息，拦截缺前置、重复 modId、加载器错配和手动 Java 过旧。
 #[tauri::command]
 #[specta::specta]
 pub async fn launch_preflight(
@@ -1276,7 +1276,7 @@ pub async fn content_remove_many(
     Ok(u32::try_from(count).unwrap_or(u32::MAX))
 }
 
-/// 解析安装指定版本的计划（含前置、光影加载器，D25e）。
+/// 解析安装指定版本的计划（含前置、光影加载器）。
 #[tauri::command]
 #[specta::specta]
 pub async fn content_resolve_version(
@@ -1324,7 +1324,7 @@ pub async fn content_resolve_version(
     .await?)
 }
 
-/// 锁定或取消锁定实例内某项内容的版本（D25e）。
+/// 锁定或取消锁定实例内某项内容的版本。
 #[tauri::command]
 #[specta::specta]
 pub fn content_set_locked(
@@ -1389,7 +1389,7 @@ fn instance_working(state: &AppState, instance_id: &str, directory: &std::path::
         format!("content:{instance_id}:"),
         format!("drop:{instance_id}:"),
         format!("map-install:{instance_id}:"),
-        // 正在备份、恢复这个实例的世界（D17j）：游戏一开就会写存档
+        // 正在备份、恢复这个实例的世界：游戏一开就会写存档
         format!("backup:{instance_id}:"),
     ];
     let directory = crate::turns::directory_key(directory);
@@ -1462,7 +1462,7 @@ pub fn content_install(
             // 作者禁止第三方下载、Modrinth 上也没有同样文件的：开始补件，一边下载其他文件一边等
             let claim =
                 crate::claims::start(&app, &state, &job, title.clone(), prepared.manual.clone());
-            // 下载几个安装可以一起（各下到自己的临时文件夹，D17l 验收时改）
+            // 下载几个安装可以一起（各下到自己的临时文件夹）
             let staged = content
                 .download_install(
                     &downloader,
@@ -1514,14 +1514,14 @@ pub async fn content_set_enabled(
     ensure_not_running(&state, &instance_id)?;
     let _turn = take_content_turn(&state, &instance_id)?;
     let content = content_of(&state, &instance_id)?;
-    // 上次改到一半的先退回（D17m）
+    // 上次改到一半的先退回
     content.recover().await?;
     // 启用 / 停用也是改动：还没有快照的话先记一份
     content.snapshot_before_change().await;
     Ok(content.set_enabled(kind, &file_name, enabled)?)
 }
 
-/// 一次启用 / 停用好几个：要么全改、要么一个不改（D17m）。返回真的改了的那些，
+/// 一次启用 / 停用好几个：要么全改、要么一个不改。返回真的改了的那些，
 /// 界面上的「撤销」就是拿它反过来再调一次。
 #[tauri::command]
 #[specta::specta]
@@ -1708,7 +1708,7 @@ pub fn content_update(
     start_update_job(app, &state, instance_id, updates, title, "更新")
 }
 
-/// 切换某项内容到指定版本（后台任务，记入改动历史可撤销，D25e）。
+/// 切换某项内容到指定版本（后台任务，记入改动历史可撤销）。
 #[tauri::command]
 #[specta::specta]
 pub fn content_switch_version(
@@ -1865,7 +1865,7 @@ pub async fn game_dir_choose(
     migrate_instances(&game);
     state.set_game(game);
     tracing::info!(dir = %path.display(), "游戏目录已更换");
-    // 挂上的别家目录同步进新的游戏目录（D19）
+    // 挂上的别家目录同步进新的游戏目录
     crate::linked::spawn_rescan(&app);
     Ok(Some(game_dir_info_of(&state)))
 }
@@ -1873,13 +1873,13 @@ pub async fn game_dir_choose(
 pub(crate) enum Pick {
     Folder,
     Modpack,
-    /// 世界的背景图（D17d）
+    /// 世界的背景图
     Image,
-    /// 手动添加 Java（D17h）
+    /// 手动添加 Java
     Java,
-    /// 挂上别家的 .minecraft（D19）
+    /// 挂上别家的 .minecraft
     GameRoot,
-    /// 从别家启动器导入实例（D19）
+    /// 从别家启动器导入实例
     ForeignInstance,
 }
 
@@ -1976,7 +1976,7 @@ async fn inspect_file(state: &AppState, path: PathBuf) -> Result<PackPlan, AppEr
     }
 }
 
-/// D18 以前的实例（`versions/<实例名>/`）搬到 `instances/<实例名>/`（D18a，国际主流的实例布局）
+/// 早先的实例（`versions/<实例名>/`）搬到 `instances/<实例名>/`（国际主流的实例布局）
 pub(crate) fn migrate_instances(game: &GameDir) {
     let report = instance::migrate_legacy(game);
     if report.moved > 0 || report.renamed > 0 || report.failed > 0 {
@@ -1990,13 +1990,13 @@ pub(crate) fn migrate_instances(game: &GameDir) {
     }
 }
 
-/// 以前（D18 之前）在线安装时下载的整合包放这里；现在放进每次导入自己的临时目录
+/// 以前在线安装时下载的整合包放这里；现在放进每次导入自己的临时目录
 fn legacy_packs_dir(game: &GameDir) -> PathBuf {
     game.root().join(".mcl-tmp").join("packs")
 }
 
 /// 启动器启动时清掉上次没删的临时文件（比如安装途中启动器被关掉）：以前的临时整合包、复制到一半的实例。
-/// 导入到一半的整合包（D18）还能重试的留着（`keep`），见 [`crate::downloads::clean_imports`]。
+/// 导入到一半的整合包还能重试的留着（`keep`），见 [`crate::downloads::clean_imports`]。
 /// 只在启动时清：那时没有任何安装在进行，不会误删正在用的东西。
 pub(crate) fn clean_temp_packs(game: &GameDir, keep: &std::collections::HashSet<String>) {
     crate::downloads::clean_imports(game, keep, false);
@@ -2014,7 +2014,7 @@ pub(crate) fn clean_temp_packs(game: &GameDir, keep: &std::collections::HashSet<
                 .map(|e| e.path()),
         );
     }
-    // 上次没装完的安装下载的文件（D17l）
+    // 上次没装完的安装下载的文件
     leftovers.push(
         game.root()
             .join(launcher_core::content::store::STORE_DIR)
@@ -2097,7 +2097,7 @@ pub fn modpack_import(
     start_file_import(&app, &state, plan, name)
 }
 
-/// 本地整合包开始导入（选文件、拖进来的、重试都走这里）。临时目录按文件定（D18 能接着装）
+/// 本地整合包开始导入（选文件、拖进来的、重试都走这里）。临时目录按文件定（能接着装）
 fn start_file_import(
     app: &AppHandle,
     state: &AppState,
@@ -2125,7 +2125,7 @@ fn start_file_import(
     Ok(job_id)
 }
 
-/// 重试本地导入（D18）：重新检查一遍文件再导入，下过的文件接着用
+/// 重试本地导入：重新检查一遍文件再导入，下过的文件接着用
 pub(crate) async fn import_file(
     app: &AppHandle,
     path: PathBuf,
@@ -2274,7 +2274,7 @@ pub fn modpack_install(
         let downloader = downloader(&state);
         let cancel = job.cancel_token();
         let result = async {
-            // 整合包下到这次导入自己的临时目录里（D18）：没装完时留着，重试时校验通过就不重下
+            // 整合包下到这次导入自己的临时目录里：没装完时留着，重试时校验通过就不重下
             let staging = modpack::staging_dir(&state.game().root().join(".mcl-tmp"), &resume_key);
             let dir = staging.join("pack");
             let progress = |p| report(&job, "下载整合包", &p);

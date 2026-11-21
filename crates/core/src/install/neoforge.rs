@@ -16,7 +16,7 @@ use crate::net::{candidate_urls, get_bytes};
 
 const MAVEN: &str = "https://maven.neoforged.net/releases";
 const ARTIFACT_PATH: &str = "net/neoforged/neoforge";
-/// Minecraft 1.20.1 早期 NeoForge 47.1.x 发布在旧坐标 `net.neoforged:forge` 下（D25e）
+/// Minecraft 1.20.1 早期 NeoForge 47.1.x 发布在旧坐标 `net.neoforged:forge` 下
 const LEGACY_ARTIFACT_PATH: &str = "net/neoforged/forge";
 const LEGACY_1201_PREFIX: &str = "1.20.1-";
 

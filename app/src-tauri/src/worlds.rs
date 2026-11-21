@@ -33,7 +33,7 @@ pub struct WorldView {
     pub image_fit: ImageFit,
     /// 世界种子（文字：64 位整数界面放不下）
     pub seed: Option<String>,
-    /// 世界笔记在首页显示的那一行（D17j）
+    /// 世界笔记在首页显示的那一行
     pub note: Option<NoteLine>,
 }
 
@@ -56,7 +56,7 @@ pub struct RecentWorld {
     pub world: WorldView,
 }
 
-/// 一个实例 `servers.dat` 里的多人服务器（首页「直达你的世界与服务器」用，D25d）。
+/// 一个实例 `servers.dat` 里的多人服务器（首页「直达你的世界与服务器」用）。
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentServer {
@@ -67,7 +67,7 @@ pub struct RecentServer {
     pub address: String,
 }
 
-/// 供精选弹窗展示的一张自动封面（D25d）；图片走启动器协议地址，不暴露路径。
+/// 供精选弹窗展示的一张自动封面；图片走启动器协议地址，不暴露路径。
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AutoCoverView {
@@ -156,7 +156,7 @@ pub async fn worlds_recent(state: State<'_, AppState>) -> Result<Vec<RecentWorld
     Ok(recent)
 }
 
-/// 各实例 `servers.dat` 里的多人服务器，按实例最近游玩顺序排（同地址同实例去重，D25d）。
+/// 各实例 `servers.dat` 里的多人服务器，按实例最近游玩顺序排（同地址同实例去重）。
 #[tauri::command]
 #[specta::specta]
 pub async fn worlds_recent_servers(
@@ -285,7 +285,7 @@ pub fn worlds_open_folder(
     open_dir(&app, &dir, "存档文件夹")
 }
 
-// ---------- 世界笔记（D17j） ----------
+// ---------- 世界笔记 ----------
 
 /// 一个世界的笔记（没写过是空的）
 #[tauri::command]
@@ -314,7 +314,7 @@ pub fn worlds_notes_set(
     Ok(saved)
 }
 
-// ---------- 自定义背景（D17d） ----------
+// ---------- 自定义背景 ----------
 
 /// 一个世界所在实例的游戏目录（存档名是界面传回来的：先确认这个存档真的在）
 fn world_owner(
@@ -407,7 +407,7 @@ pub fn worlds_background_clear(
     Ok(())
 }
 
-/// 列出一个世界最近保存的自动封面（最多 5 张，新的在前，D25d）。
+/// 列出一个世界最近保存的自动封面（最多 5 张，新的在前）。
 #[tauri::command]
 #[specta::specta]
 pub async fn worlds_auto_covers_list(
@@ -431,7 +431,7 @@ pub async fn worlds_auto_covers_list(
         .collect())
 }
 
-/// 锁定某张自动封面为这个世界的固定封面（锁定期间自动封面不再覆盖，D25d）。
+/// 锁定某张自动封面为这个世界的固定封面（锁定期间自动封面不再覆盖）。
 #[tauri::command]
 #[specta::specta]
 pub fn worlds_auto_cover_lock(
@@ -452,7 +452,7 @@ pub fn worlds_auto_cover_lock(
     }
 }
 
-/// 解除自动封面锁定，恢复游玩时自动更新（D25d）。
+/// 解除自动封面锁定，恢复游玩时自动更新。
 #[tauri::command]
 #[specta::specta]
 pub fn worlds_auto_cover_unlock(
@@ -541,7 +541,7 @@ fn sanitize_card_file_name(suggested: &str) -> String {
     }
 }
 
-/// 将前端 Canvas 渲染的世界分享卡片 PNG 通过系统「另存为」保存到磁盘（界面不接触路径，D25e）。
+/// 将前端 Canvas 渲染的世界分享卡片 PNG 通过系统「另存为」保存到磁盘（界面不接触路径）。
 #[tauri::command]
 #[specta::specta]
 pub async fn worlds_save_share_card(

@@ -29,7 +29,7 @@ function issueSummary(issue: PreflightIssue, t: TFunction) {
 }
 
 /**
- * 启动前极速预检提示（D25d）：仅在本地扫描命中高确定性必崩风险时弹出，
+ * 启动前极速预检提示：仅在本地扫描命中高确定性必崩风险时弹出，
  * 给出清晰中文原因和直接入口（「去管理模组 / 去调整 Java / 仍然启动」）。
  */
 export function PreflightDialog() {

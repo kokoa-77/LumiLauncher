@@ -16,7 +16,7 @@ function parseSide(text: string, fallback: number, min: number): number {
 }
 
 /**
- * 游戏窗口一开始多大（全局设置和实例的「设置」页签共用，D17i）：游戏默认 / 自定义宽高 / 全屏。
+ * 游戏窗口一开始多大（全局设置和实例的「设置」页签共用）：游戏默认 / 自定义宽高 / 全屏。
  * 放在设置的一组（Group）里面；选「自定义」时多一行宽高。
  */
 export function WindowPicker({

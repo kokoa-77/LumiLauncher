@@ -1,4 +1,4 @@
-//! 世界备份（D17j）。
+//! 世界备份。
 //!
 //! - 每份备份是一个 zip，放在实例的 `Lumi/backups/<世界文件夹>/<时间>.zip`；
 //!   压缩包里带世界文件夹名（`<世界文件夹>/level.dat`），和游戏自己「备份」出来的一样，玩家也能手动解开用。
@@ -164,7 +164,7 @@ struct RestoreMarker {
     new: String,
 }
 
-/// 迁移世界备份目录的结果（D26b）
+/// 迁移世界备份目录的结果
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -812,7 +812,7 @@ fn extract(
     Ok(())
 }
 
-/// 把所有实例的世界备份与索引从旧位置安全搬移到新位置（D26b）。
+/// 把所有实例的世界备份与索引从旧位置安全搬移到新位置。
 /// 同盘优先 `rename`，跨盘复制并校验字节数一致后再删除旧文件；绝不删动实例 `Lumi/` 里的其他文件。
 pub fn migrate_backups_root(
     instance_dirs: &[PathBuf],

@@ -78,7 +78,7 @@ Lumi collects **zero telemetry, zero analytics, and zero advertisements**.
 ### Prerequisites (Windows 10/11 x64)
 
 - [Rust](https://www.rust-lang.org/) (pinned via [`rust-toolchain.toml`](rust-toolchain.toml)) + MSVC C++ Build Tools (Windows 10/11 SDK)
-- [Node.js](https://nodejs.org/) 24+ and [pnpm](https://pnpm.io/) 10+
+- [Node.js](https://nodejs.org/) 24+ and [pnpm](https://pnpm.io/) 12+ (pinned via `packageManager` in `package.json`)
 - Microsoft Edge WebView2 Runtime (pre-installed on Windows 11 and modern Windows 10)
 
 ### Commands
@@ -104,7 +104,7 @@ $env:LUMI_MICROSOFT_CLIENT_ID = "<your-client-id>"
 pnpm --dir app tauri build --bundles nsis
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the codebase layout and [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the codebase layout, [docs/DESIGN.md](docs/DESIGN.md) for the design and engineering rules, and [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## Code Signing Policy
 
@@ -121,11 +121,11 @@ You are free to study, fork, modify, and redistribute Lumi's source code **stric
 To protect players from counterfeit builds and protect original creative work, modified builds and forks **must**:
 
 1. **Rebrand cleanly**: Clearly state that your fork is **not** official Lumi and is not endorsed by or affiliated with `kokoa-77` or Lumi Launcher. Do not reuse the names `Lumi`, `微光`, or `Lumi Launcher`, or the app identifier `com.lumilauncher.lumi`.
-2. **Replace original brand & artwork assets**: Lumi's logos, icons (`app/src-tauri/icons/`), original illustrations (`app/src/assets/art/`), promotional graphics (`docs/screenshots/social-preview.png`), and author avatar are **not** licensed for rebranded forks or third-party redistribution (**All Rights Reserved**).
+2. **Replace the official brand assets**: Lumi's logo and app icon (`app/src-tauri/icons/`), original illustrations (`app/src/assets/art/`), promotional graphics (`docs/screenshots/social-preview.png`) and the author avatar ship under the same `GPL-3.0-only` license as the code, but the Section 7 terms in [LICENSE](LICENSE) forbid using them in a way that implies your build is official Lumi. Modified distributions must use their own name, app identifier and icon.
 3. **Never reuse official credentials or keys**: Do not ship or embed Lumi's Microsoft Entra Client ID (`LUMI_MICROSOFT_CLIENT_ID`), updater public key (`LUMI_UPDATER_PUBKEY`), or any third-party API keys. Register your own credentials or leave them unset.
 
 ## Acknowledgments & License
 
 - Lumi integrates with official **Mojang / Microsoft**, **Modrinth**, and **CurseForge** services, and optionally supports community mirrors **BMCLAPI** and **MCIM** for faster asset delivery (authentication requests never use mirrors). Full dependency licenses and attributions are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
 - **Source Code**: Licensed under **GNU General Public License v3.0 only (`GPL-3.0-only`)** with Section 7 brand and name protection terms. See [LICENSE](LICENSE).
-- **Brand & Original Artwork**: Copyright © 2026 `kokoa-77`. All Rights Reserved.
+- **Brand & Original Artwork**: Copyright © 2026 `kokoa-77`. Distributed with the code under `GPL-3.0-only`; the Section 7 terms restrict how modified versions may use the Lumi names, icon and illustrations.

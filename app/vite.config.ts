@@ -24,5 +24,8 @@ export default defineConfig({
   build: {
     // WebView2 是常青的 Chromium，可以直接用新语法
     target: "es2023",
+    // 3D 皮肤预览（skinview3d，约 520 kB）只在打开皮肤页时按需加载，不算首屏；
+    // 首屏体积由 scripts/check-bundle.mjs 单独把关
+    chunkSizeWarningLimit: 600,
   },
 });

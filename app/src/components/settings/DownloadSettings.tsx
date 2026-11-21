@@ -29,7 +29,7 @@ import { Group, Row, type UpdateSettings } from "./parts";
 const SOURCES: DownloadSource[] = ["auto", "official", "mirror", "officialOnly"];
 const CONCURRENCY_CHOICES = ["8", "16", "32", "64"] as const;
 
-/** 四行下载源（D18b，文字参考了你发的别家设置）：前两行的镜像是 BMCLAPI，后两行是 MCIM */
+/** 四行下载源（文字参考了你发的别家设置）：前两行的镜像是 BMCLAPI，后两行是 MCIM */
 const SOURCE_ROWS = [
   { field: "metaSource", label: "sourceMeta", hint: "sourceMetaHint", options: "sourceOption" },
   { field: "source", label: "source", hint: "sourceHint", options: "sourceOption" },
@@ -60,7 +60,7 @@ function parsePort(text: string, fallback: number): number {
 }
 
 /**
- * 设置 →「内容与下载」（D18 / D26a）：
+ * 设置 →「内容与下载」：
  * - 内容：首选平台、自动装前置
  * - 下载：游戏与模组下载源、最大并发数、网络代理（跟随系统 / 直连 / 自定义 HTTP·SOCKS5）
  * - 网络诊断：下载源测速、DoH 解析与测试、6 端点一键连通性检测与复制报告

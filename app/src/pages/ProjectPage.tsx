@@ -98,7 +98,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** 服务器现在的样子（D17k）：在线人数、延迟，鼠标停上去看版本和简介 */
+/** 服务器现在的样子：在线人数、延迟，鼠标停上去看版本和简介 */
 function ServerLiveFact({ address }: { address: string }) {
   const { t } = useTranslation();
   const status = useServerStatus(address);

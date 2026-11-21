@@ -1,5 +1,5 @@
 /**
- * Minecraft 原版 `options.txt` 完整 9 栏可视化配置目录与 LWJGL 按键映射（D26c）。
+ * Minecraft 原版 `options.txt` 完整 9 栏可视化配置目录与 LWJGL 按键映射。
  * 仅被懒加载的 `SyncEditors` 引用，不占首屏体积。
  */
 

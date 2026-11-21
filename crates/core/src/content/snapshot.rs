@@ -327,7 +327,7 @@ impl InstanceContent {
     }
 
     /// 回到快照那时的样子：多出来的文件进仓库，少了的 / 换掉的从仓库放回来，启用状态和安装记录一并恢复。
-    /// 记一条改动历史（可以再撤销）。返回动了几个文件。要么全回去、要么一点不动（D17m）。
+    /// 记一条改动历史（可以再撤销）。返回动了几个文件。要么全回去、要么一点不动。
     pub async fn restore_snapshot(&self) -> Result<u32, ContentError> {
         self.settle().await?;
         let snapshot = self

@@ -2,14 +2,14 @@
 //!
 //! - `saves/<文件夹>/level.dat`（gzip 压缩的 NBT）：世界名、上次游玩时间、游戏内天数、游戏模式、存档版本
 //! - `saves/<文件夹>/stats/<玩家 UUID>.json`：玩家在这个世界里玩了多久
-//! - 背景图，按这个顺序挑（D17d）：
+//! - 背景图，按这个顺序挑：
 //!   1. 你给这个世界选的图（[`cover`]，自定义背景）
 //!   2. 这个世界上次游玩期间你自己截的图（实例的 `screenshots/`，按 F2 截的）
 //!   3. 启动器玩的时候自动截的游戏画面（[`cover`]，自动封面）
 //!   4. 世界自带的 `icon.png`（游戏建世界时自动拍的 64×64 缩略图）
 //!
 //! 只读，不改任何存档文件。读不了的存档跳过并记日志，不影响其他存档。
-//! 世界备份在 [`backup`]，世界笔记在 [`notes`]（D17j）。
+//! 世界备份在 [`backup`]，世界笔记在 [`notes`]。
 
 pub mod backup;
 pub mod cover;
@@ -80,7 +80,7 @@ pub struct World {
     pub image: Option<WorldImage>,
     /// 世界种子（64 位整数，用文字传：界面的数字放不下）；读不到时为空
     pub seed: Option<String>,
-    /// 世界笔记在首页显示的那一行（D17j）
+    /// 世界笔记在首页显示的那一行
     pub note: Option<notes::NoteLine>,
 }
 

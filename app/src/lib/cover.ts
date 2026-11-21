@@ -7,7 +7,7 @@ import { type AccentColor, pickAccent } from "./color";
 import { logError } from "./report";
 import { applyAccent, DEFAULT_ACCENT } from "./themeEngine";
 
-/** 自己选的主色（设置「外观 → 主色」，D19c）；没选过是默认的天空蓝 */
+/** 自己选的主色（设置「外观 → 主色」）；没选过是默认的天空蓝 */
 export function ownAccent(settings: Settings | null | undefined): { hue: number; chroma: number } {
   return {
     hue: settings?.appearance.accentHue ?? DEFAULT_ACCENT.hue,

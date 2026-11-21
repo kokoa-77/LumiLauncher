@@ -64,7 +64,7 @@ pub struct LoaderContext<'a> {
     pub downloader: &'a Downloader,
     /// 文件（依赖库、安装器、客户端）从哪下（设置「Minecraft 文件、加载器与 Java」）
     pub source: DownloadSource,
-    /// 版本清单、版本描述从哪拿（设置「Minecraft 元数据」，D18b）
+    /// 版本清单、版本描述从哪拿（设置「Minecraft 元数据」）
     pub meta_source: DownloadSource,
     /// 运行处理器用的 Java
     pub java: &'a Path,

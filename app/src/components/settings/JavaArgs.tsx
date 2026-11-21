@@ -17,7 +17,7 @@ export interface JavaArgsValue {
 const GC_OPTIONS: GcPreset[] = ["auto", "zgc", "off"];
 
 /**
- * 「Java 参数」「游戏参数」两行（全局设置和实例设置共用，D17i 验收时改）：
+ * 「Java 参数」「游戏参数」两行（全局设置和实例设置共用）：
  * Java 参数旁边是「参数预设」，内存回收方式和常用参数都在预设里点选，不用自己记参数。
  * 放在设置的一组（Group）里面。
  */
@@ -75,7 +75,7 @@ export function JavaArgsRows({
   );
 }
 
-/** 「做完了」的样子：主色浅底 + 主色字 + 勾（开发合同第 5 节） */
+/** 「做完了」的样子：主色浅底 + 主色字 + 勾（docs/DESIGN.md 第 5 节） */
 const DONE =
   "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-control bg-accent-soft px-3 font-medium text-accent text-xs";
 

@@ -6,7 +6,7 @@
 //! - 识别（`identify`）：手动放进来的文件也能认出名字、版本、图标（Modrinth 哈希 → CurseForge 指纹 → 文件自带说明）
 //! - 检查更新、一键更新、删除；每次改动记一条历史，**被换掉或删掉的文件先进内容仓库**（`store`），
 //!   所以都能撤销
-//! - 一次改好几个文件的操作都先写改动日志（`journal`，D17m）：中途出错或者启动器被关掉，退回改之前
+//! - 一次改好几个文件的操作都先写改动日志（`journal`）：中途出错或者启动器被关掉，退回改之前
 
 pub mod bundle;
 pub mod cache;
@@ -48,7 +48,7 @@ use store::{ContentStore, STORE_DIR};
 
 /// 本启动器记录「这个文件是从哪个项目装的」
 const RECORDS_FILE: &str = "content.json";
-/// 锁定版本的文件键集合（`<文件夹>/<文件名>`），锁定的项跳过检查与批量更新（D25e）
+/// 锁定版本的文件键集合（`<文件夹>/<文件名>`），锁定的项跳过检查与批量更新
 const LOCKS_FILE: &str = "content-locks.json";
 const DISABLED_SUFFIX: &str = ".disabled";
 
@@ -91,7 +91,7 @@ pub enum ContentError {
         #[source]
         source: std::io::Error,
     },
-    /// 改到一半出错，已经退回改之前（D17m）
+    /// 改到一半出错，已经退回改之前
     #[error("{reason}。「{summary}」没做成，实例保持原样")]
     Reverted { summary: String, reason: String },
     /// 改到一半出错，退回也没成功：改动日志留着，下次打开启动器或者下次改这个实例之前再退
@@ -174,7 +174,7 @@ pub enum ContentSource {
     CurseForge,
 }
 
-/// 资源中心的排序（D17c）。两个平台各自换成自己的排序参数，结果顺序和平台官网一致。
+/// 资源中心的排序。两个平台各自换成自己的排序参数，结果顺序和平台官网一致。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -284,7 +284,7 @@ pub enum LocalOutcome {
 /// 下载到一半的安装放在内容仓库下面的这个文件夹里，每个任务一个（启动器启动时整个清掉）
 pub const STAGING_DIR: &str = ".staging";
 
-/// 下载好、还没放进实例的安装（[`InstanceContent::download_install`] 的结果，D17l）。
+/// 下载好、还没放进实例的安装（[`InstanceContent::download_install`] 的结果）。
 /// 几个安装可以同时下载（各下各的文件夹），放进实例（[`InstanceContent::finish_install`]）要一个一个来。
 /// 丢掉（取消、失败）时下载的文件一起删掉。
 pub struct StagedInstall {
@@ -383,10 +383,10 @@ pub struct ContentItem {
     pub enabled: bool,
     pub size: f64,
     pub project_id: Option<String>,
-    /// 当前安装的版本编号（Modrinth versionId / CurseForge fileId，切换版本高亮用，D25e）
+    /// 当前安装的版本编号（Modrinth versionId / CurseForge fileId，切换版本高亮用）
     pub version_id: Option<String>,
     pub version_number: Option<String>,
-    /// 是否锁定版本（跳过自动/批量检查与更新，D25e）
+    /// 是否锁定版本（跳过自动/批量检查与更新）
     pub locked: bool,
     /// 图标：网址或 `data:` 地址
     pub icon_url: Option<String>,
@@ -402,7 +402,7 @@ pub struct ContentItem {
     pub page_url: Option<String>,
     /// 文件最后修改时间（毫秒；按新旧排序用）
     pub modified: f64,
-    /// 中文名（中文名表或模组自带的语言文件；D17e）
+    /// 中文名（中文名表或模组自带的语言文件）
     pub title_zh: Option<String>,
     /// 同一个项目在另一个平台上的编号（中文名表或同一个文件确认过的；资源中心判断「已安装」用）
     pub twin_id: Option<String>,
@@ -456,16 +456,16 @@ pub struct UpdateInfo {
     pub current_version: Option<String>,
     pub version_id: String,
     pub version_number: String,
-    /// 目标版本来自哪个平台（默认 Modrinth，兼容旧历史重试记录，D25e）
+    /// 目标版本来自哪个平台（默认 Modrinth，兼容旧历史重试记录）
     #[serde(default)]
     pub source: ContentSource,
-    /// 项目在平台上的编号（CurseForge 更新与补件用，D25e）
+    /// 项目在平台上的编号（CurseForge 更新与补件用）
     #[serde(default)]
     pub project_id: Option<String>,
-    /// 目标版本下载方式（CurseForge 作者禁止第三方下载时可能为 `Modrinth` 或 `Manual`，D25e）
+    /// 目标版本下载方式（CurseForge 作者禁止第三方下载时可能为 `Modrinth` 或 `Manual`）
     #[serde(default)]
     pub delivery: Delivery,
-    /// 补件时的精确下载页（D25e）
+    /// 补件时的精确下载页
     #[serde(default)]
     pub page_url: Option<String>,
 }
@@ -529,7 +529,7 @@ pub struct InstanceContent {
     fault: std::sync::Mutex<Option<journal::Fault>>,
 }
 
-/// 一次改动的草稿：要做的文件操作 + 改完之后的来源记录、光影 / 材质包设置（D17m）。
+/// 一次改动的草稿：要做的文件操作 + 改完之后的来源记录、光影 / 材质包设置。
 /// 排好后交给 [`InstanceContent::commit`]，一起写进改动日志再执行。
 struct Draft {
     plan: Plan,
@@ -616,7 +616,7 @@ impl InstanceContent {
         Ok(())
     }
 
-    /// 锁定或取消锁定某项内容的版本（D25e）。只影响自动/批量检查与更新，不影响启用/停用开关。
+    /// 锁定或取消锁定某项内容的版本。只影响自动/批量检查与更新，不影响启用/停用开关。
     pub fn set_locked(
         &self,
         kind: ContentKind,
@@ -1417,7 +1417,7 @@ impl InstanceContent {
     /// 记一条可撤销的历史。同一个实例同一时间只能有一个在做（调用方排队）。
     /// 实例里已经有一模一样的文件（另一个安装刚装了同一个前置）就不动它，也不记进这次的历史，
     /// 免得撤销这次时把别人要的前置删掉。同名但内容不一样的旧文件先收进仓库，撤销时放回来。
-    /// 整批要么都放进去，要么一个都不放（改动日志，D17m）。
+    /// 整批要么都放进去，要么一个都不放（改动日志）。
     pub async fn finish_install(&self, mut staged: StagedInstall) -> Result<(), ContentError> {
         self.settle().await?;
         self.snapshot_before_change().await;
@@ -1643,7 +1643,7 @@ impl InstanceContent {
         Ok(installed)
     }
 
-    /// 按实例的游戏版本和加载器，同时在 Modrinth 与 CurseForge 批量查更新，跳过已锁定项（D25e）。
+    /// 按实例的游戏版本和加载器，同时在 Modrinth 与 CurseForge 批量查更新，跳过已锁定项。
     pub async fn check_updates(
         &self,
         client: &Client,
@@ -1955,7 +1955,7 @@ impl InstanceContent {
         Ok(result)
     }
 
-    /// 准备更新（支持 Modrinth 与 CurseForge；CurseForge 受限文件自动尝试 Modrinth 同哈希替补或进入补件，D25e）。
+    /// 准备更新（支持 Modrinth 与 CurseForge；CurseForge 受限文件自动尝试 Modrinth 同哈希替补或进入补件）。
     pub async fn prepare_update(
         &self,
         client: &Client,
@@ -2277,7 +2277,7 @@ impl InstanceContent {
     }
 
     /// 一次删好几个（文件进仓库，可以撤销）：只记一条改动历史，一次撤销全部回来。
-    /// 文件夹形式的光影、材质包跳过。要么全删、要么一个不删（中途出错就退回，D17m）。
+    /// 文件夹形式的光影、材质包跳过。要么全删、要么一个不删（中途出错就退回）。
     pub async fn remove_many(
         &self,
         kind: ContentKind,
@@ -2365,7 +2365,7 @@ impl InstanceContent {
             .map(|_| ())
     }
 
-    /// 一次启用 / 停用好几个：模组改名，光影、材质包改设置。要么全改、要么一个不改（D17m）。
+    /// 一次启用 / 停用好几个：模组改名，光影、材质包改设置。要么全改、要么一个不改。
     /// 返回真的改了的那些（已经是这个样子的不算）。不记改动历史（和单个开关一样），
     /// 界面上的「撤销」就是反过来再调一次。
     pub async fn set_many_enabled(
@@ -2464,7 +2464,7 @@ impl InstanceContent {
     }
 
     /// 撤销一次改动：这次加进来的文件进仓库，这次换掉 / 删掉的文件从仓库放回来。
-    /// 要么撤销完整、要么一点不动（D17m）。
+    /// 要么撤销完整、要么一点不动。
     pub async fn rollback(&self, id: &str) -> Result<(), ContentError> {
         self.settle().await?;
         let mut history = self.load_history();
@@ -2770,7 +2770,7 @@ fn resource_packs_text(text: &str, packs: &[String]) -> Result<String, ContentEr
 
 // ---------- 一次改动里的「用哪个光影、哪些材质包」 ----------
 
-/// 光影和材质包现在用哪个：一次改动里先在内存里改，最后各写一次（写文件也是改动日志里的一步，D17m）
+/// 光影和材质包现在用哪个：一次改动里先在内存里改，最后各写一次（写文件也是改动日志里的一步）
 struct Active {
     shader: Option<String>,
     shader_was: Option<String>,
@@ -3091,7 +3091,7 @@ mod tests {
         assert!(result.lookup_failed);
     }
 
-    /// D17l 验收时你连着装两个共用前置的模组：两个一起下完，先后放进实例。
+    /// 验收时你连着装两个共用前置的模组：两个一起下完，先后放进实例。
     /// 前置只放一份，第二次的改动历史里没有它（撤销第二个时不会把第一个要的前置删掉）
     #[tokio::test]
     async fn two_installs_sharing_a_dependency_place_it_once() {
@@ -3146,7 +3146,7 @@ mod tests {
 
     #[test]
     fn update_keeps_icon_of_hand_added_mods() {
-        // D8 验收发现：手动放进来的 Jade 更新后图标没了（旧文件没有安装记录）
+        // 验收发现：手动放进来的 Jade 更新后图标没了（旧文件没有安装记录）
         let dir = tempfile::tempdir().unwrap();
         let mut cache = IdentityCache::load(dir.path());
         let old_sha1 = "a".repeat(40);
@@ -3445,7 +3445,7 @@ mod tests {
         assert_eq!(text, "shaderPack=a\\=b\\:c.zip\n");
     }
 
-    // ---------- 改到一半能恢复（D17m） ----------
+    // ---------- 改到一半能恢复 ----------
 
     use journal::Fault;
 

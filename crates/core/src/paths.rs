@@ -1,5 +1,5 @@
 //! 游戏目录的结构：共用的游戏本体按标准 `.minecraft` 布局放（`versions/`、`libraries/`、`assets/`），
-//! 实例放在 `instances/<实例名>/`（D18a，和 Prism、Modrinth App、CurseForge 一样，见 [`crate::instance`]）。
+//! 实例放在 `instances/<实例名>/`（和 Prism、Modrinth App、CurseForge 一样，见 [`crate::instance`]）。
 //!
 //! 版本号、库路径、资源哈希都来自外部 json，拼成磁盘路径前在这里统一校验，
 //! 保证不会写到游戏目录外面。
@@ -26,7 +26,7 @@ impl GameDir {
         self.root.join("versions")
     }
 
-    /// 放实例的文件夹（D18a）
+    /// 放实例的文件夹
     pub fn instances(&self) -> PathBuf {
         self.root.join("instances")
     }

@@ -1,6 +1,6 @@
 import { type CSSProperties, useMemo } from "react";
 
-/** 一屏最多这么多颗（开发合同第 6 节「环境光效」） */
+/** 一屏最多这么多颗（docs/DESIGN.md 第 6 节「环境光效」） */
 const MAX_MOTES = 24;
 
 interface Mote {

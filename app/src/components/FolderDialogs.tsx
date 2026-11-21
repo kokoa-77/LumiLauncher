@@ -68,7 +68,7 @@ function AddGameRootDialog() {
 }
 
 /**
- * 别家启动器的文件夹认出来以后弹的窗口（D19），哪里都能叫出来（stores/folders.ts）：
+ * 别家启动器的文件夹认出来以后弹的窗口，哪里都能叫出来（stores/folders.ts）：
  * 「添加 .minecraft 文件夹」和「从别的启动器导入」。
  */
 export function FolderDialogs() {

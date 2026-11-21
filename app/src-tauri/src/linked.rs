@@ -1,4 +1,4 @@
-//! 别家启动器（D19）：挂上别家的 `.minecraft`（原地读、不挪文件），从 Prism、CurseForge、ATLauncher、
+//! 别家启动器：挂上别家的 `.minecraft`（原地读、不挪文件），从 Prism、CurseForge、ATLauncher、
 //! Modrinth App 导入实例（复制一份游戏文件）。
 //!
 //! 挂上的目录记在应用数据目录的 `linked-roots.json`；里面的版本同步成实例（`instance::Link`），
@@ -420,7 +420,7 @@ pub struct ForeignView {
     pub game_version: String,
     /// 例如「NeoForge 21.1.77」；原版为空
     pub loader: Option<String>,
-    /// 本启动器现在能不能装它的加载器（Fabric、Forge、Quilt 要等 D20）
+    /// 本启动器现在能不能装它的加载器
     pub supported: bool,
 }
 

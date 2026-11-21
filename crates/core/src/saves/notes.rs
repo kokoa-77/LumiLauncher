@@ -1,4 +1,4 @@
-//! 世界笔记（D17j）：每个世界记几个坐标、待办和随手记，存在实例的 `Lumi/world-notes.json`，
+//! 世界笔记：每个世界记几个坐标、待办和随手记，存在实例的 `Lumi/world-notes.json`，
 //! 键是存档文件夹名。首页世界名下面显示第一条没做完的待办（没有待办就显示随手记的第一行）。
 
 use std::collections::BTreeMap;

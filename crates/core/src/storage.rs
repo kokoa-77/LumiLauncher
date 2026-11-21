@@ -1,4 +1,4 @@
-//! 存储空间分析、安全缓存清理与引用感知的闲置版本清理（D26a）。
+//! 存储空间分析、安全缓存清理与引用感知的闲置版本清理。
 //!
 //! 绝不触碰玩家的世界存档、模组、配置或正在进行的任务暂存目录。
 
@@ -90,7 +90,7 @@ pub fn scan_storage(
     scan_storage_with_backups(game, data_dir, keep_staging, None)
 }
 
-/// 扫描当前游戏目录、数据目录以及可选自定义世界备份目录的磁盘占用分布（D26b）。
+/// 扫描当前游戏目录、数据目录以及可选自定义世界备份目录的磁盘占用分布。
 pub fn scan_storage_with_backups(
     game: &GameDir,
     data_dir: &Path,

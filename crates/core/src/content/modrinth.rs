@@ -61,10 +61,10 @@ pub struct ProjectHit {
     /// 作者不许第三方启动器下载（CurseForge 的设置）：只能去平台页面手动下载
     #[serde(default)]
     pub manual_only: bool,
-    /// 中文名（中文名表或装过的文件自带的；D17e）。搜索命令返回前补上
+    /// 中文名（中文名表或装过的文件自带的）。搜索命令返回前补上
     #[serde(default)]
     pub title_zh: Option<String>,
-    /// 同一个项目在另一个平台上的编号（中文名表或同一个文件确认过的；D17e）。搜索命令返回前补上
+    /// 同一个项目在另一个平台上的编号（中文名表或同一个文件确认过的）。搜索命令返回前补上
     #[serde(default)]
     pub twin_id: Option<String>,
 }
@@ -739,7 +739,7 @@ pub struct Version {
     pub dependencies: Vec<Dependency>,
 }
 
-/// 列出项目的版本（可按游戏版本、加载器过滤），新的在前（D25e）。
+/// 列出项目的版本（可按游戏版本、加载器过滤），新的在前。
 pub async fn project_versions(
     client: &Client,
     project_id: &str,
@@ -895,7 +895,7 @@ pub async fn resolve(
     resolve_with_version(client, target, project_id, None, kind).await
 }
 
-/// 解析安装指定版本（含必需前置；装光影时补上 Iris，D25e）。
+/// 解析安装指定版本（含必需前置；装光影时补上 Iris）。
 pub async fn resolve_version(
     client: &Client,
     target: &Target<'_>,
@@ -1117,7 +1117,7 @@ async fn versions_for_hashes(
     .await
 }
 
-/// 文件在 Modrinth 上支持哪些加载器和游戏版本（拖进来的模组看能不能装，D17g）
+/// 文件在 Modrinth 上支持哪些加载器和游戏版本（拖进来的模组看能不能装）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileCompat {
     pub project_id: String,
@@ -1238,7 +1238,7 @@ pub fn loaders_for(kind: ContentKind, mod_loader: Option<&str>) -> Vec<&str> {
     }
 }
 
-/// 问 Modrinth 的接口：按「Modrinth」那行下载源设置，官方不行时改问 MCIM 镜像（D18b，见 [`super::mirror`]）。
+/// 问 Modrinth 的接口：按「Modrinth」那行下载源设置，官方不行时改问 MCIM 镜像（见 [`super::mirror`]）。
 /// `urls` 只用第一个（官方地址）；镜像地址由它换出来
 async fn get_json<T: serde::de::DeserializeOwned>(
     client: &Client,

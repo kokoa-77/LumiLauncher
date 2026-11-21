@@ -23,7 +23,7 @@ export const spring = {
   snappy: { type: "spring", stiffness: 520, damping: 38 },
 } as const satisfies Record<string, Transition>;
 
-/** 路由层级深度：首页 0，平级列表 1，详情页 2。用于判断下钻与返回方向（D25c）。 */
+/** 路由层级深度：首页 0，平级列表 1，详情页 2。用于判断下钻与返回方向。 */
 export type RouteDirection = "peer" | "forward" | "back";
 
 export function routeDepth(pathname: string): number {

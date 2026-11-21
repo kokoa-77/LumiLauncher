@@ -1,4 +1,4 @@
-//! Discord 活动状态（Rich Presence，D26c）：纯本机命名管道，零外部 crate，零 `unsafe`，零网络请求。
+//! Discord 活动状态（Rich Presence）：纯本机命名管道，零外部 crate，零 `unsafe`，零网络请求。
 //!
 //! 仅当用户手动开启 `game.discordRpc` 时尝试连接本机 `\\.\pipe\discord-ipc-0..9`；
 //! 未安装或未运行 Discord 时静默跳过，绝不报错、绝不拖慢游戏启动。

@@ -72,10 +72,24 @@ jobs:
             throw 'Cargo, UI, and Tauri versions must match.'
           }
 
+      - name: Check CurseForge API key
+        env:
+          SIGN_RELEASE: ${{ inputs.sign }}
+          MCL_CURSEFORGE_KEY: ${{ secrets.MCL_CURSEFORGE_KEY }}
+        run: |
+          if (![string]::IsNullOrWhiteSpace($env:MCL_CURSEFORGE_KEY)) {
+            'CurseForge API key is configured.'
+          } elseif ($env:SIGN_RELEASE -eq 'true') {
+            throw 'Missing MCL_CURSEFORGE_KEY secret: signed releases must ship with the CurseForge API key.'
+          } else {
+            '::warning::MCL_CURSEFORGE_KEY is not set; this build can only reach CurseForge through the MCIM mirror.'
+          }
+
       - name: Build unsigned pre-review installer
         if: ${{ !inputs.sign }}
         env:
           LUMI_MICROSOFT_CLIENT_ID: ${{ vars.LUMI_MICROSOFT_CLIENT_ID }}
+          MCL_CURSEFORGE_KEY: ${{ secrets.MCL_CURSEFORGE_KEY }}
         run: pnpm --dir app tauri build --ci --bundles nsis --target x86_64-pc-windows-msvc -- --locked
 
       - name: Build binary with updater public key
@@ -83,6 +97,7 @@ jobs:
         env:
           LUMI_UPDATER_PUBKEY: ${{ vars.LUMI_UPDATER_PUBKEY }}
           LUMI_MICROSOFT_CLIENT_ID: ${{ vars.LUMI_MICROSOFT_CLIENT_ID }}
+          MCL_CURSEFORGE_KEY: ${{ secrets.MCL_CURSEFORGE_KEY }}
         run: |
           $env:LUMI_UPDATER_PUBKEY = ([string] $env:LUMI_UPDATER_PUBKEY).Trim()
           $config = Join-Path $env:RUNNER_TEMP 'lumi-release.conf.json'

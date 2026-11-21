@@ -1,10 +1,10 @@
 /**
- * Lumi 端到端自动化测试套件（D26 · tauri-driver + W3C WebDriver）
+ * Lumi 端到端自动化测试套件（tauri-driver + W3C WebDriver）
  *
  * 特点：
  * - 零新增第三方 npm 依赖（直接用 Node 原生 fetch 调 W3C WebDriver HTTP 协议）
  * - 100% 隔离便携沙盒（Lumi.portable + 独立临时 MCL_GAME_DIR），绝不触碰真实用户数据
- * - 覆盖：首次运行引导、首页世界与 D25a 登录拦截、世界分享卡片、实例库与详情页签、
+ * - 覆盖：首次运行引导、首页世界与登录拦截、世界分享卡片、实例库与详情页签、
  *         发现内容与面包屑导航、命令面板、关于页合规/弹窗叠层、语言与流畅模式切换、下载中心
  */
 
@@ -548,8 +548,8 @@ async function runSuite() {
       });
     });
 
-    // 2. 首页「继续你的世界」与 D25a 正版登录拦截
-    await step("2. 首页点击「继续」触发 D25a Microsoft 登录拦截弹窗", async () => {
+    // 2. 首页「继续你的世界」与正版登录拦截
+    await step("2. 首页点击「继续」触发 Microsoft 登录拦截弹窗", async () => {
       await wd.clickButtonByText("继续");
       await wd.waitFor("弹出登录 Minecraft 对话框", async () => {
         const dialogText = await wd.execute(
@@ -563,7 +563,7 @@ async function runSuite() {
       });
     });
 
-    // 3. 世界分享卡片 Canvas 渲染与深浅切换（D25e）
+    // 3. 世界分享卡片 Canvas 渲染与深浅切换
     await step("3. 世界分享卡片弹窗 Canvas 渲染与风格切换", async () => {
       await wd.clickByAriaLabel("更多");
       await wd.clickButtonByText("分享世界卡片");
@@ -667,7 +667,7 @@ async function runSuite() {
       });
     });
 
-    // 6. 命令面板与关于页合规交互（D25f）
+    // 6. 命令面板与关于页合规交互
     await step("6. 命令面板直达「关于」页、隐私展开、许可弹窗叠层与第三方清单", async () => {
       await wd.clickByAriaLabel("搜索");
       await wd.waitFor("命令面板打开", async () => {
@@ -781,7 +781,7 @@ async function runSuite() {
         return dialogText.includes("外观") && dialogText.includes("关于");
       });
 
-      // D26a 验收：侧栏搜索设置直达「内容与下载」、检查代理/并发/网络诊断，再检查「存储与备份」与「游戏」启动行为
+      // 验收：侧栏搜索设置直达「内容与下载」、检查代理/并发/网络诊断，再检查「存储与备份」与「游戏」启动行为
       await wd.setInputValue('[role="dialog"] input[placeholder*="搜索设置"]', "代理");
       await wd.waitFor("设置搜索命中「网络代理」", async () => {
         const dialogText = await wd.execute(

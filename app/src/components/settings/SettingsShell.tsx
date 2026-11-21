@@ -21,8 +21,8 @@ export interface ShellSearchItem<T extends string> {
 }
 
 /**
- * 设置弹窗的外壳（全局设置和实例设置共用，长一个样子，D17i 验收时统一）：
- * 左边一栏栏目（选中的是主色浅底 + 主色字，可选顶部搜索设置，D26a），右边是这一栏的内容，右上角「×」。Esc、点背后照旧能关。
+ * 设置弹窗的外壳（全局设置和实例设置共用，长一个样子）：
+ * 左边一栏栏目（选中的是主色浅底 + 主色字，可选顶部搜索设置），右边是这一栏的内容，右上角「×」。Esc、点背后照旧能关。
  */
 export function SettingsShell<T extends string>({
   open,

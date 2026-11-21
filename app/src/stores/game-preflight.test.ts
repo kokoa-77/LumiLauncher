@@ -7,7 +7,7 @@ afterEach(() => {
   useGameStore.setState(useGameStore.getInitialState());
 });
 
-describe("启动前预检与最近服务器加载（D25d）", () => {
+describe("启动前预检与最近服务器加载", () => {
   it("预检发现问题时暂停启动并填充 preflightAsk", async () => {
     vi.spyOn(commands, "launchPreflight").mockResolvedValue({
       status: "ok",

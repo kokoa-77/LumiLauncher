@@ -1,4 +1,4 @@
-//! 实例自己的设置、导出整合包、复制、删除（D17i）。
+//! 实例自己的设置、导出整合包、复制、删除。
 //!
 //! 界面只传实例 ID；导出的保存位置由后端弹系统的「另存为」窗口选，界面拿不到路径。
 //! 复制、删除、导出前先看这个实例是不是正忙（游戏开着、正在往里装东西），忙就不动，说清楚为什么。
@@ -32,7 +32,7 @@ async fn settings_view(
     instance: launcher_core::instance::Instance,
 ) -> InstanceSettingsView {
     let source = state.meta_source_now();
-    // 挂上的别家版本：版本描述在别家的 .minecraft 里（D19）
+    // 挂上的别家版本：版本描述在别家的 .minecraft 里
     let required_java = match launcher_core::install::load_or_fetch_version(
         &instance.files(&state.game()),
         &instance.version_id(),
@@ -400,7 +400,7 @@ pub fn instances_copy(
 ) -> Result<CopyStarted, AppError> {
     let instance = load_instance(&state, &instance_id)?;
     ensure_idle(&state, &instance_id, &instance.config.name, "复制")?;
-    // 挂上的别家版本复制出来是 Lumi 自己的实例，加载器要自己装（D19）
+    // 挂上的别家版本复制出来是 Lumi 自己的实例，加载器要自己装
     if instance.is_linked()
         && let Some(loader) = &instance.config.loader
         && !loader.kind.installable_for(&instance.config.game_version)
@@ -474,7 +474,7 @@ pub async fn instances_delete(
     ensure_idle(&state, &instance_id, &instance.config.name, "删除")?;
     let game = state.game();
     if let Some(link) = &instance.config.link {
-        // 挂上的别家版本：只从 Lumi 里移除，别家的文件不动（D19）。先记下来，下次重新扫不加回来
+        // 挂上的别家版本：只从 Lumi 里移除，别家的文件不动。先记下来，下次重新扫不加回来
         state.linked.hide(&link.root, &link.version)?;
         instance::unlink(&game, &instance_id)?;
         return Ok(());

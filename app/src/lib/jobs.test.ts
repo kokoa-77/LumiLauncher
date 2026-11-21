@@ -60,7 +60,7 @@ describe("任务中心的小工具", () => {
   });
 });
 
-describe("下载中心（D18）", () => {
+describe("下载中心", () => {
   it("把较早开始的进行中任务放在最近完成的任务前", () => {
     const active = job({ id: "active", state: "running", startedAt: 100 });
     const completed = job({ id: "completed", startedAt: 200 });

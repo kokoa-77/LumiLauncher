@@ -1,4 +1,4 @@
-//! 从别家启动器导入实例（D19）：Prism / MultiMC、CurseForge、ATLauncher、Modrinth App。
+//! 从别家启动器导入实例：Prism / MultiMC、CurseForge、ATLauncher、Modrinth App。
 //!
 //! 这几家的实例文件夹里没有能直接启动的版本描述（它们启动时自己拼），所以不挂上，而是导入：
 //! 把游戏文件（模组、配置、存档……）复制一份进本启动器（别家那边照样能用），

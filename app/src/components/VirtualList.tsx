@@ -42,7 +42,7 @@ interface VirtualListProps<T> {
   scrollRef?: (el: HTMLDivElement | null) => void;
 }
 
-/** 长列表虚拟滚动：只渲染看得见的部分（开发合同第 7 条：超过 30 项的列表必须用）。 */
+/** 长列表虚拟滚动：只渲染看得见的部分（docs/DESIGN.md 第 7 节：超过 30 项的列表必须用）。 */
 export function VirtualList<T>({
   items,
   estimate,

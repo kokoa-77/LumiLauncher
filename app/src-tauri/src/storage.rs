@@ -1,4 +1,4 @@
-//! 存储占用统计、安全缓存清理与闲置版本清理命令（D26a）。
+//! 存储占用统计、安全缓存清理与闲置版本清理命令。
 
 use std::collections::HashSet;
 use std::path::PathBuf;

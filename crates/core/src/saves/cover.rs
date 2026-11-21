@@ -1,4 +1,4 @@
-//! 世界的背景图（D17d）：自己选的图（自定义背景）和玩的时候自动截的游戏画面（自动封面）。
+//! 世界的背景图：自己选的图（自定义背景）和玩的时候自动截的游戏画面（自动封面）。
 //!
 //! 都放在实例自己的 `Lumi/covers/` 里，不碰游戏的 `screenshots/`：
 //! - `custom.json` + `custom/<编号>-<时间>.<png|jpg>`：每个世界自己选的图和显示方式
@@ -28,7 +28,7 @@ const COVERS_DIR: &str = "covers";
 const AUTO_DIR: &str = "auto";
 const CUSTOM_DIR: &str = "custom";
 const CUSTOM_INDEX: &str = "custom.json";
-/// 每个世界留几张自动封面（D25d 扩到 5 张供手动精选）
+/// 每个世界留几张自动封面（扩到 5 张供手动精选）
 pub const AUTO_KEEP: usize = 5;
 /// 自动封面存多宽（再宽首页也用不上；界面要多宽还会再缩）
 const AUTO_MAX_WIDTH: u32 = 1920;
@@ -78,7 +78,7 @@ pub enum CoverError {
     Read(#[from] ReadJsonError),
 }
 
-/// `custom.json`：存档文件夹名 → 选的图 / 锁定的自动封面（D25d）
+/// `custom.json`：存档文件夹名 → 选的图 / 锁定的自动封面
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CustomIndex {
     #[serde(default)]
@@ -164,7 +164,7 @@ impl Covers {
         path.is_file().then_some((path, entry.fit))
     }
 
-    /// 这个世界用户手动锁定的那张自动封面（文件还在才算，D25d）
+    /// 这个世界用户手动锁定的那张自动封面（文件还在才算）
     pub fn locked_auto(&self, folder: &str) -> Option<PathBuf> {
         let file = self.locked_auto.get(folder)?;
         let path = safe_join(&self.dir.join(AUTO_DIR).join(world_key(folder)), file).ok()?;
@@ -368,7 +368,7 @@ pub fn detail_score(image: &RgbImage) -> Option<u32> {
     Some((sum / n as f32 * 100.0).round() as u32)
 }
 
-/// 给精选弹窗展示的一张自动封面（D25d）
+/// 给精选弹窗展示的一张自动封面
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutoCoverItem {
     pub file: String,
@@ -459,7 +459,91 @@ pub fn is_auto_locked(instance_dir: &Path, folder: &str) -> bool {
     Covers::load(instance_dir).locked_auto(folder).is_some()
 }
 
-/// 存一张自动封面（缩到 1920 宽以内的 JPEG），每个世界只留最近 [`AUTO_KEEP`] 张。
+/// 准星贴图的边长（界面像素）。四周再多补 1 格，模组换的稍大一点的准星也能盖住
+const CROSSHAIR_GUI: u32 = 15;
+/// 最下面游戏自己画的一截（界面像素，从底边往上量）：快捷栏 22、经验条、血量和饥饿、护甲和氧气泡
+const HUD_GUI: u32 = 52;
+
+/// 实例 `options.txt` 里的界面尺寸（`guiScale`，0 是自动）。读不到按自动算
+fn gui_scale_setting(instance_dir: &Path) -> u32 {
+    std::fs::read_to_string(instance_dir.join("options.txt"))
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.strip_prefix("guiScale:"))
+                .and_then(|value| value.trim().parse().ok())
+        })
+        .unwrap_or(0)
+}
+
+/// 和游戏一样算界面缩放：在缩放后宽 ≥ 320、高 ≥ 240 的前提下尽量大，设置了就不超过设置的值
+fn gui_scale(width: u32, height: u32, setting: u32) -> u32 {
+    let mut scale = 1;
+    while scale != setting
+        && scale < width
+        && scale < height
+        && width / (scale + 1) >= 320
+        && height / (scale + 1) >= 240
+    {
+        scale += 1;
+    }
+    scale
+}
+
+/// 用方块四条边外面一圈的颜色把方块里面补上（左右、上下各插值一次再平均）。
+/// 方块贴着图片边缘时不动（没有外面那一圈）。
+fn fill_from_edges(image: &mut RgbImage, x0: u32, y0: u32, width: u32, height: u32) {
+    let (w, h) = image.dimensions();
+    if x0 == 0 || y0 == 0 || x0 + width >= w || y0 + height >= h {
+        return;
+    }
+    let left: Vec<[u8; 3]> = (0..height)
+        .map(|dy| image.get_pixel(x0 - 1, y0 + dy).0)
+        .collect();
+    let right: Vec<[u8; 3]> = (0..height)
+        .map(|dy| image.get_pixel(x0 + width, y0 + dy).0)
+        .collect();
+    let top: Vec<[u8; 3]> = (0..width)
+        .map(|dx| image.get_pixel(x0 + dx, y0 - 1).0)
+        .collect();
+    let bottom: Vec<[u8; 3]> = (0..width)
+        .map(|dx| image.get_pixel(x0 + dx, y0 + height).0)
+        .collect();
+    for (dy, (l, r)) in left.iter().zip(&right).enumerate() {
+        let ty = (dy as f32 + 1.0) / (height as f32 + 1.0);
+        for (dx, (t, b)) in top.iter().zip(&bottom).enumerate() {
+            let tx = (dx as f32 + 1.0) / (width as f32 + 1.0);
+            let mut pixel = [0_u8; 3];
+            for (c, out) in pixel.iter_mut().enumerate() {
+                let across = f32::from(l[c]) * (1.0 - tx) + f32::from(r[c]) * tx;
+                let down = f32::from(t[c]) * (1.0 - ty) + f32::from(b[c]) * ty;
+                *out = ((across + down) / 2.0).round() as u8;
+            }
+            image.put_pixel(x0 + dx as u32, y0 + dy as u32, image::Rgb(pixel));
+        }
+    }
+}
+
+/// 去掉截图里游戏自己画的界面，让封面像一张风景照：
+/// 正中间的准星用周围的颜色补上，最下面的快捷栏、血条一截裁掉（裁完不到一半高就不裁）。
+/// 位置都按游戏自己的界面缩放算，`setting` 是 `options.txt` 的 `guiScale`。
+fn without_hud(image: &RgbImage, setting: u32) -> RgbImage {
+    let (w, h) = image.dimensions();
+    let scale = gui_scale(w, h, setting);
+    let mut clean = image.clone();
+    // 准星画在界面坐标 ((界面宽 - 15) / 2, (界面高 - 15) / 2)，界面宽高向上取整
+    let x0 = ((w.div_ceil(scale).saturating_sub(CROSSHAIR_GUI) / 2) * scale).saturating_sub(scale);
+    let y0 = ((h.div_ceil(scale).saturating_sub(CROSSHAIR_GUI) / 2) * scale).saturating_sub(scale);
+    let side = (CROSSHAIR_GUI + 2) * scale;
+    fill_from_edges(&mut clean, x0, y0, side, side);
+    let keep = h.saturating_sub(HUD_GUI * scale);
+    if keep < h / 2 {
+        return clean;
+    }
+    image::imageops::crop_imm(&clean, 0, 0, w, keep).to_image()
+}
+
+/// 存一张自动封面（去掉准星和快捷栏，缩到 1920 宽以内的 JPEG），每个世界只留最近 [`AUTO_KEEP`] 张。
 /// 若用户已锁定固定自动封面，或截到黑屏 / 纯色画面，不存并返回 `Ok(None)`。
 pub fn save_auto(
     instance_dir: &Path,
@@ -473,6 +557,7 @@ pub fn save_auto(
     let Some(score) = detail_score(image) else {
         return Ok(None);
     };
+    let image = &without_hud(image, gui_scale_setting(instance_dir));
     let resized;
     let picture = if image.width() > AUTO_MAX_WIDTH {
         resized = image::imageops::resize(
@@ -580,7 +665,8 @@ mod tests {
             .unwrap()
             .unwrap();
         let saved = image::image_dimensions(&first).unwrap();
-        assert_eq!(saved, (1920, 1080), "缩到 1920 宽");
+        // 2560×1440 自动界面缩放是 6：底下 52×6 = 312 像素的快捷栏裁掉，再缩到 1920 宽
+        assert_eq!(saved, (1920, 846), "去掉快捷栏后缩到 1920 宽");
         save_auto(dir.path(), "New World", &playing, base + 3 * minute).unwrap();
         // 最新的一张刚好开着背包：跳过它，用前一张
         save_auto(dir.path(), "New World", &menu, base + 6 * minute).unwrap();
@@ -765,6 +851,59 @@ mod tests {
             None,
             "失败时什么都不留"
         );
+    }
+
+    #[test]
+    fn gui_scale_matches_the_game() {
+        assert_eq!(gui_scale(1920, 1080, 0), 4);
+        assert_eq!(gui_scale(1920, 1080, 2), 2, "设置了就不超过设置的值");
+        assert_eq!(gui_scale(1280, 720, 0), 3);
+        assert_eq!(gui_scale(854, 480, 0), 2);
+        assert_eq!(gui_scale(640, 480, 0), 2);
+        assert_eq!(gui_scale(320, 240, 0), 1);
+    }
+
+    #[test]
+    fn reads_the_gui_scale_from_options() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            gui_scale_setting(dir.path()),
+            0,
+            "没有 options.txt 按自动算"
+        );
+        std::fs::write(
+            dir.path().join("options.txt"),
+            "version:3955\nguiScale:2\nfov:0.0\n",
+        )
+        .unwrap();
+        assert_eq!(gui_scale_setting(dir.path()), 2);
+    }
+
+    #[test]
+    fn auto_covers_drop_the_crosshair_and_hotbar() {
+        // 1280×720 自动缩放是 3：准星 15×3 = 45 像素居中，快捷栏 22×3 = 66 像素贴底
+        let sky = Rgb([120, 160, 220]);
+        let mut shot = RgbImage::from_pixel(1280, 720, sky);
+        for d in 0..45 {
+            for t in 0..3 {
+                shot.put_pixel(618 + d, 359 + t, Rgb([255, 255, 255]));
+                shot.put_pixel(639 + t, 338 + d, Rgb([255, 255, 255]));
+            }
+        }
+        for y in 654..720 {
+            for x in 400..880 {
+                shot.put_pixel(x, y, Rgb([20, 20, 20]));
+            }
+        }
+        let clean = without_hud(&shot, 0);
+        assert_eq!(clean.dimensions(), (1280, 720 - 52 * 3), "快捷栏那一截裁掉");
+        assert!(clean.pixels().all(|p| *p == sky), "准星补成了周围的天空色");
+
+        // 设置成 2 倍界面时准星和快捷栏都更小，裁掉的也更少
+        assert_eq!(without_hud(&shot, 2).height(), 720 - 52 * 2);
+        // 很扁的图（裁完不到一半高）只补准星、不裁
+        let flat = RgbImage::from_pixel(320, 100, sky);
+        assert_eq!(without_hud(&flat, 0).dimensions(), (320, 100));
     }
 
     #[test]

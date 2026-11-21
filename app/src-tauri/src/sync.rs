@@ -1,4 +1,4 @@
-//! 本机跨实例同步命令与启动/退出自动钩子（D26b）。
+//! 本机跨实例同步命令与启动/退出自动钩子。
 
 use std::collections::BTreeMap;
 
@@ -95,7 +95,7 @@ pub fn sync_open_shared_folder(
         .map_err(|e| AppError::new("folder.open_failed", "打不开共享文件夹").with_detail(e))
 }
 
-/// 读取共享库中的游戏设置键值对（供可视化编辑器使用，D26b 精修）。
+/// 读取共享库中的游戏设置键值对（供可视化编辑器使用）。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_shared_options_get(
@@ -107,7 +107,7 @@ pub async fn sync_shared_options_get(
         .map_err(|e| AppError::new("sync.failed", "读取共享游戏设置失败").with_detail(e))
 }
 
-/// 保存共享库中的游戏设置键值对（供可视化编辑器使用，D26b 精修）。
+/// 保存共享库中的游戏设置键值对（供可视化编辑器使用）。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_shared_options_set(
@@ -121,7 +121,7 @@ pub async fn sync_shared_options_set(
         .map_err(map_sync_error)
 }
 
-/// 读取共享库中的多人服务器列表（D26b 精修）。
+/// 读取共享库中的多人服务器列表。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_shared_servers_list(
@@ -133,7 +133,7 @@ pub async fn sync_shared_servers_list(
         .map_err(|e| AppError::new("sync.failed", "读取共享服务器列表失败").with_detail(e))
 }
 
-/// 向共享库新增一条多人服务器（D26b 精修）。
+/// 向共享库新增一条多人服务器。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_shared_servers_add(
@@ -153,7 +153,7 @@ pub async fn sync_shared_servers_add(
         })
 }
 
-/// 从共享库删除一条多人服务器（D26b 精修）。
+/// 从共享库删除一条多人服务器。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_shared_servers_remove(
@@ -167,7 +167,7 @@ pub async fn sync_shared_servers_remove(
         .map_err(map_sync_error)
 }
 
-/// 列出共享资源包或光影包目录里的全部包（D26b 精修）。
+/// 列出共享资源包或光影包目录里的全部包。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_shared_packs_list(
@@ -180,7 +180,7 @@ pub async fn sync_shared_packs_list(
         .map_err(|e| AppError::new("sync.failed", "读取共享包列表失败").with_detail(e))
 }
 
-/// 删除共享资源包或光影包目录里的单个包（D26b 精修）。
+/// 删除共享资源包或光影包目录里的单个包。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_shared_packs_remove(
@@ -195,7 +195,7 @@ pub async fn sync_shared_packs_remove(
         .map_err(map_sync_error)
 }
 
-/// 读取共享库中的命令历史记录（D26c）。
+/// 读取共享库中的命令历史记录。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_shared_commands_get(state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
@@ -205,7 +205,7 @@ pub async fn sync_shared_commands_get(state: State<'_, AppState>) -> Result<Vec<
         .map_err(|e| AppError::new("sync.failed", "读取共享命令记录失败").with_detail(e))
 }
 
-/// 保存共享库中的命令历史记录（D26c）。
+/// 保存共享库中的命令历史记录。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_shared_commands_set(
@@ -219,7 +219,7 @@ pub async fn sync_shared_commands_set(
         .map_err(map_sync_error)
 }
 
-/// 清空共享库中的创造模式物品栏快照（D26c）。
+/// 清空共享库中的创造模式物品栏快照。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_shared_hotbar_clear(state: State<'_, AppState>) -> Result<(), AppError> {
@@ -230,7 +230,7 @@ pub async fn sync_shared_hotbar_clear(state: State<'_, AppState>) -> Result<(), 
         .map_err(map_sync_error)
 }
 
-/// 从指定实例导入设置、服务器、命令记录和/或创造模式物品栏到共享库（D26b/D26c）。
+/// 从指定实例导入设置、服务器、命令记录和/或创造模式物品栏到共享库。
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_import_from_instance(

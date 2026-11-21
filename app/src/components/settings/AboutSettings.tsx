@@ -29,7 +29,7 @@ function openExternal(url: string, label: string) {
 }
 
 /**
- * 设置「关于」页（D25f 发布前收口）：
+ * 设置「关于」页（发布前收口）：
  * 展示正式品牌标识、版本与独立第三方声明、自动更新、账号数据与隐私摘要、
  * BMCLAPI / MCIM / Modrinth / CurseForge 致谢，以及与 THIRD_PARTY.md 同步的第三方开源许可弹窗。
  */
@@ -139,11 +139,6 @@ export function AboutSettings({
         />
         <Row
           label={t("settings.aboutPage.projectTitle")}
-          hint={t("settings.backdrop", {
-            backdrop: t(
-              info.backdrop === "mica" ? "settings.backdropMica" : "settings.backdropSolid",
-            ),
-          })}
           control={
             <div className="flex items-center gap-2">
               <Button
@@ -172,11 +167,20 @@ export function AboutSettings({
             </Button>
           }
         />
+        {/* 窗口有没有拿到系统的云母效果：有人说「背景是灰的、不透明」时看这一行 */}
+        <Row
+          label={t("settings.backdrop", {
+            backdrop: t(
+              info.backdrop === "mica" ? "settings.backdropMica" : "settings.backdropSolid",
+            ),
+          })}
+          control={null}
+        />
       </Group>
 
       <UpdateSettings />
 
-      {/* 账号数据与隐私说明（与 README / SECURITY.md / D25a 完全一致） */}
+      {/* 账号数据与隐私说明（与 README / SECURITY.md / 完全一致） */}
       <Group title={t("settings.aboutPage.privacyGroup")}>
         <Row
           label={t("settings.aboutPage.privacyTitle")}
@@ -261,7 +265,7 @@ export function AboutSettings({
         />
       </Group>
 
-      {/* 首次运行引导再走一遍（D19c）：账号、实例、存档都不动 */}
+      {/* 首次运行引导再走一遍：账号、实例、存档都不动 */}
       <Group>
         <Row
           label={t("settings.restartOnboarding")}

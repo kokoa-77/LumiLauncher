@@ -79,7 +79,7 @@ function WorldThumb({ world }: { world: WorldView }) {
           {letter}
         </span>
       )}
-      {/* 世界笔记（D17j）：压在图上，不让卡片有高有矮 */}
+      {/* 世界笔记：压在图上，不让卡片有高有矮 */}
       {world.note && (
         <Tag tone="hero" className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] gap-1.5">
           {world.note.kind === "todo" && <ListTodo className="size-3.5 shrink-0" aria-hidden />}

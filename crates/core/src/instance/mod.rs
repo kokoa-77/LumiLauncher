@@ -1,4 +1,4 @@
-//! 实例：游戏目录 `instances/` 里的一个文件夹（D18a 改成国际主流方案，和 Prism、Modrinth App、CurseForge 一样）。
+//! 实例：游戏目录 `instances/` 里的一个文件夹（改成国际主流方案，和 Prism、Modrinth App、CurseForge 一样）。
 //!
 //! ```text
 //! <游戏目录>/
@@ -9,8 +9,8 @@
 //! ```
 //!
 //! 实例名和版本号分开：不会和官方启动器、别家启动器的版本撞名，改实例名也不用动版本描述；
-//! 整个实例文件夹拷走就是一个完整的实例。D18 以前实例和 PCL、HMCL 一样放在 `versions/<实例名>/` 里，
-//! 启动时自动搬过来（[`migrate_legacy`]）。别家启动器的 `.minecraft` 以后用「挂上、原地读」兼容（D19）。
+//! 整个实例文件夹拷走就是一个完整的实例。早先实例和 PCL、HMCL 一样放在 `versions/<实例名>/` 里，
+//! 启动时自动搬过来（[`migrate_legacy`]）。别家启动器的 `.minecraft` 以后用「挂上、原地读」兼容。
 
 mod copy;
 mod link;
@@ -36,7 +36,7 @@ pub const META_DIR: &str = "Lumi";
 /// 以前用过的名字（定名前的代号）：启动时改成 [`META_DIR`]（[`migrate_legacy`]）
 const LEGACY_META_DIRS: &[&str] = &["UnnamedLauncher"];
 const CONFIG_FILE: &str = "instance.json";
-/// 2：实例搬到 `instances/`，记下要启动的版本（D18a）
+/// 2：实例搬到 `instances/`，记下要启动的版本
 const CONFIG_FORMAT: u32 = 2;
 
 #[derive(Debug, thiserror::Error)]
@@ -164,7 +164,7 @@ pub struct InstanceConfig {
     pub name: String,
     pub game_version: String,
     pub loader: Option<LoaderRef>,
-    /// 要启动的版本（`versions/` 里的 ID：原版是 `1.21.1`，NeoForge 是 `neoforge-21.1.219`，D18a）。
+    /// 要启动的版本（`versions/` 里的 ID：原版是 `1.21.1`，NeoForge 是 `neoforge-21.1.219`）。
     /// 老设置没有，用 [`Instance::version_id`] 读（空的时候按游戏版本和加载器推出来）
     #[serde(default)]
     pub version_id: String,
@@ -177,16 +177,16 @@ pub struct InstanceConfig {
     /// 整合包作者推荐的内存（MB，CurseForge 整合包清单里的 `recommendedRam`）；自动分配内存时优先参考
     #[serde(default)]
     pub recommended_memory_mb: Option<u32>,
-    /// 实例自己的内存、Java、启动参数、游戏窗口（D17i）；为空的那组跟全局
+    /// 实例自己的内存、Java、启动参数、游戏窗口；为空的那组跟全局
     #[serde(default)]
     pub overrides: InstanceOverrides,
-    /// 实例库里的分组（「生存」「整合包」……）；`None` 是没分组（D17k）
+    /// 实例库里的分组（「生存」「整合包」……）；`None` 是没分组
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
-    /// 置顶的时间（毫秒时间戳）；`None` 是没置顶。置顶的按这个排，先置顶的在前（D17k）
+    /// 置顶的时间（毫秒时间戳）；`None` 是没置顶。置顶的按这个排，先置顶的在前
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pinned_at: Option<f64>,
-    /// 挂上的别家版本（D19）：游戏文件都在别家的 `.minecraft` 里原地读；`None` 是本启动器自己的实例
+    /// 挂上的别家版本：游戏文件都在别家的 `.minecraft` 里原地读；`None` 是本启动器自己的实例
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "specta", specta(skip))]
     pub link: Option<Link>,
@@ -281,7 +281,7 @@ pub struct Instance {
 
 impl Instance {
     /// 游戏工作目录（存档、模组、设置都在这里）：实例文件夹本身；
-    /// 挂上的别家版本是那边的版本文件夹（开了版本隔离）或那边的 `.minecraft`（D19）
+    /// 挂上的别家版本是那边的版本文件夹（开了版本隔离）或那边的 `.minecraft`
     pub fn game_dir(&self, game: &GameDir) -> Result<PathBuf, UnsafePath> {
         match &self.config.link {
             Some(link) => Ok(link.game_dir.clone()),
@@ -455,7 +455,7 @@ fn rename_meta_dir(dir: &Path) -> std::io::Result<bool> {
     Ok(false)
 }
 
-/// 把 D18 以前的实例（`versions/<实例名>/<代号>/instance.json`）搬到 `instances/<实例名>/`（D18a）。
+/// 把早先的实例（`versions/<实例名>/<代号>/instance.json`）搬到 `instances/<实例名>/`。
 ///
 /// 一个一个搬：整个文件夹改名（同一个盘，瞬间完成、不复制），再删掉跟着过来的旧版本描述
 /// （`<实例名>.json`、`<实例名>.jar`、`natives-*`），设置里记下要启动的版本。
@@ -646,7 +646,7 @@ mod tests {
         let game = GameDir::new(dir.path());
         let meta = game.instance_dir("Old").unwrap().join(META_DIR);
         std::fs::create_dir_all(&meta).unwrap();
-        // D17h 以前写的 instance.json：没有 overrides
+        // 早先写的 instance.json：没有 overrides
         std::fs::write(
             meta.join(CONFIG_FILE),
             r#"{"format":1,"name":"Old","gameVersion":"1.21.1","loader":null,"createdAt":1,"source":null,"recommendedMemoryMb":6016}"#,
@@ -731,7 +731,7 @@ mod tests {
         std::fs::write(path, text).unwrap();
     }
 
-    /// D18a：老布局的实例搬到 instances/，旧版本描述不跟着，加载器描述补到 versions/
+    /// 老布局的实例搬到 instances/，旧版本描述不跟着，加载器描述补到 versions/
     #[test]
     fn legacy_instances_move_to_the_instances_folder() {
         let dir = tempfile::tempdir().unwrap();

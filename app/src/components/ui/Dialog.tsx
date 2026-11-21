@@ -13,7 +13,7 @@ interface DialogProps {
   footer?: ReactNode;
   /** 宽版（安装确认这类内容多的弹窗） */
   wide?: boolean;
-  /** 更宽（下载历史这种一行信息很多的列表，D18） */
+  /** 更宽（下载历史这种一行信息很多的列表） */
   wider?: boolean;
   /** 自己排版（设置弹窗）：不画标题、不加内边距，大小由 className 定 */
   bare?: boolean;
@@ -35,7 +35,7 @@ function focusables(panel: HTMLElement): HTMLElement[] {
 }
 
 /**
- * 打开时焦点放哪（D17l）：里面已经有自己抢了焦点的输入框就不动；
+ * 打开时焦点放哪：里面已经有自己抢了焦点的输入框就不动；
  * 有 `data-autofocus` 的放它；否则放第一个控件，右上角「×」排最后（免得一回车就关了）
  */
 function focusFirst(panel: HTMLElement) {
@@ -73,7 +73,7 @@ export function Dialog({
     if (!open) return;
     const id = ++nextDialogId;
     openDialogs.push(id);
-    // 键盘用户：打开时焦点进弹窗，关掉后回到打开它的那个按钮（D17l，外部审阅指出）
+    // 键盘用户：打开时焦点进弹窗，关掉后回到打开它的那个按钮（外部审阅指出）
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (panelRef.current) focusFirst(panelRef.current);
     const onKey = (event: KeyboardEvent) => {

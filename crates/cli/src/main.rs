@@ -229,7 +229,7 @@ enum Command {
         #[arg(long, default_value = "Player")]
         name: String,
     },
-    /// 看一个别家的 .minecraft 里有哪些版本、各用哪个游戏目录（D19 挂上）；不给路径时在电脑上找
+    /// 看一个别家的 .minecraft 里有哪些版本、各用哪个游戏目录（挂上）；不给路径时在电脑上找
     LinkScan { root: Option<PathBuf> },
     /// 列出别家启动器（Prism、CurseForge、ATLauncher、Modrinth App）的实例；给路径时只看那个文件夹
     ForeignList { folder: Option<PathBuf> },
@@ -272,7 +272,7 @@ enum Command {
         game_dir: PathBuf,
     },
     /// 检查并更新实例里的模组（和界面里「检查更新 → 全部更新」一样）。
-    /// 开发版设 `MCL_DEBUG_CRASH_AT_STEP=3` 可以在替换到第 3 步时直接退出，模拟启动器被关掉（D17m）
+    /// 开发版设 `MCL_DEBUG_CRASH_AT_STEP=3` 可以在替换到第 3 步时直接退出，模拟启动器被关掉
     ContentUpdate {
         /// 实例名
         instance: String,
@@ -283,7 +283,7 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
-    /// 把实例上次没做完的改动退回改之前（启动器启动时也会自动做，D17m）
+    /// 把实例上次没做完的改动退回改之前（启动器启动时也会自动做）
     ContentRecover {
         /// 实例名
         instance: String,
@@ -291,17 +291,17 @@ enum Command {
         #[arg(long, default_value = ".minecraft")]
         game_dir: PathBuf,
     },
-    /// 问一下我的世界服务器的状态（在线人数、延迟；没写端口时先查 SRV，D17k）
+    /// 问一下我的世界服务器的状态（在线人数、延迟；没写端口时先查 SRV）
     ServerStatus {
         /// 服务器地址，例如 mc.example.com 或 127.0.0.1:25565
         address: String,
     },
-    /// 看一个文件夹里的模组各认出什么中文名（读模组自带的语言文件，不联网，D17e）
+    /// 看一个文件夹里的模组各认出什么中文名（读模组自带的语言文件，不联网）
     ZhScan {
         /// 放模组的文件夹（会往下找子文件夹）
         dir: PathBuf,
     },
-    /// 从两个平台下载量最高的模组生成中文名表（D17e；要 CurseForge 的 Key）
+    /// 从两个平台下载量最高的模组生成中文名表（要 CurseForge 的 Key）
     ZhNamesBuild {
         /// 每个平台取前多少个
         #[arg(long, default_value_t = 1000)]
@@ -1126,7 +1126,7 @@ fn game_dir_from(path: &Path) -> Result<GameDir> {
     let absolute = std::path::absolute(path)
         .with_context(|| format!("无法解析游戏目录 {}", path.display()))?;
     let game = GameDir::new(absolute);
-    // 和启动器一样：D18 以前放在 versions/<实例名>/ 的实例先搬到 instances/（D18a）
+    // 和启动器一样：早先放在 versions/<实例名>/ 的实例先搬到 instances/
     let report = instance::migrate_legacy(&game);
     if report.moved > 0 || report.failed > 0 {
         eprintln!(
