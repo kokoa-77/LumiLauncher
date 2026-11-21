@@ -1,4 +1,4 @@
-//! 实例自己的设置（D17i）：内存、Java、启动参数、游戏窗口。
+//! 实例自己的设置：内存、Java、启动参数、游戏窗口。
 //!
 //! 每一组都可以为空：为空就跟着全局设置走（全局怎么改，这个实例跟着变）；
 //! 填了就只用这个实例自己的。合在一起的结果见 [`Resolved`]。
@@ -10,7 +10,7 @@ use crate::config::{
     clean_env_vars, clean_window_title,
 };
 
-/// 单实例跨实例同步细粒度排除开关（某项为 true 表示仅本实例跳过该项同步，D26c）
+/// 单实例跨实例同步细粒度排除开关（某项为 true 表示仅本实例跳过该项同步）
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -40,18 +40,18 @@ pub struct InstanceOverrides {
     pub java_id: Option<String>,
     pub launch: Option<LaunchOverride>,
     pub window: Option<WindowSettings>,
-    /// 环境变量：单独设置时整组替换全局的（D17i 验收时加；老的 instance.json 没有这一项，读出来是空 = 跟全局）
+    /// 环境变量：单独设置时整组替换全局的（老的 instance.json 没有这一项，读出来是空 = 跟全局）
     pub env_vars: Option<Vec<EnvVar>>,
-    /// 为 true 时该实例脱离本机跨实例同步，保持完全独立（D26b）
+    /// 为 true 时该实例脱离本机跨实例同步，保持完全独立
     #[serde(default)]
     pub sync_disabled: bool,
-    /// 实例同步细粒度排除（D26c：在参与同步时单独排除部分资产）
+    /// 实例同步细粒度排除（在参与同步时单独排除部分资产）
     #[serde(default)]
     pub sync_exclusions: InstanceSyncExclusions,
-    /// 实例单独的启动钩子（D26c，为空表示跟随全局）
+    /// 实例单独的启动钩子（为空表示跟随全局）
     #[serde(default)]
     pub hooks: Option<LaunchHooks>,
-    /// 实例单独的自定义游戏窗口标题（D26c，为空表示跟随全局；设为 `Some("")` 表示该实例显式关闭自定义标题）
+    /// 实例单独的自定义游戏窗口标题（为空表示跟随全局；设为 `Some("")` 表示该实例显式关闭自定义标题）
     #[serde(default)]
     pub custom_window_title: Option<String>,
 }

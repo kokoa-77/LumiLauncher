@@ -56,7 +56,7 @@ import { CrashAdvice, type RecoveryActions } from "./CrashAdvice";
 type View = "output" | "crash" | "mods";
 
 /**
- * 「日志」页签（D17c）：这个实例最近 20 次启动，每一次都有完整的游戏输出、用的 Java 和内存、
+ * 「日志」页签：这个实例最近 20 次启动，每一次都有完整的游戏输出、用的 Java 和内存、
  * 当时装着的模组、怎么结束的、崩溃报告。左边挑哪一次，右边看那一次；正在运行的那一次实时滚动。
  */
 export function LogTab({
@@ -635,7 +635,7 @@ function LevelChips({
   );
 }
 
-/** 还没有任何启动记录（D17c 以前玩的、或者记录没开成）：只显示内存里这一次的日志 */
+/** 还没有任何启动记录（早先玩的、或者记录没开成）：只显示内存里这一次的日志 */
 function LiveOnly({ instance }: { instance: InstanceSummary }) {
   const { t } = useTranslation();
   const lines = useGameStore((s) => s.logs[instance.id] ?? NO_LINES);

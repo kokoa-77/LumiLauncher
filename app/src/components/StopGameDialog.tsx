@@ -5,7 +5,7 @@ import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 
 /**
- * 强行结束游戏前问一句（D17l，外部审阅指出）：游戏进程已经起来了，强行结束没保存的进度会丢。
+ * 强行结束游戏前问一句（外部审阅指出）：游戏进程已经起来了，强行结束没保存的进度会丢。
  * 还在准备（下载、补文件）时点「结束」不问，直接取消（`requestStop` 里分开）。
  */
 export function StopGameDialog() {

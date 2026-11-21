@@ -25,27 +25,27 @@ const SettingsDialog = lazy(async () => ({
 const DropDialog = lazy(async () => ({
   default: (await import("@/components/DropDialog")).DropDialog,
 }));
-// 大世界要不要自动备份（D17j）：第一次需要时才加载
+// 大世界要不要自动备份：第一次需要时才加载
 const BackupAskDialog = lazy(async () => ({
   default: (await import("@/components/worlds/BackupAskDialog")).BackupAskDialog,
 }));
-// 「移到分组」（D17k）：第一次需要时才加载
+// 「移到分组」：第一次需要时才加载
 const GroupDialog = lazy(async () => ({
   default: (await import("@/components/GroupDialog")).GroupDialog,
 }));
-// 启动前内存不够的提示（D17h）：第一次需要时才加载
+// 启动前内存不够的提示：第一次需要时才加载
 const MemoryShortDialog = lazy(async () => ({
   default: (await import("@/components/MemoryShortDialog")).MemoryShortDialog,
 }));
-// 启动前极速预检提示（D25d）：第一次命中问题时才加载
+// 启动前极速预检提示：第一次命中问题时才加载
 const PreflightDialog = lazy(async () => ({
   default: (await import("@/components/PreflightDialog")).PreflightDialog,
 }));
-// 别家启动器的文件夹：「添加 .minecraft 文件夹」「从别的启动器导入」（D19）：第一次需要时才加载
+// 别家启动器的文件夹：「添加 .minecraft 文件夹」「从别的启动器导入」：第一次需要时才加载
 const FolderDialogs = lazy(async () => ({
   default: (await import("@/components/FolderDialogs")).FolderDialogs,
 }));
-// 首次运行引导（D19b）：只有全新安装用得到，按需加载
+// 首次运行引导：只有全新安装用得到，按需加载
 const Onboarding = lazy(async () => ({
   default: (await import("@/components/onboarding/Onboarding")).Onboarding,
 }));
@@ -53,7 +53,7 @@ const Onboarding = lazy(async () => ({
 const AccountDialogs = lazy(async () => ({
   default: (await import("@/components/account/AccountDialogs")).AccountDialogs,
 }));
-// 下载历史（D18）：第一次点「查看下载历史」时才加载
+// 下载历史：第一次点「查看下载历史」时才加载
 const DownloadHistory = lazy(async () => ({
   default: (await import("@/components/downloads/DownloadHistory")).DownloadHistory,
 }));
@@ -78,7 +78,7 @@ const StopGameDialog = lazy(async () => ({
 /**
  * 整体布局：标题栏 + 窄图标栏 + 内容区（页面切换带过渡）。
  * 骨架「首页沉浸」：首页将世界封面或默认插画铺满窗口，在标题栏和侧栏后面。
- * 离开首页恢复普通的实底布局（docs/ui-backlog.md）。
+ * 离开首页恢复普通的实底布局（docs/DESIGN.md）。
  *
  * 层次从下到上：窗口底色 → 首页截图（只在首页）→ 内容面板 → 卡片和控件。
  * 截图边上的渐变就是窗口底色，标题栏、侧栏在哪一页都是同一套颜色；
@@ -243,7 +243,7 @@ export function AppShell() {
               }`}
             />
             {/*
-              使用 LayoutGroup + 无阻断 AnimatePresence（D25c）：
+              使用 LayoutGroup + 无阻断 AnimatePresence：
               新旧页面在同一帧并存（绝对定位叠放），使实例卡片 → 实例详情的 layoutId 共享封面变形真正衔接，
               且平级切页 / 下钻 / 返回各自具备空间方向反馈。
             */}

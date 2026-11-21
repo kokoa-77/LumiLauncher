@@ -114,7 +114,7 @@ export function useInstall(instanceId: string, instanceName: string) {
   const launch = useGameStore((s) => s.launch);
   // 设置决定确认弹窗中前置的初始勾选。
   const autoDependencies = useAppStore((s) => s.settings?.download.autoDependencies ?? true);
-  // 连着点了好几个（D17l 验收时发现）：要确认的一个一个弹，后来的不顶掉前面的
+  // 连着点了好几个（验收时发现）：要确认的一个一个弹，后来的不顶掉前面的
   const [plans, setPlans] = useState<
     { items: PlanItem[]; selectDependencies: boolean; instanceId: string; instanceName: string }[]
   >([]);

@@ -542,7 +542,7 @@ export function LookStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
 /** 准备好了之后做什么（欢迎页「开始使用」时照着做） */
 export type ReadyChoice = "continue" | "new" | "discover" | "library" | "later";
 
-/** 一个能选的去处：选中是主色浅底 + 主色字（开发合同「选中」） */
+/** 一个能选的去处：选中是主色浅底 + 主色字（docs/DESIGN.md「选中」） */
 function ChoiceCard({
   icon: Icon,
   title,

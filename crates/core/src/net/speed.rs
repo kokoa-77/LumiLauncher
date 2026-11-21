@@ -1,4 +1,4 @@
-//! 测速选源（D18）：下载源设成「自动」时，先测一下官方和 BMCLAPI 谁快，先用快的，另一个照旧当后备。
+//! 测速选源：下载源设成「自动」时，先测一下官方和 BMCLAPI 谁快，先用快的，另一个照旧当后备。
 //!
 //! - 测的是同一个文件（Minecraft 版本清单，约 280 KB）从两边完整下载要多久，同时发，先下完的赢
 //! - 结果记 30 分钟；两边都失败时按官方优先，2 分钟后再测
@@ -83,7 +83,7 @@ impl SourcePicker {
         }
     }
 
-    /// 切换代理后热替换 HTTP 客户端，并清空过期测速缓存（D26a）。
+    /// 切换代理后热替换 HTTP 客户端，并清空过期测速缓存。
     pub fn set_client(&self, client: Client) {
         *self.client.write().unwrap_or_else(|e| e.into_inner()) = client;
         *self.lock() = None;

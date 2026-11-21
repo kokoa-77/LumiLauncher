@@ -19,7 +19,7 @@ pub enum ReleaseType {
     Alpha,
 }
 
-/// 项目的一个可安装版本（项目「版本」页签与实例「切换版本」共用，D25e）。
+/// 项目的一个可安装版本（项目「版本」页签与实例「切换版本」共用）。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]

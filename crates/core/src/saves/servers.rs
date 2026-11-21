@@ -215,7 +215,7 @@ pub fn count_file(path: &Path) -> usize {
         .unwrap_or(0)
 }
 
-/// 读取指定 `servers.dat` 文件里的服务器条目（供共享同步库可视化管理使用，D26b）。
+/// 读取指定 `servers.dat` 文件里的服务器条目（供共享同步库可视化管理使用）。
 pub fn list_file(path: &Path) -> Vec<ServerEntry> {
     let Ok((_, items)) = read_raw_entries(path) else {
         return Vec::new();

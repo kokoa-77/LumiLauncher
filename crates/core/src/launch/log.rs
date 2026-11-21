@@ -212,7 +212,7 @@ mod tests {
             .unwrap();
         assert_eq!(raw.level, LogLevel::Error);
 
-        // D4 实测：NeoForge 的 log4j 打的警告里带「Error」这个词，但行首写明了是 WARN
+        // 实测：NeoForge 的 log4j 打的警告里带「Error」这个词，但行首写明了是 WARN
         let warn = parser
             .push_line("WARN StatusConsoleListener Error parsing URI D:\\mc\\client-1.12.xml")
             .unwrap();

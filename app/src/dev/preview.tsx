@@ -22,7 +22,7 @@ type PreviewInstance = {
   lastPlayed: number | null;
   group: string | null;
   pinnedAt: number | null;
-  /** 挂上的别家版本是哪家的（D19） */
+  /** 挂上的别家版本是哪家的 */
   linked?: string | null;
 };
 
@@ -82,7 +82,7 @@ const instances: PreviewInstance[] = [
     group: null,
     pinnedAt: null,
   },
-  // 挂上的 PCL 版本（D19）
+  // 挂上的 PCL 版本
   {
     id: "1.21.1-NeoForge_21.1.244",
     name: "1.21.1-NeoForge_21.1.244",
@@ -109,7 +109,7 @@ const instances: PreviewInstance[] = [
   },
 ];
 
-// 挂上的别家目录、找到的目录、别家的实例（D19）
+// 挂上的别家目录、找到的目录、别家的实例
 const linkedRoots = [
   {
     id: "root-pcl2",
@@ -184,7 +184,7 @@ const world = (
   note: null as { kind: "todo" | "text"; text: string } | null,
 });
 
-// 世界笔记（D17j）：实例 ID + 存档文件夹 → 笔记
+// 世界笔记：实例 ID + 存档文件夹 → 笔记
 type FakeNotes = {
   places: { name: string; x: number; y: number; z: number; dimension: string }[];
   todos: { text: string; done: boolean }[];
@@ -213,7 +213,7 @@ const noteLine = (notes: FakeNotes | undefined) => {
   return line ? { kind: "text" as const, text: line.trim() } : null;
 };
 
-// 世界备份（D17j）：实例 ID + 存档文件夹 → 备份（新的在前）
+// 世界备份：实例 ID + 存档文件夹 → 备份（新的在前）
 type FakeBackup = { id: string; at: number; reason: string; size: number };
 const worldBackups = new Map<string, FakeBackup[]>([
   [
@@ -317,7 +317,7 @@ const sampleIcons = [optimizationIcon, cobblemonIcon, fomIcon];
 const PAGE = 20;
 const TOTAL = 36;
 
-/** 假的中文名（D17e）：一部分项目有，看得到「中文名 + 灰色英文名」 */
+/** 假的中文名：一部分项目有，看得到「中文名 + 灰色英文名」 */
 const previewZh: Record<string, string> = {
   Sodium: "钠",
   Create: "机械动力",
@@ -429,7 +429,7 @@ let joinedServers: { name: string; address: string }[] = [
   { name: "远方的服务器", address: "far.example.org" },
 ];
 
-/** 服务器状态（D17k）：地址里带 192.168 的连不上，far 开头的延迟高，其余按地址算一个人数 */
+/** 服务器状态：地址里带 192.168 的连不上，far 开头的延迟高，其余按地址算一个人数 */
 function fakeServerStatus(address: string) {
   if (address.includes("192.168")) return { kind: "offline" as const, reason: "refused" as const };
   const seed = Array.from(address).reduce((n, c) => n + c.charCodeAt(0), 0);
@@ -462,7 +462,7 @@ const mods = [
 
 let favoriteItems: { kind: string; hit: unknown; addedAt: number }[] = [];
 
-// 启动记录（D17c）：一次崩溃（有崩溃报告）、一次正常、一次被结束、一次没启动起来
+// 启动记录：一次崩溃（有崩溃报告）、一次正常、一次被结束、一次没启动起来
 const recordMods = mods.map((title, i) => ({
   title,
   version: `${1 + i}.0.${i}`,
@@ -641,7 +641,7 @@ let previewSharedPacks: Record<string, { name: string; isDir: boolean; bytes: nu
 let previewSharedCommands: string[] = ["/gamemode creative", "/time set day", "/weather clear"];
 let previewSharedHotbarBytes: number | null = 4_096;
 
-// 实例自己的设置、导出、复制、删除（D17i）
+// 实例自己的设置、导出、复制、删除
 type Overrides = {
   memory: { auto: boolean; maxMemoryMb: number } | null;
   javaId: string | null;
@@ -716,7 +716,7 @@ function fakeJob(key: string, title: string, onDone?: () => void): string {
   return id;
 }
 
-/** 假启动（D17l）：准备 1.5 秒 → 启动中 → 加载 → 主菜单 → 正在连接服务器 → 进了世界；点「结束」就退出 */
+/** 假启动：准备 1.5 秒 → 启动中 → 加载 → 主菜单 → 正在连接服务器 → 进了世界；点「结束」就退出 */
 const fakeRuns = new Map<string, number[]>();
 function fakeLaunch(instanceId: string) {
   const startedAt = Date.now();
@@ -797,7 +797,7 @@ function exportPreview(id: string) {
   };
 }
 
-// 内存与 Java（D17h）：控制台里 `__previewMemory(3000)` 把「可用」改成 3000 MB，看内存不够的提示
+// 内存与 Java：控制台里 `__previewMemory(3000)` 把「可用」改成 3000 MB，看内存不够的提示
 const TOTAL_MB = 32_563;
 let availableMb = 9_400;
 /** 每个实例的模组数（「命运齿轮」136 个，可用 4.5 GB 时自动模式想要 5.5 GB、给不够） */
@@ -887,7 +887,7 @@ function javaOverview() {
   };
 }
 
-// 拖文件进窗口（D17g）：控制台里 `__previewDrop()` 模拟拖进来一批，`__previewDrop("pack")` 只拖一个整合包，
+// 拖文件进窗口：控制台里 `__previewDrop()` 模拟拖进来一批，`__previewDrop("pack")` 只拖一个整合包，
 // `__previewHover(true)` 显示「松手导入」那一层
 const droppedSample = [
   {
@@ -1066,7 +1066,7 @@ const droppedPack = [
   },
 ];
 
-/** 下载历史的假数据（D18）：几种来源、几种结果，失败的带步骤、能重试 */
+/** 下载历史的假数据：几种来源、几种结果，失败的带步骤、能重试 */
 const minute = 60_000;
 const pastJob = (
   id: string,
@@ -2183,7 +2183,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
       : [{ kind: String(args.kind), hit, addedAt: Date.now() }, ...favoriteItems];
     return !exists;
   },
-  // 解析要一会儿、都带一个共用前置（D17l：连着点几个，确认窗一个一个弹）
+  // 解析要一会儿、都带一个共用前置（连着点几个，确认窗一个一个弹）
   content_resolve: async (args) => {
     await new Promise((resolve) => setTimeout(resolve, 900));
     const item = (projectId: string, title: string, reason: string) => ({
@@ -2214,7 +2214,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   content_remove_many: (args) => (args.fileNames as string[]).length,
   content_set_enabled: () => null,
   content_set_many_enabled: (args) => args.fileNames as string[],
-  // 上次改到一半被关掉（D17m）：preview.html?recovered 看启动时的提示
+  // 上次改到一半被关掉：preview.html?recovered 看启动时的提示
   content_recovered: () =>
     new URLSearchParams(location.search).has("recovered")
       ? [
@@ -2460,7 +2460,7 @@ Object.assign(window, {
     });
   },
   __previewHover: (on: boolean) => emitPreview("file-drag-hover", on),
-  // 大世界要不要自动备份（D17j）：控制台里 `__previewBackupAsk()`
+  // 大世界要不要自动备份：控制台里 `__previewBackupAsk()`
   __previewBackupAsk: () =>
     emitPreview("backup-ask", {
       instanceId: "验收测试",

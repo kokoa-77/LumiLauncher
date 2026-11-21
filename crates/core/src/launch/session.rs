@@ -1,6 +1,6 @@
 //! 游戏会话状态机：从日志判断游戏现在在干什么。
 //!
-//! 「直达你的世界」「永不玩坏」「冲突模组自动定位」「启动胶囊」都靠它（方案 4.6 节）。
+//! 「直达你的世界」「永不玩坏」「冲突模组自动定位」「启动胶囊」都靠它。
 //! 判断依据是各版本都稳定出现的日志句子；以后遇到新版本改了措辞，只改这里的关键字。
 
 use serde::Serialize;
@@ -17,7 +17,7 @@ pub enum GameState {
     Loading,
     /// 主菜单
     MainMenu,
-    /// 正在连接服务器（还没确认进去了：连不上、被拒绝都会回到主菜单，D17l）
+    /// 正在连接服务器（还没确认进去了：连不上、被拒绝都会回到主菜单）
     Connecting,
     /// 已进入世界（单人或多人）
     InWorld,
@@ -48,9 +48,9 @@ impl GameState {
 const LOADING_MARKERS: &[&str] = &["Setting user:", "Backend library:", "LWJGL Version"];
 const MENU_MARKERS: &[&str] = &["Sound engine started"];
 /// 注意：只能用不随游戏语言翻译的句子。「xxx joined the game」在中文界面下会变成「xxx加入了游戏」，
-/// 服务器线程的「logged in with entity id」不翻译（D3 实测），单人世界看它。
+/// 服务器线程的「logged in with entity id」不翻译（实测），单人世界看它。
 const IN_WORLD_MARKERS: &[&str] = &["logged in with entity id"];
-/// 多人游戏（D17l 收紧，外部审阅指出）：客户端「Connecting to 地址, 端口」只说明开始连了，连不上也会打这一句，
+/// 多人游戏（收紧，外部审阅指出）：客户端「Connecting to 地址, 端口」只说明开始连了，连不上也会打这一句，
 /// 不能当成进了世界。原版客户端在服务器里没有「进去了」的专门日志，但收到的每条聊天消息都会记成
 /// `[System] [CHAT] …`（不翻译，1.21.1 客户端 ChatComponent），能收到聊天就是真进去了。
 const CONNECTING_MARKERS: &[&str] = &["Connecting to "];
@@ -97,7 +97,7 @@ impl SessionTracker {
             self.crashed = true;
         }
         if let Some(path) = CRASH_REPORT_PREFIXES.iter().find_map(|p| {
-            // 游戏在路径前面加了 `#@!@#` 标记，要去掉（D5 实测）
+            // 游戏在路径前面加了 `#@!@#` 标记，要去掉（实测）
             message
                 .split_once(p)
                 .map(|(_, rest)| rest.trim().trim_start_matches("#@!@#").trim().to_owned())
@@ -209,7 +209,7 @@ mod tests {
         );
     }
 
-    /// D3 真实验收时的日志（游戏语言切成了简体中文）：进世界的提示被翻译了，状态机不能依赖它
+    /// 真实验收时的日志（游戏语言切成了简体中文）：进世界的提示被翻译了，状态机不能依赖它
     #[test]
     fn works_when_the_game_language_is_chinese() {
         let real_log = [

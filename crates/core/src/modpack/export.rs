@@ -1,4 +1,4 @@
-//! 导出 Modrinth 整合包（`.mrpack`，D17i）。
+//! 导出 Modrinth 整合包（`.mrpack`）。
 //!
 //! - 模组、资源包、光影包：在 Modrinth 上按 SHA-1 找到一模一样的文件的，只在清单里写下载地址；
 //!   找不到的（CurseForge 独有的、自己做的）直接打包进 `overrides/`。停用的模组也带上，导入后还是停用。
@@ -51,7 +51,7 @@ const NEVER_TOP: &[&str] = &[
     "command_history.txt",
     "servers.dat",
     "servers.dat_old",
-    // 挂上的别家版本（D19）：别家的游戏本体、启动器自己的设置（没开版本隔离时游戏目录就是整个 .minecraft）
+    // 挂上的别家版本：别家的游戏本体、启动器自己的设置（没开版本隔离时游戏目录就是整个 .minecraft）
     "versions",
     "libraries",
     "assets",
@@ -334,7 +334,7 @@ fn content_name(folder: &str, name: &str) -> Option<bool> {
 fn scan(game: &GameDir, instance: &Instance) -> Result<Scanned, ModpackError> {
     let dir = instance.game_dir(game)?;
     let cache = IdentityCache::load(&game.root().join(STORE_DIR));
-    // 版本文件夹里的版本描述、客户端：老实例的（文件夹名），挂上的别家版本的（版本名，D19）
+    // 版本文件夹里的版本描述、客户端：老实例的（文件夹名），挂上的别家版本的（版本名）
     let version_name = instance
         .config
         .link

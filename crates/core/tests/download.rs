@@ -263,7 +263,7 @@ async fn falls_back_to_the_next_url_on_404_and_bad_content() {
 
     assert_eq!(std::fs::read(&item.path).unwrap(), content);
     let last = *last.lock().unwrap();
-    assert_eq!(last.fallbacks, 1, "换了地址才下好的记一次换源（D18）");
+    assert_eq!(last.fallbacks, 1, "换了地址才下好的记一次换源");
     assert!(
         last.received_bytes >= content.len() as u64,
         "网络收到的字节含内容不对那次"

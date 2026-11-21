@@ -40,7 +40,7 @@ interface Command {
   run: () => void;
 }
 
-/** 一组最多显示几条：总数不超过 30，不用虚拟滚动（开发合同第 7 条） */
+/** 一组最多显示几条：总数不超过 30，不用虚拟滚动（docs/DESIGN.md 第 7 节） */
 const PER_GROUP = 6;
 
 const iconOf = (Icon: LucideIcon) => <Icon className="size-4" aria-hidden />;

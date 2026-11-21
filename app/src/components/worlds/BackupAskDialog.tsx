@@ -11,7 +11,7 @@ import { useAppStore } from "@/stores/app";
 import { useGameStore } from "@/stores/game";
 
 /**
- * 大世界（超过 1 GB）第一次要自动备份时问一句（D17j）：备不备都记住，这个世界以后不再问。
+ * 大世界（超过 1 GB）第一次要自动备份时问一句：备不备都记住，这个世界以后不再问。
  * 后端在游戏退出后发 `backupAsk` 事件。
  */
 export function BackupAskDialog() {

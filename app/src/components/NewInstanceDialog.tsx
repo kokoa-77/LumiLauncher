@@ -42,7 +42,7 @@ function Choice({
 }
 
 /**
- * 新建实例的统一入口：先选怎么建——全新创建、导入整合包文件、在线找整合包、从别的启动器导入（D19）。
+ * 新建实例的统一入口：先选怎么建——全新创建、导入整合包文件、在线找整合包、从别的启动器导入。
  */
 export function NewInstanceDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation();

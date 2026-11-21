@@ -8,7 +8,7 @@ import { formatAgo } from "@/lib/format";
 import { duration, ease, spring } from "@/lib/motion";
 import { IconButton } from "./ui/IconButton";
 
-/** 首页当前展示的「继续目标」：单人世界或多人服务器（D25d）。 */
+/** 首页当前展示的「继续目标」：单人世界或多人服务器。 */
 export type HomeTarget =
   | { kind: "world"; instanceId: string }
   | { kind: "server"; instanceId: string; address: string };
@@ -19,7 +19,7 @@ function isSameTarget(a: HomeTarget, b: HomeTarget): boolean {
 }
 
 /**
- * 首页主标题旁边的 ▾：弹出最近玩的世界与多人服务器（D25d）。
+ * 首页主标题旁边的 ▾：弹出最近玩的世界与多人服务器。
  * 点一下首页就切换过去，世界还会同步切到它封面的主题色。
  * 开关由外面管（「⋯」菜单里的「换一个世界」也能打开它）。
  */

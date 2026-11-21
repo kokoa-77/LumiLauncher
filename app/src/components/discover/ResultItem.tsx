@@ -157,7 +157,7 @@ interface ResultItemProps {
   showKind?: boolean;
 }
 
-/** 服务器现在的样子（D17k）：自己测的在线人数和延迟，连不上的写「连不上」 */
+/** 服务器现在的样子：自己测的在线人数和延迟，连不上的写「连不上」 */
 function ServerLive({ address }: { address: string }) {
   const status = useServerStatus(address);
   return <ServerStatusLine status={status} address={address} className="shrink-0" />;

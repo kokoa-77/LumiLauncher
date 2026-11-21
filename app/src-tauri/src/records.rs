@@ -1,4 +1,4 @@
-//! 每次启动的完整记录（D17c）：启动时开一份、边玩边写、结束时补上结局。界面在实例页「日志」页签里翻。
+//! 每次启动的完整记录：启动时开一份、边玩边写、结束时补上结局。界面在实例页「日志」页签里翻。
 //! 记录本身的读写在核心库 `launch::record`，这里只负责接到启动流程上、给界面开命令。
 
 use std::path::PathBuf;
@@ -249,7 +249,7 @@ pub fn launch_record_reveal(
     })
 }
 
-/// 手动将指定启动记录的脱敏日志（含崩溃报告，如有）上传至 mclo.gs，返回分享链接（D26c）。
+/// 手动将指定启动记录的脱敏日志（含崩溃报告，如有）上传至 mclo.gs，返回分享链接。
 #[tauri::command]
 #[specta::specta]
 pub async fn launch_record_upload_log(

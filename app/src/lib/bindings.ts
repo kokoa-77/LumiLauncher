@@ -10,7 +10,7 @@ export const commands = {
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
 	/**  前端第一帧画好后调用：显示主窗口（只生效一次）。 */
 	appReady: () => __TAURI_INVOKE<void>("app_ready"),
-	/**  前端界面语言变更时同步给后端（供「默认游戏语言：跟随启动器」使用，D26a）。 */
+	/**  前端界面语言变更时同步给后端（供「默认游戏语言：跟随启动器」使用）。 */
 	appSetUiLanguage: (language: string) => __TAURI_INVOKE<void>("app_set_ui_language", { language }),
 	dropsShellReady: () => __TAURI_INVOKE<void>("drops_shell_ready"),
 	/**  前端把需要留档的信息（尤其是未捕获的错误）写进启动器日志。 */
@@ -21,9 +21,9 @@ export const commands = {
 	settingsGet: () => __TAURI_INVOKE<Settings>("settings_get"),
 	/**  保存整份设置，返回规范化后的结果（越界的值会被拉回合法范围）。 */
 	settingsSet: (settings: Settings) => typedError<Settings, AppError>(__TAURI_INVOKE("settings_set", { settings })),
-	/**  导出可迁移的偏好设置 JSON（自动剥离本机路径，绝不含任何登录凭据，D26a）。 */
+	/**  导出可迁移的偏好设置 JSON（自动剥离本机路径，绝不含任何登录凭据）。 */
 	settingsExport: () => typedError<boolean, AppError>(__TAURI_INVOKE("settings_export")),
-	/**  导入偏好设置 JSON（自动保留本机游戏目录与补件目录，绝不覆盖账号数据，D26a）。 */
+	/**  导入偏好设置 JSON（自动保留本机游戏目录与补件目录，绝不覆盖账号数据）。 */
 	settingsImport: () => typedError<Settings | null, AppError>(__TAURI_INVOKE("settings_import")),
 	jobsList: () => __TAURI_INVOKE<JobSnapshot[]>("jobs_list"),
 	/**  请求取消任务；返回任务是否存在且仍在运行。 */
@@ -44,27 +44,27 @@ export const commands = {
 	syncApply: (strategy: SyncStrategy, sourceInstanceId: string | null) => typedError<SyncApplyResult, AppError>(__TAURI_INVOKE("sync_apply", { strategy, sourceInstanceId })),
 	/**  打开共享库文件夹（根目录 / 通用资源包 / 通用光影包）；不存在时自动创建。 */
 	syncOpenSharedFolder: (kind: SharedFolderKind) => typedError<null, AppError>(__TAURI_INVOKE("sync_open_shared_folder", { kind })),
-	/**  读取共享库中的游戏设置键值对（供可视化编辑器使用，D26b 精修）。 */
+	/**  读取共享库中的游戏设置键值对（供可视化编辑器使用）。 */
 	syncSharedOptionsGet: () => typedError<{ [key in string]: string }, AppError>(__TAURI_INVOKE("sync_shared_options_get")),
-	/**  保存共享库中的游戏设置键值对（供可视化编辑器使用，D26b 精修）。 */
+	/**  保存共享库中的游戏设置键值对（供可视化编辑器使用）。 */
 	syncSharedOptionsSet: (entries: { [key in string]: string }) => typedError<{ [key in string]: string }, AppError>(__TAURI_INVOKE("sync_shared_options_set", { entries })),
-	/**  读取共享库中的多人服务器列表（D26b 精修）。 */
+	/**  读取共享库中的多人服务器列表。 */
 	syncSharedServersList: () => typedError<SharedServerEntry[], AppError>(__TAURI_INVOKE("sync_shared_servers_list")),
-	/**  向共享库新增一条多人服务器（D26b 精修）。 */
+	/**  向共享库新增一条多人服务器。 */
 	syncSharedServersAdd: (name: string, address: string) => typedError<SharedServerEntry[], AppError>(__TAURI_INVOKE("sync_shared_servers_add", { name, address })),
-	/**  从共享库删除一条多人服务器（D26b 精修）。 */
+	/**  从共享库删除一条多人服务器。 */
 	syncSharedServersRemove: (address: string) => typedError<SharedServerEntry[], AppError>(__TAURI_INVOKE("sync_shared_servers_remove", { address })),
-	/**  列出共享资源包或光影包目录里的全部包（D26b 精修）。 */
+	/**  列出共享资源包或光影包目录里的全部包。 */
 	syncSharedPacksList: (kind: SharedFolderKind) => typedError<SharedPackEntry[], AppError>(__TAURI_INVOKE("sync_shared_packs_list", { kind })),
-	/**  删除共享资源包或光影包目录里的单个包（D26b 精修）。 */
+	/**  删除共享资源包或光影包目录里的单个包。 */
 	syncSharedPacksRemove: (kind: SharedFolderKind, name: string) => typedError<SharedPackEntry[], AppError>(__TAURI_INVOKE("sync_shared_packs_remove", { kind, name })),
-	/**  读取共享库中的命令历史记录（D26c）。 */
+	/**  读取共享库中的命令历史记录。 */
 	syncSharedCommandsGet: () => typedError<string[], AppError>(__TAURI_INVOKE("sync_shared_commands_get")),
-	/**  保存共享库中的命令历史记录（D26c）。 */
+	/**  保存共享库中的命令历史记录。 */
 	syncSharedCommandsSet: (lines: string[]) => typedError<string[], AppError>(__TAURI_INVOKE("sync_shared_commands_set", { lines })),
-	/**  清空共享库中的创造模式物品栏快照（D26c）。 */
+	/**  清空共享库中的创造模式物品栏快照。 */
 	syncSharedHotbarClear: () => typedError<null, AppError>(__TAURI_INVOKE("sync_shared_hotbar_clear")),
-	/**  从指定实例导入设置、服务器、命令记录和/或创造模式物品栏到共享库（D26b/D26c）。 */
+	/**  从指定实例导入设置、服务器、命令记录和/或创造模式物品栏到共享库。 */
 	syncImportFromInstance: (instanceId: string, importOptions: boolean, importServers: boolean, importCommands: boolean, importHotbar: boolean) => typedError<null, AppError>(__TAURI_INVOKE("sync_import_from_instance", { instanceId, importOptions, importServers, importCommands, importHotbar })),
 	/**  挂上的目录 */
 	linkedRootsList: () => __TAURI_INVOKE<LinkedRootView[]>("linked_roots_list"),
@@ -101,7 +101,7 @@ export const commands = {
 	netSpeedLast: () => __TAURI_INVOKE<SpeedTest | null>("net_speed_last"),
 	/**  设置里的「测试 DoH」：每个 DoH 服务和系统 DNS 各问一次 */
 	netDohTest: () => typedError<DnsProbe[], AppError>(__TAURI_INVOKE("net_doh_test")),
-	/**  设置里的「网络连通性检测」（D26a）：并行探测 6 个核心服务端点 */
+	/**  设置里的「网络连通性检测」：并行探测 6 个核心服务端点 */
 	netDiagnostics: () => typedError<EndpointProbe[], AppError>(__TAURI_INVOKE("net_diagnostics")),
 	claimFolderInfo: () => __TAURI_INVOKE<ClaimFolderInfo>("claim_folder_info"),
 	/**  弹出「选择文件夹」换补件盯的文件夹；用户取消时返回 `None` */
@@ -131,7 +131,7 @@ export const commands = {
 	 *  准备过程是一个任务，游戏状态通过事件推送。
 	 */
 	launchStart: (instanceId: string, world: string | null, server: string | null, memoryMb: number | null) => typedError<null, AppError>(__TAURI_INVOKE("launch_start", { instanceId, world, server, memoryMb })),
-	/**  启动前极速本地预检（D25d）：只读本地元信息，拦截缺前置、重复 modId、加载器错配和手动 Java 过旧。 */
+	/**  启动前极速本地预检：只读本地元信息，拦截缺前置、重复 modId、加载器错配和手动 Java 过旧。 */
 	launchPreflight: (instanceId: string) => typedError<PreflightReport, AppError>(__TAURI_INVOKE("launch_preflight", { instanceId })),
 	/**  结束游戏（强制）。返回游戏是否在运行。 */
 	launchStop: (instanceId: string) => __TAURI_INVOKE<boolean>("launch_stop", { instanceId }),
@@ -172,7 +172,7 @@ export const commands = {
 	/**  一键回到「能玩的时候」（或者第一次改动之前）。返回动了几个文件；这次放回记在改动历史里，可以撤销。 */
 	contentRestoreSnapshot: (instanceId: string) => typedError<number, AppError>(__TAURI_INVOKE("content_restore_snapshot", { instanceId })),
 	/**
-	 *  一次启用 / 停用好几个：要么全改、要么一个不改（D17m）。返回真的改了的那些，
+	 *  一次启用 / 停用好几个：要么全改、要么一个不改。返回真的改了的那些，
 	 *  界面上的「撤销」就是拿它反过来再调一次。
 	 */
 	contentSetManyEnabled: (instanceId: string, kind: ContentKind, fileNames: string[], enabled: boolean) => typedError<string[], AppError>(__TAURI_INVOKE("content_set_many_enabled", { instanceId, kind, fileNames, enabled })),
@@ -194,11 +194,11 @@ export const commands = {
 	backupsUsage: () => typedError<BackupUsage, AppError>(__TAURI_INVOKE("backups_usage")),
 	/**  删掉所有实例的世界备份，返回腾出了多少字节。正在备份、恢复的时候不让删 */
 	backupsClear: () => typedError<number | null, AppError>(__TAURI_INVOKE("backups_clear")),
-	/**  当前世界备份存放目录信息（D26b） */
+	/**  当前世界备份存放目录信息 */
 	backupsDirInfo: () => __TAURI_INVOKE<BackupDirInfo>("backups_dir_info"),
-	/**  选择自定义世界备份目录并安全迁移既有备份（D26b） */
+	/**  选择自定义世界备份目录并安全迁移既有备份 */
 	backupsDirChoose: () => typedError<BackupDirChangeResult | null, AppError>(__TAURI_INVOKE("backups_dir_choose")),
-	/**  恢复世界备份到默认位置（各实例自己的 `Lumi/backups/`）并安全迁回既有备份（D26b） */
+	/**  恢复世界备份到默认位置（各实例自己的 `Lumi/backups/`）并安全迁回既有备份 */
 	backupsDirReset: () => typedError<BackupDirChangeResult, AppError>(__TAURI_INVOKE("backups_dir_reset")),
 	/**  一个世界的笔记（没写过是空的） */
 	worldsNotesGet: (instanceId: string, folder: string) => typedError<WorldNotes, AppError>(__TAURI_INVOKE("worlds_notes_get", { instanceId, folder })),
@@ -239,17 +239,17 @@ export const commands = {
 	 *  首页「换一个世界」和实例库的封面都用它。只读存档，不改任何文件。
 	 */
 	worldsRecent: () => typedError<RecentWorld[], AppError>(__TAURI_INVOKE("worlds_recent")),
-	/**  各实例 `servers.dat` 里的多人服务器，按实例最近游玩顺序排（同地址同实例去重，D25d）。 */
+	/**  各实例 `servers.dat` 里的多人服务器，按实例最近游玩顺序排（同地址同实例去重）。 */
 	worldsRecentServers: () => typedError<RecentServer[], AppError>(__TAURI_INVOKE("worlds_recent_servers")),
 	/**  一个项目的详情：介绍原文（界面负责清洗后再显示）、图片、链接。10 分钟内再打开直接用缓存。 */
 	discoverProject: (source: ContentSource, projectId: string) => typedError<ProjectDetail, AppError>(__TAURI_INVOKE("discover_project", { source, projectId })),
-	/**  列出项目的版本列表（项目「版本」页签与实例「切换版本」共用，D25e）。 */
+	/**  列出项目的版本列表（项目「版本」页签与实例「切换版本」共用）。 */
 	discoverVersions: (source: ContentSource, projectId: string, gameVersion: string | null, loader: string | null) => typedError<ContentVersion[], AppError>(__TAURI_INVOKE("discover_versions", { source, projectId, gameVersion, loader })),
-	/**  懒加载 CurseForge 单个版本的更新日志（HTML 原文，前端清洗后展示，D25e）。 */
+	/**  懒加载 CurseForge 单个版本的更新日志（HTML 原文，前端清洗后展示）。 */
 	discoverVersionChangelog: (source: ContentSource, projectId: string, versionId: string) => typedError<string, AppError>(__TAURI_INVOKE("discover_version_changelog", { source, projectId, versionId })),
 	/**  收藏夹里的全部项目，后收藏的在前。不用联网。 */
 	favoritesList: () => __TAURI_INVOKE<Favorite[]>("favorites_list"),
-	/**  中文关键词查中文名表（D17e）：资源中心拿第一个的英文名去平台搜，其余的给玩家点。不用联网。 */
+	/**  中文关键词查中文名表：资源中心拿第一个的英文名去平台搜，其余的给玩家点。不用联网。 */
 	namesMatch: (query: string) => __TAURI_INVOKE<NameMatch[]>("names_match", { query }),
 	/**  收藏 / 取消收藏一个项目，返回之后是不是在收藏夹里。 */
 	favoritesToggle: (kind: FavoriteKind, hit: ProjectHit) => typedError<boolean, AppError>(__TAURI_INVOKE("favorites_toggle", { kind, hit })),
@@ -272,11 +272,11 @@ export const commands = {
 	contentReveal: (instanceId: string, kind: ContentKind, fileName: string) => typedError<null, AppError>(__TAURI_INVOKE("content_reveal", { instanceId, kind, fileName })),
 	/**  一次删好几个：只记一条改动历史，一次撤销全部回来。返回删掉了几个。 */
 	contentRemoveMany: (instanceId: string, kind: ContentKind, fileNames: string[]) => typedError<number, AppError>(__TAURI_INVOKE("content_remove_many", { instanceId, kind, fileNames })),
-	/**  锁定或取消锁定实例内某项内容的版本（D25e）。 */
+	/**  锁定或取消锁定实例内某项内容的版本。 */
 	contentSetLocked: (instanceId: string, kind: ContentKind, fileName: string, locked: boolean) => typedError<boolean, AppError>(__TAURI_INVOKE("content_set_locked", { instanceId, kind, fileName, locked })),
-	/**  切换某项内容到指定版本（后台任务，记入改动历史可撤销，D25e）。 */
+	/**  切换某项内容到指定版本（后台任务，记入改动历史可撤销）。 */
 	contentSwitchVersion: (instanceId: string, update: UpdateInfo) => typedError<string, AppError>(__TAURI_INVOKE("content_switch_version", { instanceId, update })),
-	/**  解析安装指定版本的计划（含前置、光影加载器，D25e）。 */
+	/**  解析安装指定版本的计划（含前置、光影加载器）。 */
 	contentResolveVersion: (instanceId: string, projectId: string, versionId: string, kind: ContentKind, source: ContentSource) => typedError<PlanItem[], AppError>(__TAURI_INVOKE("content_resolve_version", { instanceId, projectId, versionId, kind, source })),
 	/**  实例的截图，新的在前。 */
 	instancesScreenshots: (instanceId: string) => typedError<ScreenshotView[], AppError>(__TAURI_INVOKE("instances_screenshots", { instanceId })),
@@ -293,13 +293,13 @@ export const commands = {
 	worldsBackgroundFit: (instanceId: string, folder: string, fit: ImageFit) => typedError<null, AppError>(__TAURI_INVOKE("worlds_background_fit", { instanceId, folder, fit })),
 	/**  恢复默认背景：删掉自己选的图，回到截图 / 自动封面 / 世界图标。 */
 	worldsBackgroundClear: (instanceId: string, folder: string) => typedError<null, AppError>(__TAURI_INVOKE("worlds_background_clear", { instanceId, folder })),
-	/**  列出一个世界最近保存的自动封面（最多 5 张，新的在前，D25d）。 */
+	/**  列出一个世界最近保存的自动封面（最多 5 张，新的在前）。 */
 	worldsAutoCoversList: (instanceId: string, folder: string) => typedError<AutoCoverView[], AppError>(__TAURI_INVOKE("worlds_auto_covers_list", { instanceId, folder })),
-	/**  锁定某张自动封面为这个世界的固定封面（锁定期间自动封面不再覆盖，D25d）。 */
+	/**  锁定某张自动封面为这个世界的固定封面（锁定期间自动封面不再覆盖）。 */
 	worldsAutoCoverLock: (instanceId: string, folder: string, file: string) => typedError<null, AppError>(__TAURI_INVOKE("worlds_auto_cover_lock", { instanceId, folder, file })),
-	/**  解除自动封面锁定，恢复游玩时自动更新（D25d）。 */
+	/**  解除自动封面锁定，恢复游玩时自动更新。 */
 	worldsAutoCoverUnlock: (instanceId: string, folder: string) => typedError<null, AppError>(__TAURI_INVOKE("worlds_auto_cover_unlock", { instanceId, folder })),
-	/**  将前端 Canvas 渲染的世界分享卡片 PNG 通过系统「另存为」保存到磁盘（界面不接触路径，D25e）。 */
+	/**  将前端 Canvas 渲染的世界分享卡片 PNG 通过系统「另存为」保存到磁盘（界面不接触路径）。 */
 	worldsSaveShareCard: (suggestedName: string, pngBase64: string) => typedError<boolean, AppError>(__TAURI_INVOKE("worlds_save_share_card", { suggestedName, pngBase64 })),
 	/**  这个实例最近的启动记录（最多 20 次），新的在前。 */
 	launchRecords: (instanceId: string) => typedError<LaunchRecord[], AppError>(__TAURI_INVOKE("launch_records", { instanceId })),
@@ -313,7 +313,7 @@ export const commands = {
 	launchRecordDiagnosticExport: (instanceId: string, recordId: string) => typedError<boolean, AppError>(__TAURI_INVOKE("launch_record_diagnostic_export", { instanceId, recordId })),
 	/**  在资源管理器里选中这一次的输出文件（想发给别人看时用）。 */
 	launchRecordReveal: (instanceId: string, recordId: string) => typedError<null, AppError>(__TAURI_INVOKE("launch_record_reveal", { instanceId, recordId })),
-	/**  手动将指定启动记录的脱敏日志（含崩溃报告，如有）上传至 mclo.gs，返回分享链接（D26c）。 */
+	/**  手动将指定启动记录的脱敏日志（含崩溃报告，如有）上传至 mclo.gs，返回分享链接。 */
 	launchRecordUploadLog: (instanceId: string, recordId: string) => typedError<MclogsUpload, AppError>(__TAURI_INVOKE("launch_record_upload_log", { instanceId, recordId })),
 	/**
 	 *  拖进来的文件装进这个实例合不合适：模组先按哈希问 Modrinth 支持哪些加载器和游戏版本
@@ -425,7 +425,7 @@ export type AccountsState = {
 	microsoftAvailable: boolean,
 };
 
-/**  游戏启动后的启动器窗口行为（D26a） */
+/**  游戏启动后的启动器窗口行为 */
 export type AfterLaunchBehavior = 
 /**  保持启动器窗口显示 */
 "keep" | 
@@ -456,19 +456,19 @@ export type Appearance = {
 	reduceMotion: boolean,
 	/**  画面效果：自动（老电脑用流畅）/ 流畅 / 精美 */
 	effects: EffectsMode,
-	/**  自动封面：玩的时候悄悄截游戏画面当这个世界的封面（D17d，默认开） */
+	/**  自动封面：玩的时候悄悄截游戏画面当这个世界的封面（默认开） */
 	autoCover: boolean,
 	/**  主色跟着世界变（招牌 2，默认开）：进到有截图的世界时换成世界的颜色；关掉就一直用下面选的颜色 */
 	accentFollowWorld: boolean,
 	/**
-	 *  自己选的主色（D19c）：色相 0–360、彩度 0–0.3，亮度按对比度自动算。
+	 *  自己选的主色：色相 0–360、彩度 0–0.3，亮度按对比度自动算。
 	 *  跟着世界变时，没有截图的世界、还没进过世界时也用它
 	 */
 	accentHue: number | null,
 	accentChroma: number | null,
 };
 
-/**  供精选弹窗展示的一张自动封面（D25d）；图片走启动器协议地址，不暴露路径。 */
+/**  供精选弹窗展示的一张自动封面；图片走启动器协议地址，不暴露路径。 */
 export type AutoCoverView = {
 	/**  锁定封面时传回的条目文件名（仅作标识，由核心库经 `safe_join` 校验） */
 	file: string,
@@ -494,14 +494,14 @@ export type BackupAsk = {
 	bytes: number | null,
 };
 
-/**  切换世界备份目录后的迁移结果（D26b） */
+/**  切换世界备份目录后的迁移结果 */
 export type BackupDirChangeResult = {
 	info: BackupDirInfo,
 	movedFiles: number,
 	movedBytes: number | null,
 };
 
-/**  世界备份目录信息（D26b） */
+/**  世界备份目录信息 */
 export type BackupDirInfo = {
 	/**  自定义目录完整路径；使用默认位置（随各实例存放）时为 `None` */
 	path: string | null,
@@ -605,10 +605,10 @@ export type ContentItem = {
 	enabled: boolean,
 	size: number | null,
 	projectId: string | null,
-	/**  当前安装的版本编号（Modrinth versionId / CurseForge fileId，切换版本高亮用，D25e） */
+	/**  当前安装的版本编号（Modrinth versionId / CurseForge fileId，切换版本高亮用） */
 	versionId: string | null,
 	versionNumber: string | null,
-	/**  是否锁定版本（跳过自动/批量检查与更新，D25e） */
+	/**  是否锁定版本（跳过自动/批量检查与更新） */
 	locked: boolean,
 	/**  图标：网址或 `data:` 地址 */
 	iconUrl: string | null,
@@ -624,7 +624,7 @@ export type ContentItem = {
 	pageUrl: string | null,
 	/**  文件最后修改时间（毫秒；按新旧排序用） */
 	modified: number | null,
-	/**  中文名（中文名表或模组自带的语言文件；D17e） */
+	/**  中文名（中文名表或模组自带的语言文件） */
 	titleZh: string | null,
 	/**  同一个项目在另一个平台上的编号（中文名表或同一个文件确认过的；资源中心判断「已安装」用） */
 	twinId: string | null,
@@ -635,7 +635,7 @@ export type ContentKind = "mod" | "shader" | "resourcePack";
 /**  内容来自哪个平台。 */
 export type ContentSource = "modrinth" | "curseForge";
 
-/**  项目的一个可安装版本（项目「版本」页签与实例「切换版本」共用，D25e）。 */
+/**  项目的一个可安装版本（项目「版本」页签与实例「切换版本」共用）。 */
 export type ContentVersion = {
 	id: string,
 	projectId: string,
@@ -674,7 +674,7 @@ export type Delivery =
 
 export type Dimension = "overworld" | "nether" | "end";
 
-/**  「测试 DoH」按钮的一行结果（D18） */
+/**  「测试 DoH」按钮的一行结果 */
 export type DnsProbe = {
 	/**  「阿里 DoH」「Cloudflare DoH」「系统 DNS」 */
 	name: string,
@@ -689,13 +689,13 @@ export type DnsProbe = {
 export type DownloadSettings = {
 	/**  Minecraft 文件、加载器与 Java：游戏文件、资源、依赖库、加载器安装器、Java 运行时从哪下（镜像是 BMCLAPI） */
 	source: DownloadSource,
-	/**  Minecraft 元数据：版本清单、版本描述、加载器的版本列表从哪拿（镜像是 BMCLAPI，D18b） */
+	/**  Minecraft 元数据：版本清单、版本描述、加载器的版本列表从哪拿（镜像是 BMCLAPI） */
 	metaSource: DownloadSource,
-	/**  Modrinth：搜索、项目和版本查询、文件下载（镜像是 MCIM；文件总是先官方，D18b） */
+	/**  Modrinth：搜索、项目和版本查询、文件下载（镜像是 MCIM；文件总是先官方） */
 	modrinthSource: DownloadSource,
-	/**  CurseForge：搜索、项目和文件查询、文件下载（镜像是 MCIM；Key 不发给镜像，D18b） */
+	/**  CurseForge：搜索、项目和文件查询、文件下载（镜像是 MCIM；Key 不发给镜像） */
 	curseforgeSource: DownloadSource,
-	/**  用 DoH 解析下载域名，防 DNS 污染和劫持（不承诺提速）。问不到时自动退回系统 DNS（`net::doh`，D17l）。 */
+	/**  用 DoH 解析下载域名，防 DNS 污染和劫持（不承诺提速）。问不到时自动退回系统 DNS（`net::doh`）。 */
 	dohEnabled: boolean,
 	maxConcurrency: number,
 	/**
@@ -703,13 +703,13 @@ export type DownloadSettings = {
 	 *  `false`（默认）复制一份，原文件不动。拖进窗口、手动选的文件始终复制。
 	 */
 	moveClaimedFiles?: boolean,
-	/**  首选平台（D18）：同一个项目两个平台都有时，资源中心显示、安装都先用它 */
+	/**  首选平台：同一个项目两个平台都有时，资源中心显示、安装都先用它 */
 	preferredPlatform: Platform,
-	/**  自动装前置（D18）：关掉后只装点的那个，前置自己装 */
+	/**  自动装前置：关掉后只装点的那个，前置自己装 */
 	autoDependencies: boolean,
-	/**  补件时盯着的文件夹（D18）；空 = 系统的「下载」文件夹。只由后端的「选择文件夹」窗口写入 */
+	/**  补件时盯着的文件夹；空 = 系统的「下载」文件夹。只由后端的「选择文件夹」窗口写入 */
 	claimFolder: string | null,
-	/**  网络代理设置（D26a）：跟随系统 / 直连 / 自定义 HTTP 或 SOCKS5 */
+	/**  网络代理设置：跟随系统 / 直连 / 自定义 HTTP 或 SOCKS5 */
 	proxy: ProxySettings,
 };
 
@@ -724,7 +724,7 @@ export type DownloadSource =
 "official" | 
 /**  先镜像，失败再换官方 */
 "mirror" | 
-/**  只用官方，不碰镜像（D18） */
+/**  只用官方，不碰镜像 */
 "officialOnly";
 
 /**  拖进来的东西和这个实例对不对得上 */
@@ -768,7 +768,7 @@ export type DropItem = {
 	size: number | null,
 	/**  从哪一包东西里拆出来的（那个压缩包的文件名） */
 	from: string | null,
-	/**  拖进来的是别家的游戏目录、别家启动器的实例：能直接挂上、导入（D19） */
+	/**  拖进来的是别家的游戏目录、别家启动器的实例：能直接挂上、导入 */
 	folder: FolderFound | null,
 };
 
@@ -778,7 +778,7 @@ export type DropKind = "modpack" | "mod" | "resourcePack" | "shader" | "dataPack
 "schematic" | 
 /**  一包东西（一堆模组、光影、地图塞在一个 zip 里）：拆开后每一样单独认，见 [`super::bundle`] */
 "bundle" | 
-/**  皮肤图片（D19b）：不装进实例，设给账号 */
+/**  皮肤图片：不装进实例，设给账号 */
 "skin" | 
 /**  认不出、或者认出来了但不该装（原因见 [`DropProblem`]） */
 "unknown";
@@ -894,7 +894,7 @@ export type FavoriteKind = "modpack" | "mod" | "resourcePack" | "shader" |
 /**  有文件被拖到窗口上方（`true`）或拖走、放下（`false`），界面据此高亮放置区。 */
 export type FileDragHover = boolean;
 
-/**  拖进窗口的文件认好了（没有正在进行的补件时，D17g），界面弹出「装到哪」。 */
+/**  拖进窗口的文件认好了（没有正在进行的补件时），界面弹出「装到哪」。 */
 export type FilesDropped = {
 	items: DropItem[],
 	/**  一包东西里没拆的别的文件，每包一条 */
@@ -921,7 +921,7 @@ export type ForeignView = {
 	gameVersion: string,
 	/**  例如「NeoForge 21.1.77」；原版为空 */
 	loader: string | null,
-	/**  本启动器现在能不能装它的加载器（Fabric、Forge、Quilt 要等 D20） */
+	/**  本启动器现在能不能装它的加载器 */
 	supported: boolean,
 };
 
@@ -943,7 +943,7 @@ export type GameDirInfo = {
 	locked: boolean,
 };
 
-/**  实例首次启动时的默认游戏语言（D26a） */
+/**  实例首次启动时的默认游戏语言 */
 export type GameLanguage = 
 /**  跟随启动器界面语言（中文用 `zh_cn`，其他用 `en_us`） */
 "followLauncher" | 
@@ -968,7 +968,7 @@ export type GameSettings = {
 	maxMemoryMb: number,
 	/**  游戏目录（.minecraft）的完整路径；`None` 用默认位置。只由后端的「选择文件夹」窗口写入 */
 	directory: string | null,
-	/**  垃圾回收预设（D17h） */
+	/**  垃圾回收预设 */
 	gcPreset: GcPreset,
 	/**  自定义 JVM 参数（用户输入的原文，启动时按空格和引号拆成数组） */
 	jvmArgs: string,
@@ -976,23 +976,23 @@ export type GameSettings = {
 	gameArgs: string,
 	/**  高性能显卡：启动前在 Windows「图形设置」里让 Java 用高性能显卡（双显卡笔记本有用，默认开） */
 	highPerformanceGpu: boolean,
-	/**  游戏窗口（D17i）：游戏默认 / 自定义宽高 / 全屏 */
+	/**  游戏窗口：游戏默认 / 自定义宽高 / 全屏 */
 	window: WindowSettings,
-	/**  启动游戏时额外加的环境变量（D17i 验收时加） */
+	/**  启动游戏时额外加的环境变量 */
 	envVars: EnvVar[],
 	/**  兼容旧字段：与 `after_launch == AfterLaunchBehavior::Release` 同步。 */
 	releaseWebviewWhilePlaying: boolean,
-	/**  实例首次启动时的默认游戏语言（D26a，仅实例尚无语言配置时写入 `options.txt`）。 */
+	/**  实例首次启动时的默认游戏语言（仅实例尚无语言配置时写入 `options.txt`）。 */
 	defaultLanguage: GameLanguage,
-	/**  游戏进入可玩界面后启动器窗口的行为（D26a）：保持显示 / 最小化 / 释放界面。 */
+	/**  游戏进入可玩界面后启动器窗口的行为：保持显示 / 最小化 / 释放界面。 */
 	afterLaunch: AfterLaunchBehavior,
-	/**  游戏退出后自动恢复并聚焦启动器窗口（D26a，默认开）。 */
+	/**  游戏退出后自动恢复并聚焦启动器窗口（默认开）。 */
 	refocusOnExit: boolean,
-	/**  启动钩子：启动前 / 退出后执行的本地命令（D26c，默认空） */
+	/**  启动钩子：启动前 / 退出后执行的本地命令（默认空） */
 	hooks: LaunchHooks,
-	/**  自定义游戏窗口标题模板（D26c，空字符串表示使用 Minecraft 默认标题，支持 `{instance}` / `{version}` / `{loader}` / `{player}`） */
+	/**  自定义游戏窗口标题模板（空字符串表示使用 Minecraft 默认标题，支持 `{instance}` / `{version}` / `{loader}` / `{player}`） */
 	customWindowTitle: string,
-	/**  Discord 活动状态（D26c，纯本地命名管道，默认关闭） */
+	/**  Discord 活动状态（纯本地命名管道，默认关闭） */
 	discordRpc: boolean,
 };
 
@@ -1003,7 +1003,7 @@ export type GameState =
 { kind: "loading" } | 
 /**  主菜单 */
 { kind: "mainMenu" } | 
-/**  正在连接服务器（还没确认进去了：连不上、被拒绝都会回到主菜单，D17l） */
+/**  正在连接服务器（还没确认进去了：连不上、被拒绝都会回到主菜单） */
 { kind: "connecting" } | 
 /**  已进入世界（单人或多人） */
 { kind: "inWorld" } | 
@@ -1071,15 +1071,15 @@ export type InstanceOverrides = {
 	javaId: string | null,
 	launch: LaunchOverride | null,
 	window: WindowSettings | null,
-	/**  环境变量：单独设置时整组替换全局的（D17i 验收时加；老的 instance.json 没有这一项，读出来是空 = 跟全局） */
+	/**  环境变量：单独设置时整组替换全局的（老的 instance.json 没有这一项，读出来是空 = 跟全局） */
 	envVars: EnvVar[] | null,
-	/**  为 true 时该实例脱离本机跨实例同步，保持完全独立（D26b） */
+	/**  为 true 时该实例脱离本机跨实例同步，保持完全独立 */
 	syncDisabled?: boolean,
-	/**  实例同步细粒度排除（D26c：在参与同步时单独排除部分资产） */
+	/**  实例同步细粒度排除（在参与同步时单独排除部分资产） */
 	syncExclusions?: InstanceSyncExclusions,
-	/**  实例单独的启动钩子（D26c，为空表示跟随全局） */
+	/**  实例单独的启动钩子（为空表示跟随全局） */
 	hooks?: LaunchHooks | null,
-	/**  实例单独的自定义游戏窗口标题（D26c，为空表示跟随全局；设为 `Some("")` 表示该实例显式关闭自定义标题） */
+	/**  实例单独的自定义游戏窗口标题（为空表示跟随全局；设为 `Some("")` 表示该实例显式关闭自定义标题） */
 	customWindowTitle?: string | null,
 };
 
@@ -1106,7 +1106,7 @@ export type InstanceSummary = {
 	group: string | null,
 	/**  置顶的时间；没置顶为空 */
 	pinnedAt: number | null,
-	/**  挂上的别家版本：是哪家的（D19）；本启动器自己的实例为空 */
+	/**  挂上的别家版本：是哪家的；本启动器自己的实例为空 */
 	linked: Launcher | null,
 };
 
@@ -1128,7 +1128,7 @@ export type InstanceSyncDiff = {
 	willBackupFirst: boolean,
 };
 
-/**  单实例跨实例同步细粒度排除开关（某项为 true 表示仅本实例跳过该项同步，D26c） */
+/**  单实例跨实例同步细粒度排除开关（某项为 true 表示仅本实例跳过该项同步） */
 export type InstanceSyncExclusions = {
 	options?: boolean,
 	servers?: boolean,
@@ -1138,7 +1138,7 @@ export type InstanceSyncExclusions = {
 	hotbar?: boolean,
 };
 
-/**  实例列表在后台变了（重新扫挂上的别家目录时加了、改了、移除了实例，D19），界面重新拿一次。 */
+/**  实例列表在后台变了（重新扫挂上的别家目录时加了、改了、移除了实例），界面重新拿一次。 */
 export type InstancesChanged = null;
 
 /**  设置里 Java 列表的一项。 */
@@ -1226,7 +1226,7 @@ export type JobSource =
 "local" | "other";
 
 export type JobState = "running" | "succeeded" | "failed" | "cancelled" | 
-/**  启动器关掉时还没做完（只出现在以前的历史里，D18） */
+/**  启动器关掉时还没做完（只出现在以前的历史里） */
 "interrupted";
 
 /**  做过的一步 */
@@ -1249,7 +1249,7 @@ export type LaunchAuthBlocked = {
 	message: string,
 };
 
-/**  启动钩子命令（D26c：在游戏启动前与退出后运行） */
+/**  启动钩子命令（在游戏启动前与退出后运行） */
 export type LaunchHooks = {
 	/**  启动前运行的命令（非零退出码会中止启动） */
 	preLaunch: string,
@@ -1485,7 +1485,7 @@ export type OfflineReason =
 /**  回答看不懂（太老的版本、不是我的世界服务器） */
 "badReply";
 
-/**  `options.txt` 跨实例同步的细分分类（D26b） */
+/**  `options.txt` 跨实例同步的细分分类 */
 export type OptionsSyncCategories = {
 	/**  按键绑定（`key_*`） */
 	keybinds: boolean,
@@ -1599,7 +1599,7 @@ export type PlanReason =
 /**  装光影需要的光影加载器（Iris） */
 "shaderLoader";
 
-/**  内容平台（D18「首选平台」）。和 `content::ContentSource` 的写法一样 */
+/**  内容平台（「首选平台」）。和 `content::ContentSource` 的写法一样 */
 export type Platform = "modrinth" | "curseForge";
 
 /**  双击快捷方式要做的事。 */
@@ -1693,9 +1693,9 @@ export type ProjectHit = {
 	server?: ServerInfo | null,
 	/**  作者不许第三方启动器下载（CurseForge 的设置）：只能去平台页面手动下载 */
 	manualOnly?: boolean,
-	/**  中文名（中文名表或装过的文件自带的；D17e）。搜索命令返回前补上 */
+	/**  中文名（中文名表或装过的文件自带的）。搜索命令返回前补上 */
 	titleZh?: string | null,
-	/**  同一个项目在另一个平台上的编号（中文名表或同一个文件确认过的；D17e）。搜索命令返回前补上 */
+	/**  同一个项目在另一个平台上的编号（中文名表或同一个文件确认过的）。搜索命令返回前补上 */
 	twinId?: string | null,
 };
 
@@ -1715,7 +1715,7 @@ export type ProjectMember = {
 	url: string | null,
 };
 
-/**  网络代理模式（D26a） */
+/**  网络代理模式 */
 export type ProxyMode = 
 /**  跟随 Windows 系统代理 */
 "system" | 
@@ -1724,10 +1724,10 @@ export type ProxyMode =
 /**  手动指定代理协议、主机与端口 */
 "custom";
 
-/**  自定义代理协议（D26a） */
+/**  自定义代理协议 */
 export type ProxyScheme = "http" | "socks5";
 
-/**  代理配置（D26a） */
+/**  代理配置 */
 export type ProxySettings = {
 	mode: ProxyMode,
 	scheme: ProxyScheme,
@@ -1738,7 +1738,7 @@ export type ProxySettings = {
 /**  直接进的世界或服务器 */
 export type QuickPlayRecord = { kind: "world"; folder: string } | { kind: "server"; address: string };
 
-/**  一个实例 `servers.dat` 里的多人服务器（首页「直达你的世界与服务器」用，D25d）。 */
+/**  一个实例 `servers.dat` 里的多人服务器（首页「直达你的世界与服务器」用）。 */
 export type RecentServer = {
 	instanceId: string,
 	/**  这个实例的游戏版本支不支持启动时直接连服（1.20 起） */
@@ -1811,7 +1811,7 @@ export type SearchPage = {
 	offset: number,
 };
 
-/**  资源中心的排序（D17c）。两个平台各自换成自己的排序参数，结果顺序和平台官网一致。 */
+/**  资源中心的排序。两个平台各自换成自己的排序参数，结果顺序和平台官网一致。 */
 export type SearchSort = 
 /**  有关键词时按相关度；没有关键词时按下载量（和以前一样） */
 "relevance" | 
@@ -1877,25 +1877,25 @@ export type Settings = {
 	appearance: Appearance,
 	download: DownloadSettings,
 	game: GameSettings,
-	/**  世界与存储（D17j / D26a / D26b）：自动备份与自定义备份目录 */
+	/**  世界与存储：自动备份与自定义备份目录 */
 	worlds: WorldSettings,
-	/**  本机跨实例同步（D26b） */
+	/**  本机跨实例同步 */
 	sync: SyncSettings,
-	/**  启动时自动静默检查启动器更新（D26a，默认开） */
+	/**  启动时自动静默检查启动器更新（默认开） */
 	autoCheckUpdates: boolean,
 };
 
 /**  共享资源文件夹类型（供「打开共享文件夹」命令使用） */
 export type SharedFolderKind = "root" | "resourcePacks" | "shaderPacks";
 
-/**  共享资源包 / 光影包条目（用于可视化管理弹窗，D26b 精修） */
+/**  共享资源包 / 光影包条目（用于可视化管理弹窗） */
 export type SharedPackEntry = {
 	name: string,
 	isDir: boolean,
 	bytes: number | null,
 };
 
-/**  共享服务器条目（用于可视化管理弹窗，D26b 精修） */
+/**  共享服务器条目（用于可视化管理弹窗） */
 export type SharedServerEntry = {
 	name: string,
 	address: string,
@@ -1980,7 +1980,7 @@ export type SyncPreview = {
 	sharedHasData: boolean,
 };
 
-/**  本机跨实例同步设置（D26b：纯本机、零云端，支持按资产独立开关） */
+/**  本机跨实例同步设置（纯本机、零云端，支持按资产独立开关） */
 export type SyncSettings = {
 	/**  总开关：开启后启动前拉取共享库、正常退出后增量回写共享库 */
 	enabled: boolean,
@@ -2047,13 +2047,13 @@ export type UpdateInfo = {
 	currentVersion: string | null,
 	versionId: string,
 	versionNumber: string,
-	/**  目标版本来自哪个平台（默认 Modrinth，兼容旧历史重试记录，D25e） */
+	/**  目标版本来自哪个平台（默认 Modrinth，兼容旧历史重试记录） */
 	source?: ContentSource,
-	/**  项目在平台上的编号（CurseForge 更新与补件用，D25e） */
+	/**  项目在平台上的编号（CurseForge 更新与补件用） */
 	projectId?: string | null,
-	/**  目标版本下载方式（CurseForge 作者禁止第三方下载时可能为 `Modrinth` 或 `Manual`，D25e） */
+	/**  目标版本下载方式（CurseForge 作者禁止第三方下载时可能为 `Modrinth` 或 `Manual`） */
 	delivery?: Delivery,
-	/**  补件时的精确下载页（D25e） */
+	/**  补件时的精确下载页 */
 	pageUrl?: string | null,
 };
 
@@ -2101,7 +2101,7 @@ export type WorldNotes = {
 	text?: string,
 };
 
-/**  世界的设置（D17j / D26b） */
+/**  世界的设置 */
 export type WorldSettings = {
 	/**
 	 *  自动备份：正常退出游戏后备份这次玩过的世界、从首页进世界前世界变过也先备一份。
@@ -2110,7 +2110,7 @@ export type WorldSettings = {
 	autoBackup: boolean,
 	/**  每个世界最多留几份自动备份（手动的、恢复前的不算） */
 	keepBackups: number,
-	/**  自定义世界备份存放根目录；`None` 时存放在各实例的 `Lumi/backups/`（D26b） */
+	/**  自定义世界备份存放根目录；`None` 时存放在各实例的 `Lumi/backups/` */
 	backupDir: string | null,
 };
 
@@ -2134,7 +2134,7 @@ export type WorldView = {
 	imageFit: ImageFit,
 	/**  世界种子（文字：64 位整数界面放不下） */
 	seed: string | null,
-	/**  世界笔记在首页显示的那一行（D17j） */
+	/**  世界笔记在首页显示的那一行 */
 	note: NoteLine | null,
 };
 

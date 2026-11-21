@@ -1,4 +1,4 @@
-//! Modrinth、CurseForge 接口的镜像（D18b）：官方失败或太慢时改用 MCIM（www.mcimirror.top）。
+//! Modrinth、CurseForge 接口的镜像：官方失败或太慢时改用 MCIM（www.mcimirror.top）。
 //!
 //! 按设置「内容与下载」里 Modrinth、CurseForge 两行下载源（[`set_policies`]）：
 //! - 自动（默认）：先问官方，5 秒没回或者失败就改问 MCIM，接下来 10 分钟都先问 MCIM（不让每次都白等官方）

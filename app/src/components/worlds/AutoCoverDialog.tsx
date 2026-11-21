@@ -21,7 +21,7 @@ export interface AutoCoverTarget {
 }
 
 /**
- * 自动封面精选弹窗（D25d）：展示该世界最近保存的最多 5 张自动封面，
+ * 自动封面精选弹窗：展示该世界最近保存的最多 5 张自动封面，
  * 点击任意一张即可锁定为固定封面（游玩时不再被新截屏覆盖）；随时可恢复自动更新。
  */
 export function AutoCoverDialog({

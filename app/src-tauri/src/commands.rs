@@ -72,7 +72,7 @@ pub fn app_log(level: FrontendLogLevel, message: String) {
     }
 }
 
-/// 前端界面语言变更时同步给后端（供「默认游戏语言：跟随启动器」使用，D26a）。
+/// 前端界面语言变更时同步给后端（供「默认游戏语言：跟随启动器」使用）。
 #[tauri::command]
 #[specta::specta]
 pub fn app_set_ui_language(state: State<'_, AppState>, language: String) {
@@ -109,19 +109,19 @@ pub fn settings_set(state: State<'_, AppState>, settings: Settings) -> Result<Se
     }
     let saved = state.settings.set(normalized)?;
     state.doh.set_enabled(saved.download.doh_enabled);
-    // Modrinth、CurseForge 两行下载源立刻生效（D18b）
+    // Modrinth、CurseForge 两行下载源立刻生效
     launcher_core::content::mirror::set_policies(
         saved.download.modrinth_source,
         saved.download.curseforge_source,
     );
-    // 关掉「高性能显卡」：撤回我们写过的 Windows 显卡设置（D17h）
+    // 关掉「高性能显卡」：撤回我们写过的 Windows 显卡设置
     if gpu_was_on && !saved.game.high_performance_gpu {
         crate::system::undo_gpu(&state);
     }
     Ok(saved)
 }
 
-/// 导出可迁移的偏好设置 JSON（自动剥离本机路径，绝不含任何登录凭据，D26a）。
+/// 导出可迁移的偏好设置 JSON（自动剥离本机路径，绝不含任何登录凭据）。
 #[tauri::command]
 #[specta::specta]
 pub async fn settings_export(app: AppHandle, state: State<'_, AppState>) -> Result<bool, AppError> {
@@ -154,7 +154,7 @@ pub async fn settings_export(app: AppHandle, state: State<'_, AppState>) -> Resu
     .map_err(|e| AppError::new("dialog.failed", "打开保存窗口失败").with_detail(e))?
 }
 
-/// 导入偏好设置 JSON（自动保留本机游戏目录与补件目录，绝不覆盖账号数据，D26a）。
+/// 导入偏好设置 JSON（自动保留本机游戏目录与补件目录，绝不覆盖账号数据）。
 #[tauri::command]
 #[specta::specta]
 pub async fn settings_import(

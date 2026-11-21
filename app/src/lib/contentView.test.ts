@@ -76,12 +76,12 @@ describe("实例内容的排序筛选", () => {
     expect(titles(viewContent(items, { ...base, query: "create.jar" }))).toEqual(["Create"]);
   });
 
-  it("中文名也能搜（D17e）", () => {
+  it("中文名也能搜", () => {
     const named = [item("Create", { titleZh: "机械动力" }), item("Jade")];
     expect(titles(viewContent(named, { ...base, query: "机械" }))).toEqual(["Create"]);
   });
 
-  it("按来源筛（D17c）：没认出来的算「未识别」", () => {
+  it("按来源筛：没认出来的算「未识别」", () => {
     const mixed = [
       item("Sodium", { source: "modrinth" }),
       item("Create", { source: "curseForge" }),

@@ -59,7 +59,7 @@ pub struct FileDragHover(pub bool);
 #[derive(Debug, Clone, Serialize, specta::Type, tauri_specta::Event)]
 pub struct FilesReading(pub bool);
 
-/// 拖进窗口的文件认好了（没有正在进行的补件时，D17g），界面弹出「装到哪」。
+/// 拖进窗口的文件认好了（没有正在进行的补件时），界面弹出「装到哪」。
 #[derive(Debug, Clone, Serialize, specta::Type, tauri_specta::Event)]
 pub struct FilesDropped {
     pub items: Vec<crate::drops::DropItem>,
@@ -67,7 +67,7 @@ pub struct FilesDropped {
     pub rests: Vec<crate::drops::BundleRest>,
 }
 
-/// 实例列表在后台变了（重新扫挂上的别家目录时加了、改了、移除了实例，D19），界面重新拿一次。
+/// 实例列表在后台变了（重新扫挂上的别家目录时加了、改了、移除了实例），界面重新拿一次。
 #[derive(Debug, Clone, Serialize, specta::Type, tauri_specta::Event)]
 pub struct InstancesChanged;
 

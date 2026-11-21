@@ -8,7 +8,7 @@
 //!    剩下的列进补件清单，由用户在浏览器里下载
 //!
 //! 没有 Key 时第二步做不了：清单里没有哈希，用户手动放进来的文件也没法核对，所以直接拒绝，
-//! 不做「不校验的导入」（开发合同第 8 节第 4 条）。
+//! 不做「不校验的导入」（docs/DESIGN.md 第 8 节第 4 条）。
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -569,7 +569,7 @@ mod tests {
         );
         let cf_pack = inspect(p.path()).unwrap();
         let client = reqwest::Client::new();
-        // D18b 起没 Key 会改问 MCIM；「仅官方源」时才直接拒绝（这样测不用联网）
+        // 没 Key 会改问 MCIM；「仅官方源」时才直接拒绝（这样测不用联网）
         crate::content::mirror::curseforge()
             .set_policy(crate::config::DownloadSource::OfficialOnly);
         let cf = CurseForge::new(client.clone(), None);

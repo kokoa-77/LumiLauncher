@@ -77,7 +77,7 @@ describe("launcher language", () => {
   });
 });
 
-describe("locale copy audit (D26)", () => {
+describe("locale copy audit", () => {
   const flatZh = flattenLocale(zhCN as unknown as Record<string, unknown>);
   const flatEn = flattenLocale(en as unknown as Record<string, unknown>);
   const zhKeys = Object.keys(flatZh);

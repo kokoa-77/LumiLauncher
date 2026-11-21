@@ -130,7 +130,7 @@ export function InstanceTile({
               />
             )}
             <Truncated as="p" className="truncate font-medium" text={instance.name} />
-            {/* 挂上的别家版本：是哪家的（D19） */}
+            {/* 挂上的别家版本：是哪家的 */}
             {instance.linked && <Tag>{t(`launchers.${instance.linked}`)}</Tag>}
           </div>
           <p className="truncate text-fg-muted text-xs">{instanceSubtitle(instance)}</p>

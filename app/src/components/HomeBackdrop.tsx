@@ -64,7 +64,7 @@ export function HomeBackdrop({ backdrop, ready }: { backdrop: Backdrop | null; r
             } ${loaded ? "opacity-100" : "opacity-0"}`}
           />
           <div className="absolute inset-0 bg-hero-tint" />
-          {/* 有世界截图的首页在精美模式下仍保留少量淡微光尘埃，颜色随世界主色变化（D25c） */}
+          {/* 有世界截图的首页在精美模式下仍保留少量淡微光尘埃，颜色随世界主色变化 */}
           {ready && animated && (
             <LightField count={7} seed={47} area="low" className="absolute inset-0 opacity-65" />
           )}
@@ -79,7 +79,7 @@ export function HomeBackdrop({ backdrop, ready }: { backdrop: Backdrop | null; r
       )}
       <div className="absolute inset-x-0 top-0 h-32 bg-linear-to-b from-hero-scrim/80 via-hero-scrim/35 via-55% to-transparent" />
       <div className="absolute inset-y-0 left-0 w-64 bg-linear-to-r from-hero-scrim/75 via-hero-scrim/30 via-55% to-transparent" />
-      {/* 非线性多段缓动遮罩（D25c）：消除高对比截图上的渐变断层，同时保持画面通透 */}
+      {/* 非线性多段缓动遮罩：消除高对比截图上的渐变断层，同时保持画面通透 */}
       <div className="absolute inset-x-0 bottom-0 h-[56%] bg-linear-to-t from-hero-scrim from-0% via-hero-scrim/72 via-28% via-hero-scrim/28 via-62% to-transparent" />
     </motion.div>
   );

@@ -2,7 +2,7 @@
 //!
 //! 文档：<https://docs.curseforge.com/rest-api/>。每个请求都要带启动器自己的 API Key（请求头 `x-api-key`）；
 //! 7 月 16 日起 CDN 下载也要带。**Key 只发给 CurseForge 自己的域名**（[`KEY_HOSTS`]）。
-//! 官方不行或没有 Key 时按「CurseForge」那行下载源设置改问 MCIM 镜像（D18b，见 [`super::mirror`]），镜像不带 Key。
+//! 官方不行或没有 Key 时按「CurseForge」那行下载源设置改问 MCIM 镜像（见 [`super::mirror`]），镜像不带 Key。
 //!
 //! 作者禁止第三方下载的文件，接口返回的 `downloadUrl` 是空的：**不自己拼 CDN 地址**，
 //! 交给补件流程（[`super::claim`]）让用户在浏览器里下载。
@@ -53,7 +53,7 @@ pub mod class {
 
 /// 加载器（`modLoaderType`）
 pub const LOADER_NEOFORGE: u32 = 6;
-/// CurseForge 的加载器编号：Forge 1、Fabric 4、Quilt 5（挂上的别家版本按它筛文件，D19）
+/// CurseForge 的加载器编号：Forge 1、Fabric 4、Quilt 5（挂上的别家版本按它筛文件）
 pub const LOADER_FORGE: u32 = 1;
 pub const LOADER_FABRIC: u32 = 4;
 pub const LOADER_QUILT: u32 = 5;
@@ -134,7 +134,7 @@ impl CurseForge {
         self.key.is_some()
     }
 
-    /// 能不能问 CurseForge：有 Key，或者没 Key 但允许用 MCIM 镜像（D18b）
+    /// 能不能问 CurseForge：有 Key，或者没 Key 但允许用 MCIM 镜像
     pub fn usable(&self) -> bool {
         self.has_key()
             || super::mirror::curseforge().policy() != crate::config::DownloadSource::OfficialOnly
@@ -148,7 +148,7 @@ impl CurseForge {
             .clone()
     }
 
-    /// 切换代理后热替换 HTTP 客户端（D26a）。
+    /// 切换代理后热替换 HTTP 客户端。
     pub fn set_client(&self, client: Client) {
         *self.client.write().unwrap_or_else(|e| e.into_inner()) = client;
     }
@@ -353,7 +353,7 @@ impl CurseForge {
         Ok(files)
     }
 
-    /// 列出项目的版本列表（项目「版本」页签与实例「切换版本」共用，D25e）。
+    /// 列出项目的版本列表（项目「版本」页签与实例「切换版本」共用）。
     pub async fn project_versions(
         &self,
         mod_id: u32,
@@ -440,7 +440,7 @@ impl CurseForge {
             .collect())
     }
 
-    /// 懒加载 CurseForge 单个文件的更新日志（HTML 原文，前端清洗后展示，D25e）。
+    /// 懒加载 CurseForge 单个文件的更新日志（HTML 原文，前端清洗后展示）。
     pub async fn file_changelog(&self, mod_id: u32, file_id: u32) -> Result<String, ContentError> {
         let page: Data<String> = self
             .get(
@@ -451,7 +451,7 @@ impl CurseForge {
         Ok(page.data)
     }
 
-    /// 批量查一组 CurseForge 项目在指定游戏版本与加载器下的最新兼容文件（D25e）。
+    /// 批量查一组 CurseForge 项目在指定游戏版本与加载器下的最新兼容文件。
     /// 先用单次 `POST /mods` 读 `latestFilesIndexes` 并批量 `POST /mods/files` 拉全量文件信息；
     /// 索引里没命中（如部分光影/材质包未按加载器建索引）再按需回退单项目查询。
     /// 返回 `mod_id -> (最新 File, 项目官网地址)`。
@@ -533,7 +533,7 @@ impl CurseForge {
             .await
     }
 
-    /// 解析安装 CurseForge 指定文件版本（含必需前置，D25e）。
+    /// 解析安装 CurseForge 指定文件版本（含必需前置）。
     pub async fn resolve_version(
         &self,
         client: &Client,
@@ -1280,7 +1280,7 @@ mod tests {
 
     #[tokio::test]
     async fn refuses_to_call_without_a_key() {
-        // D18b 起没 Key 会改问 MCIM；「仅官方源」时才直接拒绝（这样测不用联网）
+        // 没 Key 会改问 MCIM；「仅官方源」时才直接拒绝（这样测不用联网）
         crate::content::mirror::curseforge()
             .set_policy(crate::config::DownloadSource::OfficialOnly);
         let cf = CurseForge::new(Client::new(), None);

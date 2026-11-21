@@ -3,7 +3,7 @@ import { Truncated } from "@/components/ui/HoverCard";
 import { displayName } from "@/lib/discover";
 
 /**
- * 项目名（D17e）：有中文名时「中文名」后面跟灰色小字的英文名，没有时只有英文名。
+ * 项目名：有中文名时「中文名」后面跟灰色小字的英文名，没有时只有英文名。
  * 放不下被截断时，鼠标停上去看「中文名（英文名）」全文。
  */
 export function ProjectName({

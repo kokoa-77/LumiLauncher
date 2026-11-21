@@ -501,7 +501,7 @@ export function ContentTab({
     void load();
   }, [load, contentVersion]);
 
-  // 进入实例内容页或切换类型后自动静默检查更新（与首页共享会话缓存；纯原版模组页或空列表静默跳过，D25e）
+  // 进入实例内容页或切换类型后自动静默检查更新（与首页共享会话缓存；纯原版模组页或空列表静默跳过）
   const hasItems = (items?.length ?? 0) > 0;
   const canAutoCheck = hasItems && (kind !== "mod" || instance.loader !== null);
   useEffect(() => {
@@ -537,7 +537,7 @@ export function ContentTab({
     if (filter === "updates" && Object.keys(updates).length === 0) setFilter("all");
   }, [filter, updates]);
 
-  // 「来源」筛选（D17c）：列表里有两种以上来源时才出现
+  // 「来源」筛选：列表里有两种以上来源时才出现
   const origins = useMemo(() => originsIn(items ?? []), [items]);
   const activeOrigin = origins.includes(origin as ContentOrigin) ? origin : "all";
   const visible = useMemo(
@@ -587,7 +587,7 @@ export function ContentTab({
     void load();
   };
 
-  /** 手动点「刷新」：重新扫描本地文件夹 + 强制绕过缓存重查远端更新（D25e） */
+  /** 手动点「刷新」：重新扫描本地文件夹 + 强制绕过缓存重查远端更新 */
   const refreshAll = async () => {
     setRefreshingLocal(true);
     try {
@@ -669,7 +669,7 @@ export function ContentTab({
   const chosenUpdates = chosen.flatMap((i) => (updates[i.fileName] ? [updates[i.fileName]!] : []));
   const removable = chosen.filter((i) => !i.isFolder);
 
-  /** 把这些文件一起设成开或关（后端一次做完，出错就一个都不改，D17m），返回真的改了的文件名 */
+  /** 把这些文件一起设成开或关（后端一次做完，出错就一个都不改），返回真的改了的文件名 */
   const applyEnabled = async (fileNames: string[], enabled: boolean) => {
     try {
       return unwrap(await commands.contentSetManyEnabled(id, kind, fileNames, enabled));

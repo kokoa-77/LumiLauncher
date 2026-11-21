@@ -22,7 +22,7 @@ export interface MemoryValue {
 }
 
 /**
- * 内存的「自动 / 手动」+ 内存条 + 手动时的滑块（全局设置和实例的「设置」页签共用，D17i）。
+ * 内存的「自动 / 手动」+ 内存条 + 手动时的滑块（全局设置和实例的「设置」页签共用）。
  * 放在设置的一组（Group）里面，占两行。
  */
 export function MemoryPicker({
@@ -121,7 +121,7 @@ export function MemoryPicker({
 }
 
 /**
- * 设置 →「游戏」里的内存和显卡（D17h）：
+ * 设置 →「游戏」里的内存和显卡：
  * 内存条（每两秒刷新，数字和任务管理器对得上）、自动 / 手动、手动时的滑块、整理内存；高性能显卡开关。
  */
 export function MemorySettings({

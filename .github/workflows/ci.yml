@@ -37,6 +37,12 @@ jobs:
       - name: Show pinned Rust toolchain
         run: rustup show
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: lumi-ci
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
@@ -45,6 +51,9 @@ jobs:
 
       - name: Build production UI bundle
         run: pnpm --dir app build
+
+      - name: Check first-screen bundle budget
+        run: pnpm check:bundle
 
       - name: Verify generated bindings and lockfiles are clean
         run: git diff --exit-code -- app/src/lib/bindings.ts Cargo.lock pnpm-lock.yaml

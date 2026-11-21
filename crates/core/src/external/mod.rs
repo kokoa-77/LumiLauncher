@@ -1,4 +1,4 @@
-//! 别家启动器（D19）。
+//! 别家启动器。
 //!
 //! - [`root`]：挂上别家的 `.minecraft`（官方、PCL、HMCL……），里面的版本原地读、不挪文件
 //! - [`foreign`]：从 Prism / MultiMC、CurseForge、ATLauncher、Modrinth App 导入实例（复制一份游戏文件）

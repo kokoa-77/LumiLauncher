@@ -109,7 +109,7 @@ function preloadDiscover() {
   void import("@/pages/DiscoverPage").catch((error: unknown) => logError(error, "预加载发现内容"));
 }
 
-/** 窄图标栏：首页、实例、资源，最下面是新建实例。设置和账号在右上角（docs/ui-backlog.md）。 */
+/** 窄图标栏：首页、实例、资源，最下面是新建实例。设置和账号在右上角（docs/DESIGN.md）。 */
 export function Rail() {
   const { t } = useTranslation();
   const [creating, setCreating] = useState(false);

@@ -83,7 +83,7 @@ pub fn show_main(handle: &AppHandle) {
     }
 }
 
-/// 启动游戏后最小化主窗口（D26a）。
+/// 启动游戏后最小化主窗口。
 pub fn minimize_main(handle: &AppHandle) {
     on_main_thread(handle, |handle| {
         if let Some(window) = handle.get_webview_window(MAIN_WINDOW)

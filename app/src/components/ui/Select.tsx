@@ -208,7 +208,7 @@ export function Select({
                         onClick={() => choose(index)}
                         onMouseEnter={() => setActive(index)}
                         onKeyDown={() => undefined}
-                        // 选中的是主色浅底 + 主色字（开发合同第 5 节「选中」，D18 验收时发现少了浅底）；
+                        // 选中的是主色浅底 + 主色字（docs/DESIGN.md 第 5 节「选中」）；
                         // 移到的是灰底，移到选中的那项上还是浅底
                         className={`flex items-center justify-between gap-2 rounded-item px-2.5 text-sm ${
                           isSelected

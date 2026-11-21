@@ -1,4 +1,4 @@
-//! 中文名（D17e）。
+//! 中文名。
 //!
 //! 两个来源，按这个顺序用：
 //! 1. 我们自己的中文名表 `crates/core/data/zh-names.json`（CC0，人工核对过）。表里还记着两个平台上
@@ -975,7 +975,7 @@ mod tests {
             table.search("钠", 1).first().map(|m| m.en.as_str()),
             Some("Sodium")
         );
-        // D17e 验收时补的：玩家习惯叫 Jade「玉」
+        // 验收时补的：玩家习惯叫 Jade「玉」
         assert_eq!(
             table.search("玉", 1).first().map(|m| m.en.as_str()),
             Some("Jade 🔍")

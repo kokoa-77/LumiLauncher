@@ -49,7 +49,7 @@ describe("详情页的兼容性", () => {
   });
 });
 
-describe("两个平台的结果合在一起（D17c）", () => {
+describe("两个平台的结果合在一起", () => {
   const hit = (
     source: ProjectHit["source"],
     title: string,
@@ -110,7 +110,7 @@ describe("两个平台的结果合在一起（D17c）", () => {
     expect(merged[0]?.counts).toEqual({ modrinth: 9, curseForge: 3 });
   });
 
-  it("合成一条时显示首选平台那份（D18）", () => {
+  it("合成一条时显示首选平台那份", () => {
     const pages = [
       [hit("modrinth", "Jade", { description: "Modrinth 的简介" })],
       [hit("curseForge", "Jade", { description: "CurseForge 的简介" })],
@@ -388,7 +388,7 @@ describe("筛选的分类对照", () => {
   });
 });
 
-describe("已经装了吗（D17e）", () => {
+describe("已经装了吗", () => {
   const item = (extra: Partial<ContentItem>): ContentItem => ({
     kind: "mod",
     fileName: "a.jar",

@@ -46,7 +46,7 @@ export function App() {
       .finally(() => setBooted(true));
   }, [boot]);
 
-  // 同步当前界面语言到后端（供「默认游戏语言：跟随启动器」使用，D26a）
+  // 同步当前界面语言到后端（供「默认游戏语言：跟随启动器」使用）
   useEffect(() => {
     void commands.appSetUiLanguage(i18n.language).catch(() => undefined);
   }, [i18n.language]);
@@ -89,7 +89,7 @@ export function App() {
 
   useEffect(() => applyReduceMotion(reduceMotion), [reduceMotion]);
 
-  // 关了「跟着世界变」：在哪一页都是自己选的主色（开着时由首页、实例页按世界换，D19c）
+  // 关了「跟着世界变」：在哪一页都是自己选的主色（开着时由首页、实例页按世界换）
   const followWorld = useAppStore((s) => s.settings?.appearance.accentFollowWorld ?? true);
   const ownHue = useAppStore((s) => s.settings?.appearance.accentHue ?? null);
   const ownChroma = useAppStore((s) => s.settings?.appearance.accentChroma ?? null);
@@ -129,7 +129,7 @@ export function App() {
     if (info) applyBackdrop(info.backdrop);
   }, [info]);
 
-  // 上次改到一半启动器被关掉的实例：后端启动时已经退回改之前，这里告诉用户一声（D17m）
+  // 上次改到一半启动器被关掉的实例：后端启动时已经退回改之前，这里告诉用户一声
   useEffect(() => {
     if (!booted) return;
     commands

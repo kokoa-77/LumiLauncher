@@ -1,4 +1,4 @@
-//! 高性能显卡（D17h）：启动前在 Windows「设置 → 系统 → 显示 → 显卡」里给这次用的 java.exe 加一条「高性能」。
+//! 高性能显卡：启动前在 Windows「设置 → 系统 → 显示 → 显卡」里给这次用的 java.exe 加一条「高性能」。
 //!
 //! 写的是当前用户的注册表 `HKCU\Software\Microsoft\DirectX\UserGpuPreferences`（不要管理员权限）：
 //! 值的名字是程序的完整路径，内容是 `GpuPreference=2;`（2 = 高性能）。系统设置里的那张列表就是读这里，

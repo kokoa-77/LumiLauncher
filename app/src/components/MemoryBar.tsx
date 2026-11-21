@@ -14,9 +14,9 @@ interface MemoryBarProps {
 }
 
 /**
- * 内存条（D17h）：已用（灰）| 游戏分到（主色）| 剩余（空轨道），下面一行写数字。
+ * 内存条：已用（灰）| 游戏分到（主色）| 剩余（空轨道），下面一行写数字。
  * 游戏要的比可用多时，那一段换成警告色、截到最右边。
- * 只动 transform（开发合同第 6 节不许动宽度）：两段都铺满整条再按比例 scaleX，游戏那段平移到「已用」后面，两段不重叠。
+ * 只动 transform（docs/DESIGN.md 第 6 节不许动宽度）：两段都铺满整条再按比例 scaleX，游戏那段平移到「已用」后面，两段不重叠。
  */
 export function MemoryBar({ totalMb, availableMb, gameMb, gameIsMax = false }: MemoryBarProps) {
   const { t } = useTranslation();

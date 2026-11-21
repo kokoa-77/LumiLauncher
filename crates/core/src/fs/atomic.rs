@@ -43,7 +43,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), AtomicWriteError> {
     write_atomic_from(path, &mut &bytes[..]).map(|_| ())
 }
 
-/// 和 [`write_atomic`] 一样，但边读边写（解压整合包里的大文件用，不用先整个读进内存，D17l）。
+/// 和 [`write_atomic`] 一样，但边读边写（解压整合包里的大文件用，不用先整个读进内存）。
 /// 返回写了多少字节。读到一半出错时目标文件不动，临时文件删掉。
 pub fn write_atomic_from(path: &Path, reader: &mut impl Read) -> Result<u64, AtomicWriteError> {
     let parent = path

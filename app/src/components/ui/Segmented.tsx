@@ -18,7 +18,7 @@ interface SegmentedProps<T extends string> {
 
 /**
  * 分段选择器：一条胶囊，选中的那格是主色浅底 + 主色字（和侧栏、列表里的「选中」一个样子，
- * 见开发合同第 5 节「颜色的六种角色」），选中块平滑滑到新位置。
+ * 见docs/DESIGN.md 第 5 节「颜色的六种角色」），选中块平滑滑到新位置。
  * 和按钮、输入框一样高（36 像素），放在一排里边缘对齐。
  */
 export function Segmented<T extends string>({

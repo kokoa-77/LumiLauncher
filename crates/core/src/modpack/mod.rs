@@ -1,5 +1,5 @@
 //! 整合包：本地导入（Modrinth `.mrpack`、CurseForge `.zip`）、从 Modrinth 下载、导入前检查缺什么、
-//! 把实例导出成 `.mrpack`（D17i；以后还有更新）。
+//! 把实例导出成 `.mrpack`（以后还有更新）。
 //!
 //! 两种格式各自读取、检查，得到同一种 [`PackPlan`]，再走同一条导入流程（[`plan::import`]）。
 
@@ -20,7 +20,7 @@ pub use plan::{
 /// 导入临时目录的前缀（`<临时根目录>/import-<接着装的键>`）
 pub const STAGING_PREFIX: &str = "import-";
 
-/// 一次导入的临时目录（D18 能接着装）：同一个 `resume_key` 总是同一个文件夹。
+/// 一次导入的临时目录（能接着装）：同一个 `resume_key` 总是同一个文件夹。
 /// 键只留字母数字和 `-`，别的字符换成 `_`，不会拼出越界的路径。
 pub fn staging_dir(temp_root: &Path, resume_key: &str) -> PathBuf {
     let key: String = resume_key

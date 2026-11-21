@@ -14,7 +14,7 @@ export function groupNames(instances: { group: string | null }[]): string[] {
 }
 
 /**
- * 「移到分组」（D17k）：点一个已有的分组就挪过去；下面输入新名字新建一个。
+ * 「移到分组」：点一个已有的分组就挪过去；下面输入新名字新建一个。
  * 实例卡片和实例页的「⋮」都打开它（`useGameStore.groupAsk`）。
  */
 export function GroupDialog() {
