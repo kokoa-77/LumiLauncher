@@ -15,6 +15,7 @@ Thank you for wanting to help Lumi! Lumi is maintained by one person, so the mos
 - **Share ideas.** Post them in [Discussions → Ideas](https://github.com/kokoa-77/LumiLauncher/discussions/categories/ideas). Ideas that many players support become feature requests.
 - **Improve translations.** If an English or Chinese text in Lumi reads oddly, tell us in an issue where it appears and what it should say.
 - **Help others** in Discussions, on Discord or in the QQ group.
+- **Sponsor development** on [afdian](https://afdian.com/a/lumilauncher), if you would like to. It is entirely voluntary.
 
 ### Before Opening an Issue
 
@@ -87,6 +88,7 @@ Everyone taking part in Lumi's spaces follows the [Code of Conduct](CODE_OF_COND
 - **提出想法**：发到 [Discussions → Ideas](https://github.com/kokoa-77/LumiLauncher/discussions/categories/ideas)。很多玩家支持的想法会转成功能建议。
 - **改进翻译**：Lumi 里哪句中文或英文读着别扭，提个 Issue 说明在哪里、应该怎么写。
 - **帮助其他玩家**：在 Discussions、QQ 群或 Discord 里回答问题。
+- **赞助开发**：愿意的话可以在[爱发电](https://afdian.com/a/lumilauncher)支持，完全自愿。
 
 ### 提交 Issue 之前
 

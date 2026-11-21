@@ -8,7 +8,7 @@ contact_links:
     about: 中文玩家交流与版本公告 / Chinese-speaking community and announcements
   - name: Discord
     url: https://discord.gg/76sFuXjHv
-    about: Chat with other players and the developer / 与海外玩家交流
+    about: Chat with other players and the developer / 与其他玩家和开发者交流，中英文分区
   - name: 私密安全报告 · Security Advisory
     url: https://github.com/kokoa-77/LumiLauncher/security/advisories/new
     about: 私下报告安全漏洞，切勿公开 / Report a vulnerability privately, never in public

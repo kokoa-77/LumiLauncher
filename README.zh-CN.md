@@ -22,6 +22,7 @@
     <a href="https://pd.qq.com/s/N7vbhid6xg?b=9"><img src="https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-%E5%8A%A0%E5%85%A5-12B7F5?logo=qq&logoColor=white" alt="QQ 频道" /></a>
     <a href="https://space.bilibili.com/25681030"><img src="https://img.shields.io/badge/B%E7%AB%99-%E5%BC%80%E5%8F%91%E8%80%85-00A1D6?logo=bilibili&logoColor=white" alt="开发者 B 站" /></a>
     <a href="https://discord.gg/76sFuXjHv"><img src="https://img.shields.io/badge/Discord-%E5%8A%A0%E5%85%A5-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
+    <a href="https://afdian.com/a/lumilauncher"><img src="https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-%E8%B5%9E%E5%8A%A9-946CE6" alt="在爱发电赞助" /></a>
   </p>
 </div>
 
@@ -160,9 +161,13 @@ Windows 安装包暂未进行代码签名，可能触发 SmartScreen 和部分�
 | [GitHub Discussions](https://github.com/kokoa-77/LumiLauncher/discussions) | 交流想法、提问、分享你的配置 |
 | [QQ 群](https://qm.qq.com/q/vSHOPvOKt2) · [QQ 频道](https://pd.qq.com/s/N7vbhid6xg?b=9) | 中文玩家交流、版本公告与使用求助 |
 | [开发者 B 站](https://space.bilibili.com/25681030) | 开发进度与视频 |
-| [Discord](https://discord.gg/76sFuXjHv) | 与海外玩家交流（英文为主） |
+| [Discord](https://discord.gg/76sFuXjHv) | 与其他玩家和开发者交流，中文、英文分区 |
 
 遇到问题请尽量在 GitHub 上提交，只在群里反馈容易被后续消息淹没。安全漏洞请走[私密安全报告](https://github.com/kokoa-77/LumiLauncher/security/advisories/new)，不要公开发布。
+
+## 赞助
+
+Lumi 的所有功能对所有人永远免费。如果它帮到了你，欢迎在[爱发电](https://afdian.com/a/lumilauncher)支持开发。赞助完全自愿，不会换来额外功能、抢先版或优先处理问题。
 
 ## 参与贡献
 

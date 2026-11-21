@@ -22,6 +22,7 @@
     <a href="https://qm.qq.com/q/vSHOPvOKt2"><img src="https://img.shields.io/badge/QQ%20Group-Join-12B7F5?logo=qq&logoColor=white" alt="QQ Group" /></a>
     <a href="https://pd.qq.com/s/N7vbhid6xg?b=9"><img src="https://img.shields.io/badge/QQ%20Channel-Join-12B7F5?logo=qq&logoColor=white" alt="QQ Channel" /></a>
     <a href="https://space.bilibili.com/25681030"><img src="https://img.shields.io/badge/Bilibili-Developer-00A1D6?logo=bilibili&logoColor=white" alt="Developer on Bilibili" /></a>
+    <a href="https://afdian.com/a/lumilauncher"><img src="https://img.shields.io/badge/afdian-Sponsor-946CE6" alt="Sponsor on afdian" /></a>
   </p>
 </div>
 
@@ -158,11 +159,15 @@ Lumi currently supports Windows 10 and 11 only. Other platforms may come later.
 |---|---|
 | [GitHub Issues](https://github.com/kokoa-77/LumiLauncher/issues/new/choose) | Bug reports, game crashes and feature requests (English or Chinese) |
 | [GitHub Discussions](https://github.com/kokoa-77/LumiLauncher/discussions) | Ideas, questions and sharing your setup |
-| [Discord](https://discord.gg/76sFuXjHv) | Chatting with other players and the developer (English) |
+| [Discord](https://discord.gg/76sFuXjHv) | Chatting with other players and the developer (separate English and Chinese channels) |
 | [QQ Group](https://qm.qq.com/q/vSHOPvOKt2) · [QQ Channel](https://pd.qq.com/s/N7vbhid6xg?b=9) | Chinese-speaking community, announcements and help |
 | [Bilibili](https://space.bilibili.com/25681030) | Development updates and videos from the developer (Chinese) |
 
 Please report bugs on GitHub rather than only in chat, so they are not lost. Security issues go through [private vulnerability reporting](https://github.com/kokoa-77/LumiLauncher/security/advisories/new), never in public.
+
+## Sponsor
+
+Every Lumi feature is free for everyone, forever. If Lumi helps you, you can support its development on [afdian](https://afdian.com/a/lumilauncher), a Chinese creator-support platform. Sponsorship is entirely voluntary and never unlocks features, early builds or faster support.
 
 ## Contributing
 

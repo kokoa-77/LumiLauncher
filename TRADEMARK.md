@@ -60,8 +60,9 @@ Only these are run by the Lumi project:
 | QQ group | [Lumi Launcher 官方交流 1 群](https://qm.qq.com/q/vSHOPvOKt2) |
 | QQ Channel | [Lumi Launcher](https://pd.qq.com/s/N7vbhid6xg?b=9) |
 | Developer on Bilibili | <https://space.bilibili.com/25681030> |
+| Sponsorship (afdian) | <https://afdian.com/a/lumilauncher> |
 
-Lumi will never ask for your Microsoft password, and never sells accounts, "cracked" builds or paid features.
+Lumi will never ask for your Microsoft password, and never sells accounts, "cracked" builds or paid features. Sponsorship is only accepted on the afdian page above.
 
 ### Reporting a Counterfeit
 
@@ -129,8 +130,9 @@ Lumi 的源代码是自由软件，以 `GPL-3.0-only` 发布，你可以学习�
 | QQ 群 | [Lumi Launcher 官方交流 1 群](https://qm.qq.com/q/vSHOPvOKt2) |
 | QQ 频道 | [Lumi Launcher](https://pd.qq.com/s/N7vbhid6xg?b=9) |
 | 开发者 B 站 | <https://space.bilibili.com/25681030> |
+| 赞助（爱发电） | <https://afdian.com/a/lumilauncher> |
 
-Lumi 永远不会向你索要 Microsoft 密码，也从不出售账号、「破解版」或付费功能。
+Lumi 永远不会向你索要 Microsoft 密码，也从不出售账号、「破解版」或付费功能。赞助只通过上面的爱发电页面接受。
 
 ### 举报冒名版本
 
