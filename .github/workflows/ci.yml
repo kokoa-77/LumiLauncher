@@ -1,4 +1,4 @@
-name: CI
+name: Lumi Desktop CI
 
 on:
   push:

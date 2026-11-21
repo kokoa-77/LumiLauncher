@@ -10,7 +10,7 @@
 
   <p>
     <a href="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml">
-      <img src="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml/badge.svg" alt="CI" />
+      <img src="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml/badge.svg" alt="Lumi Desktop CI" />
     </a>
     <a href="LICENSE">
       <img src="https://img.shields.io/badge/license-GPL--3.0--only-blue.svg" alt="License: GPL-3.0-only" />
@@ -25,6 +25,35 @@
 ---
 
 > **Disclaimer:** Lumi is an independent third-party launcher and is **NOT AN OFFICIAL MINECRAFT PRODUCT**. It is **NOT APPROVED BY OR ASSOCIATED WITH MOJANG STUDIOS OR MICROSOFT**. A valid, legally owned Microsoft account with Minecraft: Java Edition entitlement is required to play.
+
+## Showcase
+
+<p align="center">
+  <img src="docs/screenshots/01-home-dark.png" alt="Lumi immersive home screen with world cover and one-click Quick Play" width="100%" />
+</p>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/02-instances-light.png" alt="Light mode instance library with groups and modpacks" width="100%" />
+      <p align="center"><sub><strong>Instance Library (Light Theme)</strong> · Isolated instances, grouping &amp; external imports</sub></p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/03-instance-detail.png" alt="Instance detail view with mod management and update checks" width="100%" />
+      <p align="center"><sub><strong>Instance Content &amp; Safety</strong> · Mod updates, version pinning &amp; change history rollback</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/04-discover.png" alt="Unified Modrinth and CurseForge discovery browser" width="100%" />
+      <p align="center"><sub><strong>Unified Discover</strong> · Modrinth &amp; CurseForge mods, modpacks, shaders, and worlds</sub></p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/05-instance-sync.png" alt="Zero-cloud local instance sync settings" width="100%" />
+      <p align="center"><sub><strong>Local Instance Sync</strong> · Zero-cloud sync for options, servers, packs, and hotbars</sub></p>
+    </td>
+  </tr>
+</table>
 
 ## Highlights
 
@@ -85,12 +114,6 @@ pnpm --dir app tauri build --bundles nsis
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the codebase layout and [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-## Roadmap
-
-- **v1.0**: Windows 10/11 installer & portable edition, signed auto-updates, official Microsoft login after Mojang AppID approval.
-- **v1.1+**: Mod conflict locator, expanded timeline rollback, world growth album, play-time summary, mod deduplication, multi-connection large-file downloads.
-- **v1.2+**: Cross-platform support (**Linux** AppImage / `.deb` / Flatpak first, followed by **macOS** Apple Silicon & Intel `.dmg`), theme packs, and server deployment.
-
 ## Code Signing Policy
 
 Once approved by [SignPath Foundation](https://signpath.org/), official Windows release binaries will use free open-source code signing provided by [SignPath.io](https://signpath.io/) with certificates from SignPath Foundation.
@@ -99,7 +122,18 @@ Once approved by [SignPath Foundation](https://signpath.org/), official Windows 
 - **Approvers**: Project owner (`kokoa-77`), who reviews and approves release builds before signing.
 - **Privacy Policy**: See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 
+## Forking, Redistribution & Brand Policy
+
+You are free to study, fork, modify, and redistribute Lumi's source code **strictly under the terms of `GPL-3.0-only`** (including its Section 7 additional terms in [LICENSE](LICENSE)). Any redistributed modified version **must remain open source under `GPL-3.0-only`**, retain original copyright notices, and clearly state what was changed.
+
+To protect players from counterfeit builds and protect original creative work, modified builds and forks **must**:
+
+1. **Rebrand cleanly**: Clearly state that your fork is **not** official Lumi and is not endorsed by or affiliated with `kokoa-77` or Lumi Launcher. Do not reuse the names `Lumi`, `微光`, or `Lumi Launcher`, or the app identifier `com.lumilauncher.lumi`.
+2. **Replace original brand & artwork assets**: Lumi's logos, icons (`app/src-tauri/icons/`), original illustrations (`app/src/assets/art/`), promotional graphics (`docs/screenshots/social-preview.png`), and author avatar are **not** licensed for rebranded forks or third-party redistribution (**All Rights Reserved**).
+3. **Never reuse official credentials or keys**: Do not ship or embed Lumi's Microsoft Entra Client ID (`LUMI_MICROSOFT_CLIENT_ID`), updater public key (`LUMI_UPDATER_PUBKEY`), or any third-party API keys. Register your own credentials or leave them unset.
+
 ## Acknowledgments & License
 
 - Lumi integrates with official **Mojang / Microsoft**, **Modrinth**, and **CurseForge** services, and optionally supports community mirrors **BMCLAPI** and **MCIM** for faster asset delivery (authentication requests never use mirrors). Full dependency licenses and attributions are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
-- Licensed under **GNU General Public License v3.0 only (`GPL-3.0-only`)** with additional brand and name protection terms under Section 7. See [LICENSE](LICENSE).
+- **Source Code**: Licensed under **GNU General Public License v3.0 only (`GPL-3.0-only`)** with Section 7 brand and name protection terms. See [LICENSE](LICENSE).
+- **Brand & Original Artwork**: Copyright © 2026 `kokoa-77`. All Rights Reserved.
