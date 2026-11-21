@@ -1338,7 +1338,7 @@
       "categoryRust": "Rust core ({{count}})",
       "categoryFrontend": "Frontend ({{count}})",
       "categoryReference": "References ({{count}})",
-      "thirdPartyFootnote": "Synced with THIRD_PARTY.md in the repository root."
+      "thirdPartyFootnote": "Each component's full license text ships with its source code; the project's own license file is authoritative."
     },
     "update": {
       "title": "Update Lumi",

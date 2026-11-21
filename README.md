@@ -16,6 +16,13 @@
     <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6.svg" alt="Platform: Windows 10/11" />
     <a href="https://github.com/kokoa-77/LumiLauncher/releases"><img src="https://img.shields.io/github/v/release/kokoa-77/LumiLauncher?include_prereleases&label=release" alt="Release" /></a>
   </p>
+
+  <p>
+    <a href="https://discord.gg/76sFuXjHv"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
+    <a href="https://qm.qq.com/q/vSHOPvOKt2"><img src="https://img.shields.io/badge/QQ%20Group-Join-12B7F5?logo=qq&logoColor=white" alt="QQ Group" /></a>
+    <a href="https://pd.qq.com/s/N7vbhid6xg?b=9"><img src="https://img.shields.io/badge/QQ%20Channel-Join-12B7F5?logo=qq&logoColor=white" alt="QQ Channel" /></a>
+    <a href="https://space.bilibili.com/25681030"><img src="https://img.shields.io/badge/Bilibili-Developer-00A1D6?logo=bilibili&logoColor=white" alt="Developer on Bilibili" /></a>
+  </p>
 </div>
 
 ---
@@ -58,6 +65,28 @@
 - **Fast, Resilient Downloads** — Multi-source download engine with hash verification, resumable `.part` downloads, optional DNS-over-HTTPS (DoH), configurable proxies (System / Direct / HTTP·SOCKS5), and optional BMCLAPI / MCIM mirrors (authentication always goes directly to official Microsoft & Mojang endpoints).
 - **Power-User Tools, Kept Out of the Way** — Automatic Java detection & official runtime download, memory advisor, storage analyzer & unused version cleaner, launch hooks, custom game window titles, optional local Discord Rich Presence, and manual double-confirmed `mclo.gs` crash upload with automatic secret redaction.
 
+## Download & Install
+
+Download the latest version from **[GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases)**, the only official download source.
+
+| File | What it is |
+|---|---|
+| `Lumi_<version>_x64-setup.exe` | **Installer (recommended).** Installs for the current user, adds Start menu shortcuts and receives signed automatic updates. |
+| `Lumi_<version>_x64-portable.zip` | **Portable.** Extract to any writable folder and run `Lumi.exe`. Settings and the default game directory are stored in the `LumiData` folder next to it. Updates are manual. |
+| `SHA256SUMS.txt` | Checksums for verifying the files above. |
+
+**Requirements:** Windows 10 or 11 (64-bit) and the Microsoft Edge WebView2 Runtime (included with Windows 11 and up-to-date Windows 10). You do not need to install Java: Lumi detects existing installations and can download the official Java runtime from Mojang.
+
+**"Windows protected your PC":** the Windows installer is not code-signed yet, so Microsoft Defender SmartScreen may warn you the first time. Click **More info → Run anyway**. To make sure the file is genuine, verify its checksum first:
+
+```powershell
+Get-FileHash .\Lumi_0.6.0_x64-setup.exe -Algorithm SHA256
+```
+
+The output must match the line for that file in `SHA256SUMS.txt` on the same release page.
+
+> **Beware of counterfeits.** Lumi is only published on GitHub Releases. Copies from other download sites, "cracked" or "premium" builds and anything asking for your Microsoft password are not official. See [TRADEMARK.md](TRADEMARK.md) for the list of official channels.
+
 ## Account Authentication & Release Status
 
 - **Official Ownership Verification**: Lumi uses **OAuth 2.0 Authorization Code + PKCE** in the user's system browser via Lumi's own Microsoft Entra application registration. Before launching Minecraft, Lumi verifies current **Minecraft: Java Edition play entitlement** and the matching official Java profile through official Microsoft, Xbox Live, and Minecraft services.
@@ -72,6 +101,72 @@ Lumi collects **zero telemetry, zero analytics, and zero advertisements**.
 - Verified Minecraft game session credentials are passed to the Java game process over its **standard input (`stdin`) pipe** (`SessionPipe.java`) rather than process command-line arguments, environment variables, or temporary argument files.
 - All logs, crash reports, and exported diagnostics automatically pass through secret redaction (`<redacted>`).
 - Full details: [PRIVACY.md](PRIVACY.md) · [SECURITY.md](SECURITY.md)
+
+## FAQ
+
+<details>
+<summary><strong>Why can't I sign in yet?</strong></summary>
+
+New launchers must be approved by Mojang before they can sign players in with a Microsoft account. Lumi's application is under review; until it is approved, public builds keep Microsoft sign-in disabled. You can still explore instances, worlds, mods and settings. Watch the releases or join the community to hear when sign-in opens.
+</details>
+
+<details>
+<summary><strong>Does Lumi support offline or non-premium accounts?</strong></summary>
+
+No. Lumi only launches the game for a Microsoft account that owns Minecraft: Java Edition. It does not provide offline usernames, third-party authentication servers or authentication injectors.
+</details>
+
+<details>
+<summary><strong>Can I keep using my existing <code>.minecraft</code>, PCL or HMCL folders?</strong></summary>
+
+Yes. You can link existing official, PCL or HMCL `.minecraft` folders in place (nothing is moved or copied), or import instances from Prism Launcher / MultiMC, Modrinth App, CurseForge and ATLauncher. Removing a linked folder only removes Lumi's record of it.
+</details>
+
+<details>
+<summary><strong>My antivirus or SmartScreen flags Lumi. Is it safe?</strong></summary>
+
+The Windows installer is not code-signed yet, which can trigger warnings from SmartScreen and some antivirus software. Download only from GitHub Releases and compare the file's SHA-256 with `SHA256SUMS.txt`. If the checksum matches, you can report the warning to your antivirus vendor as a false positive. Automatic updates are signed and verified by Lumi before they are installed.
+</details>
+
+<details>
+<summary><strong>Where is my data stored?</strong></summary>
+
+- Installer version: settings in `%APPDATA%\com.lumilauncher.lumi`, logs in `%LOCALAPPDATA%\com.lumilauncher.lumi\logs`. The default game directory is `%APPDATA%\com.lumilauncher.lumi\minecraft`, unless you chose another folder in Settings → Game directory.
+- Portable version: everything is in the `LumiData` folder next to `Lumi.exe`.
+- Sign-in tokens are kept in Windows Credential Manager, never in plain files.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md#data-locations) for the full list.
+</details>
+
+<details>
+<summary><strong>How do I uninstall Lumi completely?</strong></summary>
+
+1. In Lumi, remove your accounts (this also deletes their tokens from Windows Credential Manager).
+2. Uninstall Lumi from **Settings → Apps → Installed apps**. Your game directory and worlds are kept.
+3. To remove everything, delete `%APPDATA%\com.lumilauncher.lumi` and `%LOCALAPPDATA%\com.lumilauncher.lumi`. **Back up your worlds first** if you used the default game directory, because it lives inside the first folder.
+</details>
+
+<details>
+<summary><strong>Will there be macOS or Linux versions?</strong></summary>
+
+Lumi currently supports Windows 10 and 11 only. Other platforms may come later.
+</details>
+
+## Community & Support
+
+| Where | Best for |
+|---|---|
+| [GitHub Issues](https://github.com/kokoa-77/LumiLauncher/issues/new/choose) | Bug reports, game crashes and feature requests (English or Chinese) |
+| [GitHub Discussions](https://github.com/kokoa-77/LumiLauncher/discussions) | Ideas, questions and sharing your setup |
+| [Discord](https://discord.gg/76sFuXjHv) | Chatting with other players and the developer (English) |
+| [QQ Group](https://qm.qq.com/q/vSHOPvOKt2) · [QQ Channel](https://pd.qq.com/s/N7vbhid6xg?b=9) | Chinese-speaking community, announcements and help |
+| [Bilibili](https://space.bilibili.com/25681030) | Development updates and videos from the developer (Chinese) |
+
+Please report bugs on GitHub rather than only in chat, so they are not lost. Security issues go through [private vulnerability reporting](https://github.com/kokoa-77/LumiLauncher/security/advisories/new), never in public.
+
+## Contributing
+
+Bug reports, crash logs, translations and ideas are the most valuable contributions; you do not need to write code to help. If you want to contribute code, please open an issue first and wait for the maintainer to agree on the approach. Read [CONTRIBUTING.md](CONTRIBUTING.md) before you start.
 
 ## Building from Source
 
@@ -106,26 +201,26 @@ pnpm --dir app tauri build --bundles nsis
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the codebase layout, [docs/DESIGN.md](docs/DESIGN.md) for the design and engineering rules, and [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-## Code Signing Policy
+## Release Integrity
 
-Once approved by [SignPath Foundation](https://signpath.org/), official Windows release binaries will use free open-source code signing provided by [SignPath.io](https://signpath.io/) with certificates from SignPath Foundation.
+- Official builds are produced from this repository by the [Windows release workflow](.github/workflows/windows-release.yml) on GitHub Actions, and every release includes `SHA256SUMS.txt`.
+- **The Windows installer and executable are not code-signed yet.** Windows may show a SmartScreen warning; verify the checksum as described in [Download & Install](#download--install).
+- **Automatic updates are signed.** The installed version only accepts update packages signed with Lumi's updater key, and verifies the signature before installing.
 
-- **Committers & Reviewers**: Maintainers of `kokoa-77/LumiLauncher`.
-- **Approvers**: Project owner (`kokoa-77`), who reviews and approves release builds before signing.
-- **Privacy Policy**: See [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
+## Forks, Redistribution & Brand
 
-## Forking, Redistribution & Brand Policy
+You are free to study, fork, modify and redistribute Lumi's source code under **`GPL-3.0-only`**, including the Section 7 additional terms in [LICENSE](LICENSE). In short, a modified build must:
 
-You are free to study, fork, modify, and redistribute Lumi's source code **strictly under the terms of `GPL-3.0-only`** (including its Section 7 additional terms in [LICENSE](LICENSE)). Any redistributed modified version **must remain open source under `GPL-3.0-only`**, retain original copyright notices, and clearly state what was changed.
+1. Use its **own name, application ID and icon**, not `Lumi`, `Lumi Launcher`, `微光` or `com.lumilauncher.lumi`.
+2. Say clearly that it is **not official Lumi** and not endorsed by the Lumi project.
+3. **Never reuse Lumi's credentials** (Microsoft Entra Client ID, updater keys, API keys).
+4. Stay open source under `GPL-3.0-only` and keep the original copyright notices.
 
-To protect players from counterfeit builds and protect original creative work, modified builds and forks **must**:
-
-1. **Rebrand cleanly**: Clearly state that your fork is **not** official Lumi and is not endorsed by or affiliated with `kokoa-77` or Lumi Launcher. Do not reuse the names `Lumi`, `微光`, or `Lumi Launcher`, or the app identifier `com.lumilauncher.lumi`.
-2. **Replace the official brand assets**: Lumi's logo and app icon (`app/src-tauri/icons/`), original illustrations (`app/src/assets/art/`), promotional graphics (`docs/screenshots/social-preview.png`) and the author avatar ship under the same `GPL-3.0-only` license as the code, but the Section 7 terms in [LICENSE](LICENSE) forbid using them in a way that implies your build is official Lumi. Modified distributions must use their own name, app identifier and icon.
-3. **Never reuse official credentials or keys**: Do not ship or embed Lumi's Microsoft Entra Client ID (`LUMI_MICROSOFT_CLIENT_ID`), updater public key (`LUMI_UPDATER_PUBKEY`), or any third-party API keys. Register your own credentials or leave them unset.
+Mirroring unmodified official builds is allowed if the files are identical to the release. Full details, including the official channels and how to report counterfeits, are in **[TRADEMARK.md](TRADEMARK.md)**.
 
 ## Acknowledgments & License
 
-- Lumi integrates with official **Mojang / Microsoft**, **Modrinth**, and **CurseForge** services, and optionally supports community mirrors **BMCLAPI** and **MCIM** for faster asset delivery (authentication requests never use mirrors). Full dependency licenses and attributions are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
+- Lumi integrates with official **Mojang / Microsoft**, **[Modrinth](https://modrinth.com/)** and **[CurseForge](https://www.curseforge.com/minecraft)** services, and optionally uses the community mirrors **[BMCLAPI](https://bmclapidoc.bangbang93.com/)** (by bangbang93) and **[MCIM](https://www.mcimirror.top/)** for faster downloads in mainland China (authentication requests never use mirrors). Thanks to everyone who keeps these services running.
+- Open-source libraries used by Lumi and their licenses are listed in the app under **Settings → About → Third-party libraries & licenses**.
 - **Source Code**: Licensed under **GNU General Public License v3.0 only (`GPL-3.0-only`)** with Section 7 brand and name protection terms. See [LICENSE](LICENSE).
 - **Brand & Original Artwork**: Copyright © 2026 `kokoa-77`. Distributed with the code under `GPL-3.0-only`; the Section 7 terms restrict how modified versions may use the Lumi names, icon and illustrations.

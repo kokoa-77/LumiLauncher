@@ -1,0 +1,106 @@
+name: Game crash (English)
+description: The game crashes, closes, hangs on the loading screen or cannot enter a world after you click Play.
+title: "[Crash] "
+labels: ["crash"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        After a crash, Lumi shows a notice with **Export diagnostics** (a summary of that launch, the mod list and a redacted log). It is the most useful thing for finding the cause, so please attach it.
+        You can also open the instance's **Log** tab, use **Upload log**, and paste the mclo.gs link below.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and found no duplicate crash
+          required: true
+        - label: I am using the latest version of Lumi
+          required: true
+        - label: I attached the diagnostics package or an mclo.gs link
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Lumi version
+      description: Found in Settings → About
+      placeholder: e.g. 0.6.0
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: Minecraft version
+      placeholder: e.g. 1.21.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: loader
+    attributes:
+      label: Mod loader
+      options:
+        - Vanilla (no loader)
+        - Fabric
+        - Quilt
+        - Forge
+        - NeoForge
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: loader_version
+    attributes:
+      label: Loader version
+      placeholder: e.g. NeoForge 21.1.77 (leave empty for vanilla)
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Where the instance came from
+      options:
+        - Created in Lumi
+        - Modpack installed in Lumi
+        - Imported or linked from another launcher
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: mods
+    attributes:
+      label: Number of mods (roughly)
+      placeholder: e.g. 0, about 30, 200+
+
+  - type: dropdown
+    id: when
+    attributes:
+      label: When does it crash?
+      options:
+        - After clicking Play, before the game window appears
+        - On the loading screen (progress bar)
+        - When joining a world or server
+        - While playing
+        - When quitting the game
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics package or mclo.gs link
+      description: Drag the exported diagnostics package (.zip) into this box, or paste an mclo.gs link.
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened before the crash?
+      description: For example, you just installed a mod, updated a modpack, or changed memory or Java settings. If you can reproduce it reliably, list the steps.
+    validations:
+      required: true

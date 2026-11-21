@@ -1,0 +1,84 @@
+name: 问题反馈（中文）
+description: 启动器出错、功能不正常或界面显示异常。游戏崩溃请用「游戏崩溃」模板。
+title: "[问题] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请尽量写清楚，越容易复现，修得越快。
+        - 游戏启动后崩溃、闪退，请改用「游戏崩溃（中文）」模板。
+        - 想法和建议请发到 [Discussions → Ideas](https://github.com/kokoa-77/LumiLauncher/discussions/categories/ideas)。
+        - 安全漏洞请走[私密安全报告](https://github.com/kokoa-77/LumiLauncher/security/advisories/new)，不要公开提交。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已经搜索过已有的 Issue（包括已关闭的），没有找到相同的问题
+          required: true
+        - label: 我用的是最新版本的 Lumi
+          required: true
+        - label: 截图和日志里没有令牌、密码或邮箱地址
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Lumi 版本
+      description: 在「设置 → 关于」中查看
+      placeholder: 例如 0.6.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build
+    attributes:
+      label: 版本类型
+      options:
+        - 安装版
+        - 便携版
+        - 自己编译
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      placeholder: 例如 Windows 11 24H2（64 位）
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 发生了什么？你原本期望发生什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开 Lumi，进入实例「……」
+        2. 点击「……」
+        3. 出现错误「……」
+    validations:
+      required: true
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 截图或日志
+      description: |
+        可以直接把截图拖进来。日志在 `%LOCALAPPDATA%\com.lumilauncher.lumi\logs`（写入前已自动脱敏）；下载失败时，可以粘贴下载中心里「复制诊断信息」的内容。
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 例如是否用了代理、下载源设置、是否挂了别家启动器的目录等。

@@ -1,0 +1,50 @@
+name: Feature request (English)
+description: A specific, well-defined improvement. Ideas that still need shaping go to Discussions first.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lumi's decision rule is: **does it get players into the game faster, or slower?** Features that make it slower wait.
+        If the details are still open or you want feedback from other players first, post in [Discussions → Ideas](https://github.com/kokoa-77/LumiLauncher/discussions/categories/ideas).
+
+        These are out of scope and will be closed: offline sign-in or bypassing ownership verification, third-party authentication servers or injectors, unofficial capes, bypassing CurseForge creators' download restrictions, telemetry or ads.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions and found no duplicate
+          required: true
+        - label: I am on the latest version and Lumi does not already do this
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: In what situation do you run into trouble?
+      placeholder: e.g. Every time I switch modpacks I have to set up my keybinds again...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like Lumi to do?
+      description: Mockups or screenshots of other software are welcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: How do you work around it today?
+      description: What do you do now? How do other launchers handle it?
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context

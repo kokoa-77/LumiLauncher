@@ -25,7 +25,7 @@ export interface ServiceCredit {
   url: string;
 }
 
-/** 关于页外部服务与社区致谢（与 THIRD_PARTY.md 保持一致） */
+/** 关于页外部服务与社区致谢 */
 export const SERVICE_CREDITS: readonly ServiceCredit[] = [
   { id: "bmclapi", name: "BMCLAPI", url: "https://bmclapidoc.bangbang93.com/" },
   { id: "mcim", name: "MCIM", url: "https://www.mcimirror.top/" },
@@ -45,7 +45,7 @@ export interface ThirdPartyEntry {
   };
 }
 
-/** 第三方直接开源依赖与设计参考摘要（与根目录 THIRD_PARTY.md 同步） */
+/** 关于页「第三方开源许可」清单：直接使用的开源库、参考与模板。新增直接依赖时在这里补一条 */
 export const THIRD_PARTY_ENTRIES: readonly ThirdPartyEntry[] = [
   // Rust 核心与应用壳
   {

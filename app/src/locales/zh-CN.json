@@ -1336,7 +1336,7 @@
       "categoryRust": "Rust 核心（{{count}}）",
       "categoryFrontend": "前端界面（{{count}}）",
       "categoryReference": "参考与模板（{{count}}）",
-      "thirdPartyFootnote": "完整条目与仓库外依赖说明同步维护于根目录 THIRD_PARTY.md。"
+      "thirdPartyFootnote": "各组件的完整许可证随其源代码发布，以对应项目的许可证文件为准。"
     },
     "update": {
       "title": "更新 Lumi",

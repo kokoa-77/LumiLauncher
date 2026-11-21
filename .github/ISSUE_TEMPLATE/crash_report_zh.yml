@@ -1,0 +1,106 @@
+name: 游戏崩溃（中文）
+description: 点了开始游戏后崩溃、闪退、卡在加载界面或无法进入世界。
+title: "[崩溃] "
+labels: ["crash"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        游戏崩溃后，Lumi 会弹出提示并提供 **导出诊断包**（只包含本次启动的摘要、模组清单和脱敏日志）。这是排查崩溃最有用的资料，请一定附上。
+        也可以在实例页的 **日志** 页签点 **上传日志**，把得到的 mclo.gs 链接贴在下面。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已经搜索过已有的 Issue，没有找到相同的崩溃
+          required: true
+        - label: 我用的是最新版本的 Lumi
+          required: true
+        - label: 我附上了诊断包或 mclo.gs 链接
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Lumi 版本
+      description: 在「设置 → 关于」中查看
+      placeholder: 例如 0.6.0
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: Minecraft 版本
+      placeholder: 例如 1.21.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: loader
+    attributes:
+      label: 模组加载器
+      options:
+        - 原版（没有加载器）
+        - Fabric
+        - Quilt
+        - Forge
+        - NeoForge
+        - 不确定
+    validations:
+      required: true
+
+  - type: input
+    id: loader_version
+    attributes:
+      label: 加载器版本
+      placeholder: 例如 NeoForge 21.1.77（原版可不填）
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: 实例来源
+      options:
+        - 在 Lumi 里新建
+        - 在 Lumi 里安装的整合包
+        - 从别的启动器导入或挂上的目录
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: mods
+    attributes:
+      label: 模组数量（大概）
+      placeholder: 例如 0、约 30、200 多个
+
+  - type: dropdown
+    id: when
+    attributes:
+      label: 什么时候崩溃
+      options:
+        - 点开始游戏后，游戏窗口还没出现
+        - 加载界面（进度条）期间
+        - 进入世界或服务器时
+        - 游玩过程中
+        - 退出游戏时
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 诊断包或 mclo.gs 链接
+      description: 把导出的诊断包（.zip）直接拖进这个输入框，或粘贴 mclo.gs 链接。
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 崩溃前做了什么
+      description: 例如刚装了某个模组、更新了整合包、改了内存或 Java 设置。能稳定复现的话请写出步骤。
+    validations:
+      required: true

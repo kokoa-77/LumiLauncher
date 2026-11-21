@@ -31,7 +31,7 @@ function openExternal(url: string, label: string) {
 /**
  * 设置「关于」页（发布前收口）：
  * 展示正式品牌标识、版本与独立第三方声明、自动更新、账号数据与隐私摘要、
- * BMCLAPI / MCIM / Modrinth / CurseForge 致谢，以及与 THIRD_PARTY.md 同步的第三方开源许可弹窗。
+ * BMCLAPI / MCIM / Modrinth / CurseForge 致谢，以及第三方开源许可弹窗（清单在 aboutData.ts）。
  */
 export function AboutSettings({
   info,

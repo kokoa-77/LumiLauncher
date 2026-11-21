@@ -1,0 +1,84 @@
+name: Bug report (English)
+description: Something in the launcher fails, behaves wrongly or looks broken. For game crashes, use the "Game crash" template.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! The easier it is to reproduce, the faster it gets fixed.
+        - If the game crashes or closes after launching, use the **Game crash (English)** template instead.
+        - Ideas and suggestions go to [Discussions → Ideas](https://github.com/kokoa-77/LumiLauncher/discussions/categories/ideas).
+        - Security vulnerabilities go through [private vulnerability reporting](https://github.com/kokoa-77/LumiLauncher/security/advisories/new), never in public.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues (including closed ones) and found no duplicate
+          required: true
+        - label: I am using the latest version of Lumi
+          required: true
+        - label: My screenshots and logs contain no tokens, passwords or email addresses
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Lumi version
+      description: Found in Settings → About
+      placeholder: e.g. 0.6.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build
+    attributes:
+      label: Build type
+      options:
+        - Installer
+        - Portable
+        - Built from source
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. Windows 11 24H2 (64-bit)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What went wrong, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Lumi and select instance "..."
+        2. Click "..."
+        3. See error "..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots or logs
+      description: |
+        Drag screenshots here. Logs are in `%LOCALAPPDATA%\com.lumilauncher.lumi\logs` (already redacted). For failed downloads, paste the text from "Copy diagnostics" in the download center.
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: For example a proxy, your download source settings, or linked folders from other launchers.

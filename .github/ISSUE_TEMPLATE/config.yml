@@ -1,8 +1,14 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Discussions · 社区讨论与提问
+  - name: 想法与讨论 · Ideas & Discussions
     url: https://github.com/kokoa-77/LumiLauncher/discussions
-    about: Ask general questions, share feedback, or discuss ideas / 常规提问、交流与想法讨论
-  - name: Security Advisory · 私密安全报告
+    about: 还在构思的想法、使用问题和交流 / Ideas that need shaping, questions and general chat
+  - name: QQ 群 · QQ Group
+    url: https://qm.qq.com/q/vSHOPvOKt2
+    about: 中文玩家交流与版本公告 / Chinese-speaking community and announcements
+  - name: Discord
+    url: https://discord.gg/76sFuXjHv
+    about: Chat with other players and the developer / 与海外玩家交流
+  - name: 私密安全报告 · Security Advisory
     url: https://github.com/kokoa-77/LumiLauncher/security/advisories/new
-    about: Report a security vulnerability privately / 私下提交安全漏洞（切勿在公开 Issue 披露）
+    about: 私下报告安全漏洞，切勿公开 / Report a vulnerability privately, never in public

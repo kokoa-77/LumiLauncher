@@ -1,0 +1,31 @@
+title: "[Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share an idea for Lumi! Others can vote and discuss it; well-supported ideas become feature requests.
+        分享你对 Lumi 的想法！其他玩家可以投票和讨论，支持多的想法会转成功能建议。
+
+        Lumi's decision rule · Lumi 的取舍准则：**does it get players into the game faster, or slower? · 它让进游戏更快，还是更慢？**
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve? · 想解决什么问题
+      description: In what situation would this help? · 在什么场景下会用到？
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea · 你的想法
+      description: How should it work? Rough sketches or screenshots of other software are welcome. · 希望它怎么工作？可以附上草图或其他软件的截图。
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else? · 补充
+      description: How do other launchers handle it? Any concerns? · 别的启动器怎么做？有什么顾虑？

@@ -16,6 +16,13 @@
     <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6.svg" alt="支持平台: Windows 10/11" />
     <a href="https://github.com/kokoa-77/LumiLauncher/releases"><img src="https://img.shields.io/github/v/release/kokoa-77/LumiLauncher?include_prereleases&label=release" alt="最新版本" /></a>
   </p>
+
+  <p>
+    <a href="https://qm.qq.com/q/vSHOPvOKt2"><img src="https://img.shields.io/badge/QQ%E7%BE%A4-%E5%8A%A0%E5%85%A5-12B7F5?logo=qq&logoColor=white" alt="QQ 群" /></a>
+    <a href="https://pd.qq.com/s/N7vbhid6xg?b=9"><img src="https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-%E5%8A%A0%E5%85%A5-12B7F5?logo=qq&logoColor=white" alt="QQ 频道" /></a>
+    <a href="https://space.bilibili.com/25681030"><img src="https://img.shields.io/badge/B%E7%AB%99-%E5%BC%80%E5%8F%91%E8%80%85-00A1D6?logo=bilibili&logoColor=white" alt="开发者 B 站" /></a>
+    <a href="https://discord.gg/76sFuXjHv"><img src="https://img.shields.io/badge/Discord-%E5%8A%A0%E5%85%A5-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
+  </p>
 </div>
 
 ---
@@ -58,6 +65,28 @@
 - **稳定快速的下载引擎**：并发断点续传、哈希校验、可选 DoH 与网络代理（跟随系统 / 直连 / 自定义 HTTP·SOCKS5），可选 BMCLAPI / MCIM 社区加速镜像（账号认证始终直连 Microsoft / Mojang 官方接口）。
 - **克制收纳的高阶能力**：自动发现并一键安装官方 Java、内存分配建议、存储空间分析与闲置版本清理、启动前后钩子、自定义游戏窗口标题、可选本机 Discord 活动状态，以及二次确认脱敏上传 `mclo.gs`。
 
+## 下载与安装
+
+请从 **[GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases)** 下载最新版本，这是唯一的官方下载渠道。
+
+| 文件 | 说明 |
+|---|---|
+| `Lumi_<版本号>_x64-setup.exe` | **安装版（推荐）**。为当前用户安装，添加开始菜单快捷方式，并接收经过签名的自动更新。 |
+| `Lumi_<版本号>_x64-portable.zip` | **便携版**。解压到任意可写的文件夹后运行 `Lumi.exe`；设置和默认游戏目录保存在旁边的 `LumiData` 文件夹中，需要手动更新。 |
+| `SHA256SUMS.txt` | 用于核对以上文件的校验和。 |
+
+**系统要求**：Windows 10 或 11（64 位），以及 Microsoft Edge WebView2 运行时（Windows 11 和保持更新的 Windows 10 已自带）。无需另外安装 Java：Lumi 会识别电脑上已有的 Java，也可以从 Mojang 官方下载 Java 运行时。
+
+**提示「Windows 已保护你的电脑」**：Windows 安装包暂未进行代码签名，首次运行时 Microsoft Defender SmartScreen 可能弹出提醒，点击 **更多信息 → 仍要运行** 即可。如需确认文件未被篡改，可以先核对校验和：
+
+```powershell
+Get-FileHash .\Lumi_0.6.0_x64-setup.exe -Algorithm SHA256
+```
+
+输出的值应与同一发布页 `SHA256SUMS.txt` 中对应文件的那一行一致。
+
+> **谨防冒名版本**：Lumi 只在 GitHub Releases 发布。其他下载站的转载、所谓「破解版」「高级版」以及任何索要 Microsoft 密码的程序都不是官方版本。官方渠道列表见 [TRADEMARK.md](TRADEMARK.md#简体中文)。
+
 ## 账号认证与当前状态
 
 - **官方正版游玩权核验**：通过系统浏览器执行 **OAuth 2.0 授权码 + PKCE** 登录 Lumi 自有 Microsoft Entra 应用，并在启动前经由 Microsoft / Xbox Live / Minecraft 官方服务核验 Java 版游玩权限与官方档案。
@@ -72,6 +101,72 @@ Lumi **零遥测、零行为统计、零广告**。
 - 核验通过的 Minecraft 游戏会话凭据经由 Java 子进程**标准输入（`stdin`）管道**交付（`SessionPipe.java`），绝不暴露在系统进程命令行、环境变量或临时参数文件中。
 - 普通日志、崩溃日志与导出的诊断包均统一经过自动脱敏处理（`<redacted>`）。
 - 详细说明见 [PRIVACY.md](PRIVACY.md) 与 [SECURITY.md](SECURITY.md)。
+
+## 常见问题
+
+<details>
+<summary><strong>为什么现在还不能登录？</strong></summary>
+
+新的启动器需要通过 Mojang 审核，才能使用 Microsoft 账号为玩家登录。Lumi 的申请正在审核中，获批之前公开版本的 Microsoft 登录入口保持关闭，你仍可以浏览实例、存档、模组与设置。登录开放时会在发布页和社区群中通知。
+</details>
+
+<details>
+<summary><strong>支持离线账号或非正版账号吗？</strong></summary>
+
+不支持。Lumi 只为拥有 Minecraft Java 版的 Microsoft 账号启动游戏，不提供离线用户名、第三方认证服务器或认证注入器。
+</details>
+
+<details>
+<summary><strong>能继续使用原来的 <code>.minecraft</code>、PCL 或 HMCL 的目录吗？</strong></summary>
+
+可以。官方、PCL、HMCL 的 `.minecraft` 目录可以原地挂上（不移动、不复制任何文件），也可以从 Prism Launcher / MultiMC、Modrinth App、CurseForge、ATLauncher 导入实例。移除挂上的目录只删除 Lumi 这边的记录。
+</details>
+
+<details>
+<summary><strong>杀毒软件或 SmartScreen 报毒，安全吗？</strong></summary>
+
+Windows 安装包暂未进行代码签名，可能触发 SmartScreen 和部分杀毒软件的提醒。请只从 GitHub Releases 下载，并将文件的 SHA-256 与 `SHA256SUMS.txt` 核对；校验和一致时，可以向杀毒软件厂商报告误报。自动更新包带有签名，Lumi 会在安装前校验。
+</details>
+
+<details>
+<summary><strong>我的数据保存在哪里？</strong></summary>
+
+- 安装版：设置在 `%APPDATA%\com.lumilauncher.lumi`，日志在 `%LOCALAPPDATA%\com.lumilauncher.lumi\logs`。默认游戏目录是 `%APPDATA%\com.lumilauncher.lumi\minecraft`，在「设置 → 游戏目录」中换过的以你选择的为准。
+- 便携版：全部保存在 `Lumi.exe` 旁边的 `LumiData` 文件夹。
+- 登录凭据保存在 Windows 凭据管理器中，不会以明文文件保存。
+
+完整列表见 [ARCHITECTURE.md](ARCHITECTURE.md#data-locations)。
+</details>
+
+<details>
+<summary><strong>怎样彻底卸载 Lumi？</strong></summary>
+
+1. 先在 Lumi 中移除账号（同时会从 Windows 凭据管理器中删除对应的凭据）。
+2. 在 **设置 → 应用 → 安装的应用** 中卸载 Lumi。游戏目录和存档会保留。
+3. 如需删除全部数据，再删除 `%APPDATA%\com.lumilauncher.lumi` 和 `%LOCALAPPDATA%\com.lumilauncher.lumi`。**使用默认游戏目录时请先备份存档**，因为它就在第一个文件夹里。
+</details>
+
+<details>
+<summary><strong>会有 macOS 或 Linux 版本吗？</strong></summary>
+
+目前只支持 Windows 10 和 11，其他平台以后再考虑。
+</details>
+
+## 社区与支持
+
+| 渠道 | 适合做什么 |
+|---|---|
+| [GitHub Issues](https://github.com/kokoa-77/LumiLauncher/issues/new/choose) | 报告问题、游戏崩溃和功能建议（中文、英文都可以） |
+| [GitHub Discussions](https://github.com/kokoa-77/LumiLauncher/discussions) | 交流想法、提问、分享你的配置 |
+| [QQ 群](https://qm.qq.com/q/vSHOPvOKt2) · [QQ 频道](https://pd.qq.com/s/N7vbhid6xg?b=9) | 中文玩家交流、版本公告与使用求助 |
+| [开发者 B 站](https://space.bilibili.com/25681030) | 开发进度与视频 |
+| [Discord](https://discord.gg/76sFuXjHv) | 与海外玩家交流（英文为主） |
+
+遇到问题请尽量在 GitHub 上提交，只在群里反馈容易被后续消息淹没。安全漏洞请走[私密安全报告](https://github.com/kokoa-77/LumiLauncher/security/advisories/new)，不要公开发布。
+
+## 参与贡献
+
+报告问题、提供崩溃日志、翻译和提出想法都是很有价值的贡献，不会写代码也能帮上忙。如果想贡献代码，请先开 Issue 说明想法，等维护者确认方案后再动手。开始之前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 从源码构建
 
@@ -106,26 +201,26 @@ pnpm --dir app tauri build --bundles nsis
 
 了解代码结构请阅读 [ARCHITECTURE.md](ARCHITECTURE.md)，设计与工程规矩见 [docs/DESIGN.md](docs/DESIGN.md)，参与贡献请先查看 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## 代码签名政策（Code Signing Policy）
+## 发布文件的可信性
 
-项目计划在通过开源审核后，采用 [SignPath.io](https://signpath.io/) 与 [SignPath Foundation](https://signpath.org/) 提供的免费开源 Windows 代码签名证书。
+- 官方版本由本仓库的 [Windows 发布工作流](.github/workflows/windows-release.yml) 在 GitHub Actions 上构建，每个版本都附带 `SHA256SUMS.txt`。
+- **Windows 安装包和程序暂未进行代码签名**，可能出现 SmartScreen 提醒，请按[下载与安装](#下载与安装)中的方法核对校验和。
+- **自动更新带有签名**：已安装的 Lumi 只接受用 Lumi 更新密钥签名的更新包，并在安装前校验签名。
 
-- **提交与审阅者（Committers & Reviewers）**：`kokoa-77/LumiLauncher` 维护团队。
-- **签名审批人（Approvers）**：项目负责人（`kokoa-77`），每次正式发布前人工复核并批准构建产物。
-- **隐私政策**：见 [PRIVACY.md](PRIVACY.md) 与 [SECURITY.md](SECURITY.md)。
+## Fork、转载与品牌
 
-## 二次分发、Fork 与品牌保护政策
+你可以依照 **`GPL-3.0-only`**（含 [LICENSE](LICENSE) 中的第 7 条附加条款）学习、Fork、修改和再分发 Lumi 的源代码。简单来说，修改版必须：
 
-你可以严格依照 **`GPL-3.0-only`**（含 [LICENSE](LICENSE) 中的 GPL 第 7 条附加条款）学习、Fork、修改与再分发 Lumi 的源代码。任何再分发的修改版本**必须同样以 `GPL-3.0-only` 开源**，保留原作者版权声明并明确标注改动说明，严禁闭源套壳。
+1. 使用**自己的名称、应用 ID 和图标**，不得使用 `Lumi`、`Lumi Launcher`、`微光` 或 `com.lumilauncher.lumi`。
+2. 明确说明**不是官方 Lumi**，也未获得 Lumi 项目认可。
+3. **绝不沿用 Lumi 的凭据**（Microsoft Entra Client ID、更新密钥、各类 API Key）。
+4. 以 `GPL-3.0-only` 继续开源，并保留原有的版权声明。
 
-为防止仿冒版本误导玩家并保护原创视觉资产，所有 Fork 与自定义构建**必须遵守**：
-
-1. **明确去品牌化**：清楚声明你的派生版本并非 Lumi 官方项目，与 `kokoa-77` 及 Lumi 无任何隶属或背书关系；不得沿用 `Lumi`、`微光`、`Lumi Launcher` 名称或应用标识 `com.lumilauncher.lumi`。
-2. **换掉官方品牌素材**：Lumi 的应用图标与 Logo（`app/src-tauri/icons/`）、原创插画（`app/src/assets/art/`）、品牌宣传图（`docs/screenshots/social-preview.png`）与开发者头像和代码一样以 `GPL-3.0-only` 发布，但 [LICENSE](LICENSE) 第 7 条附加条款禁止用它们冒充官方版本：修改版必须换成自己的名称、应用标识和图标。
-3. **禁止沿用官方凭据与密钥**：不得内置或复用 Lumi 的 Microsoft Entra Client ID（`LUMI_MICROSOFT_CLIENT_ID`）、自动更新公钥（`LUMI_UPDATER_PUBKEY`）或任何第三方 API Key，请申请你自己的凭据或将其留空。
+转载未经修改的官方版本时，文件须与发布页完全一致。完整规则、官方渠道列表和举报冒名版本的方式见 **[TRADEMARK.md](TRADEMARK.md#简体中文)**。
 
 ## 致谢与开源许可
 
-- Lumi 接入 **Mojang / Microsoft**、**Modrinth** 与 **CurseForge** 官方服务，并可选接入 **BMCLAPI**、**MCIM** 社区镜像（账号认证始终直连官方，不经任何镜像）。全部第三方开源依赖与许可清单见 [THIRD_PARTY.md](THIRD_PARTY.md)。
+- Lumi 接入 **Mojang / Microsoft**、**[Modrinth](https://modrinth.com/)** 与 **[CurseForge](https://www.curseforge.com/minecraft)** 官方服务，并可选使用 **[BMCLAPI](https://bmclapidoc.bangbang93.com/)**（bangbang93 维护）和 **[MCIM](https://www.mcimirror.top/)** 社区镜像加速国内下载（账号认证始终直连官方，不经任何镜像）。感谢维护这些服务的每一个人。
+- Lumi 使用的开源库及其许可，可在应用的 **设置 → 关于 → 第三方开源组件与许可** 中查看。
 - **源代码**：采用 **GNU General Public License v3.0 only（`GPL-3.0-only`）** 开源（附第 7 条品牌与名称保护附加条款），详见 [LICENSE](LICENSE)。
 - **品牌与原创美术资产**：Copyright © 2026 `kokoa-77`，随代码以 `GPL-3.0-only` 发布；修改版如何使用 Lumi 名称、图标与插画受第 7 条附加条款限制。
