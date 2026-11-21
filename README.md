@@ -1,6 +1,9 @@
 <div align="center">
-  <img src="app/src-tauri/icons/128x128@2x.png" width="96" height="96" alt="Lumi logo" />
-  <h1>Lumi</h1>
+  <img src="docs/screenshots/social-preview.png" alt="Lumi Launcher — Independent Minecraft: Java Edition Launcher" width="100%" />
+
+  <br />
+  <br />
+
   <p><strong>An independent, fast, open-source Minecraft: Java Edition launcher for Windows.</strong></p>
   <p>Open the launcher and jump straight back into your world.</p>
 
@@ -27,10 +30,6 @@
 > **Disclaimer:** Lumi is an independent third-party launcher and is **NOT AN OFFICIAL MINECRAFT PRODUCT**. It is **NOT APPROVED BY OR ASSOCIATED WITH MOJANG STUDIOS OR MICROSOFT**. A valid, legally owned Microsoft account with Minecraft: Java Edition entitlement is required to play.
 
 ## Showcase
-
-<p align="center">
-  <img src="docs/screenshots/01-home-dark.png" alt="Lumi immersive home screen with world cover and one-click Quick Play" width="100%" />
-</p>
 
 <table>
   <tr>
