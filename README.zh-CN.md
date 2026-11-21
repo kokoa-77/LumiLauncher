@@ -78,7 +78,7 @@ Lumi **零遥测、零行为统计、零广告**。
 ### 环境要求（Windows 10/11 x64）
 
 - [Rust](https://www.rust-lang.org/)（版本锁定于 [`rust-toolchain.toml`](rust-toolchain.toml)）与 MSVC C++ 生成工具（Windows 10/11 SDK）
-- [Node.js](https://nodejs.org/) 24+ 与 [pnpm](https://pnpm.io/) 10+
+- [Node.js](https://nodejs.org/) 24+ 与 [pnpm](https://pnpm.io/) 12+（版本锁定在 `package.json` 的 `packageManager`）
 - Microsoft Edge WebView2 运行时（Windows 11 及现代 Windows 10 已内置）
 
 ### 常用命令
@@ -104,7 +104,7 @@ $env:LUMI_MICROSOFT_CLIENT_ID = "<你的-client-id>"
 pnpm --dir app tauri build --bundles nsis
 ```
 
-了解代码结构请阅读 [ARCHITECTURE.md](ARCHITECTURE.md)，参与贡献请先查看 [CONTRIBUTING.md](CONTRIBUTING.md)。
+了解代码结构请阅读 [ARCHITECTURE.md](ARCHITECTURE.md)，设计与工程规矩见 [docs/DESIGN.md](docs/DESIGN.md)，参与贡献请先查看 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 代码签名政策（Code Signing Policy）
 
@@ -121,11 +121,11 @@ pnpm --dir app tauri build --bundles nsis
 为防止仿冒版本误导玩家并保护原创视觉资产，所有 Fork 与自定义构建**必须遵守**：
 
 1. **明确去品牌化**：清楚声明你的派生版本并非 Lumi 官方项目，与 `kokoa-77` 及 Lumi 无任何隶属或背书关系；不得沿用 `Lumi`、`微光`、`Lumi Launcher` 名称或应用标识 `com.lumilauncher.lumi`。
-2. **替换原创品牌与美术资产**：Lumi 的应用图标与 Logo（`app/src-tauri/icons/`）、原创插画（`app/src/assets/art/`）、品牌宣传图（`docs/screenshots/social-preview.png`）与开发者头像**保留全部权利（All Rights Reserved）**，不随代码开放用于换皮或二次分发。
+2. **换掉官方品牌素材**：Lumi 的应用图标与 Logo（`app/src-tauri/icons/`）、原创插画（`app/src/assets/art/`）、品牌宣传图（`docs/screenshots/social-preview.png`）与开发者头像和代码一样以 `GPL-3.0-only` 发布，但 [LICENSE](LICENSE) 第 7 条附加条款禁止用它们冒充官方版本：修改版必须换成自己的名称、应用标识和图标。
 3. **禁止沿用官方凭据与密钥**：不得内置或复用 Lumi 的 Microsoft Entra Client ID（`LUMI_MICROSOFT_CLIENT_ID`）、自动更新公钥（`LUMI_UPDATER_PUBKEY`）或任何第三方 API Key，请申请你自己的凭据或将其留空。
 
 ## 致谢与开源许可
 
 - Lumi 接入 **Mojang / Microsoft**、**Modrinth** 与 **CurseForge** 官方服务，并可选接入 **BMCLAPI**、**MCIM** 社区镜像（账号认证始终直连官方，不经任何镜像）。全部第三方开源依赖与许可清单见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 - **源代码**：采用 **GNU General Public License v3.0 only（`GPL-3.0-only`）** 开源（附第 7 条品牌与名称保护附加条款），详见 [LICENSE](LICENSE)。
-- **品牌与原创美术资产**：Copyright © 2026 `kokoa-77`，保留全部权利（All Rights Reserved）。
+- **品牌与原创美术资产**：Copyright © 2026 `kokoa-77`，随代码以 `GPL-3.0-only` 发布；修改版如何使用 Lumi 名称、图标与插画受第 7 条附加条款限制。

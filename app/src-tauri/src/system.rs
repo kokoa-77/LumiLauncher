@@ -1,4 +1,4 @@
-//! 这台电脑的内存、Java、显卡（D17h）。
+//! 这台电脑的内存、Java、显卡。
 //!
 //! - 内存：设置里的内存条、启动前检查、谁占着内存、整理内存（以管理员身份再开一次自己，只做这一件事）
 //! - Java：列表、手动添加、每个大版本选默认、删除启动器下载的
@@ -52,7 +52,7 @@ pub fn clean_memory_helper() -> i32 {
     i32::try_from(code).unwrap_or(1)
 }
 
-/// 这个实例这次要按什么给内存：实例单独设了就用实例的（D17i），没设跟全局
+/// 这个实例这次要按什么给内存：实例单独设了就用实例的，没设跟全局
 fn memory_choice(
     state: &AppState,
     instance: Option<&launcher_core::instance::Instance>,

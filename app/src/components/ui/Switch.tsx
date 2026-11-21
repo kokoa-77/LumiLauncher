@@ -23,7 +23,8 @@ export function Switch({ checked, onChange, label, disabled = false }: SwitchPro
       }`}
     >
       <motion.span
-        className={`absolute top-[2px] left-[2px] size-[18px] rounded-full shadow-sm ${checked ? "bg-on-accent" : "bg-surface"}`}
+        // 关着时滑块用灰字的颜色：深色下 bg-surface 和底槽几乎一个色，看不出是开关
+        className={`absolute top-[2px] left-[2px] size-[18px] rounded-full shadow-sm ${checked ? "bg-on-accent" : "bg-fg-muted"}`}
         animate={{ x: checked ? 16 : 0 }}
         transition={spring.snappy}
       />

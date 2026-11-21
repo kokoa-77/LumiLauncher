@@ -61,7 +61,7 @@ pub struct PrepareContext<'a> {
     pub downloader: &'a Downloader,
     /// 文件从哪下（设置「Minecraft 文件、加载器与 Java」）
     pub source: DownloadSource,
-    /// 版本描述从哪拿（设置「Minecraft 元数据」，D18b）
+    /// 版本描述从哪拿（设置「Minecraft 元数据」）
     pub meta_source: DownloadSource,
     /// 放临时文件的地方（加载器重装时用），要和游戏目录在同一个盘
     pub temp_root: &'a Path,
@@ -290,7 +290,7 @@ where
     let version_id = instance
         .as_ref()
         .map_or_else(|| id.to_owned(), instance::Instance::version_id);
-    // 版本、依赖库、资源在哪：挂上的别家版本在别家的 .minecraft 里原地读（D19）
+    // 版本、依赖库、资源在哪：挂上的别家版本在别家的 .minecraft 里原地读
     let files = instance
         .as_ref()
         .map_or_else(|| ctx.game.clone(), |i| i.files(ctx.game));
@@ -378,7 +378,7 @@ where
     .await?;
     let java = pick_game_java(ctx, &JavaRequest::of(&installed.version), &on_progress).await?;
 
-    // 实例的游戏目录是实例文件夹本身（D18a）；直接启动某个版本时用游戏目录根
+    // 实例的游戏目录是实例文件夹本身；直接启动某个版本时用游戏目录根
     let game_dir = match &instance {
         Some(instance) => instance.game_dir(ctx.game)?,
         None => ctx.game.root().to_path_buf(),
@@ -483,7 +483,7 @@ where
     .await?)
 }
 
-/// 首次启动时把默认游戏语言写入实例的 `options.txt`（D26a）。
+/// 首次启动时把默认游戏语言写入实例的 `options.txt`。
 /// - `options.txt` 不存在：新建并写入 `lang:<lang>\n`；
 /// - `options.txt` 已存在且包含 `lang:` 行：绝不覆写，尊重玩家游戏内已选语言；
 /// - `options.txt` 已存在但没有 `lang:` 行：在末尾追加 `lang:<lang>\n`。

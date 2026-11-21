@@ -1,4 +1,4 @@
-//! 下载源改写：官方地址 → BMCLAPI 镜像地址（Minecraft）、MCIM 镜像地址（模组文件，D18b）。
+//! 下载源改写：官方地址 → BMCLAPI 镜像地址（Minecraft）、MCIM 镜像地址（模组文件）。
 //!
 //! 替换表来自现有启动器源码和 BMCLAPI 文档（bmclapidoc.bangbang93.com），已对 1.21.1 的
 //! 客户端、资源文件、库文件实测可用。以后做成可远程更新的配置，现在先放代码里。
@@ -39,7 +39,7 @@ const BMCLAPI_RULES: &[(&str, &str)] = &[
     ),
 ];
 
-/// MCIM 的文件镜像（D18b，见 www.mcimirror.top/guide）：只换域名，路径不变
+/// MCIM 的文件镜像（见 www.mcimirror.top/guide）：只换域名，路径不变
 const MCIM_FILES: &str = "https://mod.mcimirror.top";
 /// 模组文件的官方 CDN → MCIM。`mediafilez.forgecdn.net` 按 MCIM 的说明不换
 const MCIM_FILE_HOSTS: &[(&str, ModPlatform)] = &[
@@ -77,7 +77,7 @@ pub fn to_mirror(url: &str) -> Option<String> {
 ///
 /// - 官方优先：先官方，失败再镜像
 /// - 国内镜像优先：先镜像，失败再官方
-/// - 只用官方：不碰镜像（D18）
+/// - 只用官方：不碰镜像
 /// - 自动：应用里先由 [`super::SourcePicker`] 测速换成官方优先或镜像优先；没测过时按官方优先
 pub fn candidate_urls(official: &str, source: DownloadSource) -> Vec<String> {
     match (to_mirror(official), source) {

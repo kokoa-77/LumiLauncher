@@ -48,7 +48,7 @@ function Label({ children }: { children: string }) {
 }
 
 /**
- * 世界笔记（D17j）：种子（从存档里读的，能复制）、待办、坐标、随手记。
+ * 世界笔记：种子（从存档里读的，能复制）、待办、坐标、随手记。
  * 首页世界名下面显示第一条没做完的待办（没有就是随手记的第一行）。
  */
 export function NotesDialog({

@@ -1,4 +1,4 @@
-//! 世界备份的命令和自动备份（D17j）。
+//! 世界备份的命令和自动备份。
 //!
 //! 设置里打开「自动备份」以后：
 //! - 正常退出游戏（进过世界、退出码 0）后，备份这次玩过的世界（崩溃退出的不备，免得坏掉的世界挤掉好的备份）；
@@ -86,7 +86,7 @@ pub struct BackupUsage {
     pub count: u32,
 }
 
-/// 世界备份目录信息（D26b）
+/// 世界备份目录信息
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupDirInfo {
@@ -95,7 +95,7 @@ pub struct BackupDirInfo {
     pub custom: bool,
 }
 
-/// 切换世界备份目录后的迁移结果（D26b）
+/// 切换世界备份目录后的迁移结果
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupDirChangeResult {
@@ -494,14 +494,14 @@ fn ensure_no_backup_job(state: &AppState) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 当前世界备份存放目录信息（D26b）
+/// 当前世界备份存放目录信息
 #[tauri::command]
 #[specta::specta]
 pub fn backups_dir_info(state: State<'_, AppState>) -> BackupDirInfo {
     backup_dir_info_of(&state)
 }
 
-/// 选择自定义世界备份目录并安全迁移既有备份（D26b）
+/// 选择自定义世界备份目录并安全迁移既有备份
 #[tauri::command]
 #[specta::specta]
 pub async fn backups_dir_choose(
@@ -565,7 +565,7 @@ pub async fn backups_dir_choose(
     }))
 }
 
-/// 恢复世界备份到默认位置（各实例自己的 `Lumi/backups/`）并安全迁回既有备份（D26b）
+/// 恢复世界备份到默认位置（各实例自己的 `Lumi/backups/`）并安全迁回既有备份
 #[tauri::command]
 #[specta::specta]
 pub async fn backups_dir_reset(

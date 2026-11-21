@@ -1,4 +1,4 @@
-//! 本机跨实例同步（D26b / D26c 黄金 6 项）：纯本机、零云端、不破坏单实例独立性。
+//! 本机跨实例同步（6 项）：纯本机、零云端、不破坏单实例独立性。
 //!
 //! 共享库位于 `<game_dir>/Lumi/shared/`：
 //! - `options.txt`：以共享库中已启用键为单一真源跨版本安全合并（自动跳过版本号与资源包清单等危险键）；
@@ -1029,7 +1029,7 @@ fn push_shared_to_instance(
     Ok(stats)
 }
 
-/// 共享资源包 / 光影包条目（用于可视化管理弹窗，D26b 精修）
+/// 共享资源包 / 光影包条目（用于可视化管理弹窗）
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -1039,7 +1039,7 @@ pub struct SharedPackEntry {
     pub bytes: f64,
 }
 
-/// 共享服务器条目（用于可视化管理弹窗，D26b 精修）
+/// 共享服务器条目（用于可视化管理弹窗）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -1057,12 +1057,12 @@ impl From<ServerEntry> for SharedServerEntry {
     }
 }
 
-/// 共享库读取：当前已同步的 `options.txt` 全部键值（D26b 精修）
+/// 共享库读取：当前已同步的 `options.txt` 全部键值
 pub fn read_shared_options(game: &GameDir) -> BTreeMap<String, String> {
     read_options_map(&shared_root(game).join(OPTIONS_FILE))
 }
 
-/// 共享库保存：整体原子写回 `options.txt`（支持在可视化编辑器中增改或取消单条同步，D26b 精修）
+/// 共享库保存：整体原子写回 `options.txt`（支持在可视化编辑器中增改或取消单条同步）
 pub fn write_shared_options(
     game: &GameDir,
     entries: &BTreeMap<String, String>,
@@ -1091,7 +1091,7 @@ pub fn write_shared_options(
     Ok(cleaned)
 }
 
-/// 读取共享库中的服务器列表（D26b 精修）
+/// 读取共享库中的服务器列表
 pub fn list_shared_servers(game: &GameDir) -> Vec<SharedServerEntry> {
     servers::list_file(&shared_root(game).join(SERVERS_FILE))
         .into_iter()
@@ -1099,7 +1099,7 @@ pub fn list_shared_servers(game: &GameDir) -> Vec<SharedServerEntry> {
         .collect()
 }
 
-/// 向共享库添加一条服务器（D26b 精修）
+/// 向共享库添加一条服务器
 pub fn add_shared_server(
     game: &GameDir,
     name: &str,
@@ -1111,7 +1111,7 @@ pub fn add_shared_server(
     Ok(list_shared_servers(game))
 }
 
-/// 从共享库删除一条服务器（D26b 精修）
+/// 从共享库删除一条服务器
 pub fn remove_shared_server(
     game: &GameDir,
     address: &str,
@@ -1121,12 +1121,12 @@ pub fn remove_shared_server(
     Ok(list_shared_servers(game))
 }
 
-/// 读取共享库中的命令历史记录（D26c）
+/// 读取共享库中的命令历史记录
 pub fn read_shared_commands(game: &GameDir) -> Vec<String> {
     read_command_lines(&shared_root(game).join(COMMAND_HISTORY_FILE))
 }
 
-/// 保存共享库中的命令历史记录（D26c）
+/// 保存共享库中的命令历史记录
 pub fn write_shared_commands(game: &GameDir, lines: &[String]) -> Result<Vec<String>, SyncError> {
     let root = shared_root(game);
     std::fs::create_dir_all(&root).map_err(io_err(&root))?;
@@ -1135,7 +1135,7 @@ pub fn write_shared_commands(game: &GameDir, lines: &[String]) -> Result<Vec<Str
     Ok(cleaned)
 }
 
-/// 清空共享库中的创造模式物品栏快照（D26c）
+/// 清空共享库中的创造模式物品栏快照
 pub fn clear_shared_hotbar(game: &GameDir) -> Result<(), SyncError> {
     let path = shared_root(game).join(HOTBAR_FILE);
     if path.is_file() {
@@ -1144,7 +1144,7 @@ pub fn clear_shared_hotbar(game: &GameDir) -> Result<(), SyncError> {
     Ok(())
 }
 
-/// 列出共享资源包或共享光影包文件夹中的条目与大小（D26b 精修）
+/// 列出共享资源包或共享光影包文件夹中的条目与大小
 pub fn list_shared_packs(game: &GameDir, kind: SharedFolderKind) -> Vec<SharedPackEntry> {
     if kind == SharedFolderKind::Root {
         return Vec::new();
@@ -1165,7 +1165,7 @@ pub fn list_shared_packs(game: &GameDir, kind: SharedFolderKind) -> Vec<SharedPa
         .collect()
 }
 
-/// 从共享资源包或共享光影包文件夹安全删除单个包（D26b 精修）
+/// 从共享资源包或共享光影包文件夹安全删除单个包
 pub fn remove_shared_pack(
     game: &GameDir,
     kind: SharedFolderKind,
@@ -1184,7 +1184,7 @@ pub fn remove_shared_pack(
     Ok(list_shared_packs(game, kind))
 }
 
-/// 从指定实例导入设置、服务器、命令记录和/或创造模式物品栏到共享库（D26b/D26c）
+/// 从指定实例导入设置、服务器、命令记录和/或创造模式物品栏到共享库
 pub fn import_instance_to_shared(
     game: &GameDir,
     instance_id: &str,

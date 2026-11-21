@@ -670,7 +670,7 @@ mod tests {
             DownloadSource::Official,
         )
         .unwrap();
-        assert_eq!(files.len(), 70, "和 D2 实测的「当前系统需要 70 个」一致");
+        assert_eq!(files.len(), 70, "和实测的「当前系统需要 70 个」一致");
         assert!(
             files
                 .iter()

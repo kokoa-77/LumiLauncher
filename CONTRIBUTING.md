@@ -4,7 +4,7 @@ Thank you for your interest in contributing to **Lumi**!
 
 ## Development Setup
 
-1. Install [Rust](https://www.rust-lang.org/) (the exact toolchain is pinned in `rust-toolchain.toml`), MSVC C++ Build Tools (Windows SDK), [Node.js](https://nodejs.org/) 24+, and [pnpm](https://pnpm.io/) 10+.
+1. Install [Rust](https://www.rust-lang.org/) (the exact toolchain is pinned in `rust-toolchain.toml`), MSVC C++ Build Tools (Windows SDK), [Node.js](https://nodejs.org/) 24+, and [pnpm](https://pnpm.io/) 12+ (pinned via `packageManager` in `package.json`).
 2. Install frontend dependencies:
    ```powershell
    pnpm install --frozen-lockfile
@@ -16,13 +16,13 @@ Thank you for your interest in contributing to **Lumi**!
 
 ## Architecture & Engineering Rules
 
-Please review [ARCHITECTURE.md](ARCHITECTURE.md) before making substantial changes:
+Please review [ARCHITECTURE.md](ARCHITECTURE.md) (code layout) and [docs/DESIGN.md](docs/DESIGN.md) (design tokens, motion, copy, security and performance rules) before making substantial changes. The highlights:
 
 - **Strict Layering**: `crates/core` must stay free of Tauri dependencies so core logic remains testable and reusable by `crates/cli`.
 - **Typed IPC Only**: Expose commands via `#[tauri::command]` + `#[specta::specta]`, then regenerate `app/src/lib/bindings.ts` with `cargo test -p launcher-app`. Never call raw `invoke("...")` from UI components.
 - **Zero Business `unsafe` / `unwrap()`**: Keep `crates/core` and `app/src-tauri` free of `unsafe` (Win32 FFI lives exclusively in `crates/winmem`) and avoid `unwrap()` / `expect()` in non-test Rust code.
-- **Design Tokens & i18n**: Use semantic CSS tokens in `app/src/styles/tokens.css` (no hardcoded hex/rgba literals in components) and keep both `app/src/locales/zh-CN.json` and `app/src/locales/en-US.json` synchronized.
-- **Performance & Motion**: Respect reduced-motion / fluent performance mode and keep the initial static JS bundle within budget.
+- **Design Tokens & i18n**: Use semantic CSS tokens in `app/src/styles/tokens.css` (no hardcoded hex/rgba literals in components) and keep both `app/src/locales/zh-CN.json` and `app/src/locales/en.json` synchronized.
+- **Performance & Motion**: Respect reduced-motion / Lightweight mode and keep the first-screen JS within 250 KiB gzip (`pnpm --dir app build && pnpm check:bundle`).
 
 ## Required Checks Before Opening a PR
 

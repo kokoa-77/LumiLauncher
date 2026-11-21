@@ -61,7 +61,7 @@ export interface Entry {
   counts: Partial<Record<ContentSource, number>>;
   /** 各平台上的作者（按名字合并时作者也要一样） */
   authors: Partial<Record<ContentSource, string>>;
-  /** 后端确认过的、另一个平台上的编号（那一条还没搜到时也先记着；D17e） */
+  /** 后端确认过的、另一个平台上的编号（那一条还没搜到时也先记着） */
   twins: Partial<Record<ContentSource, string>>;
 }
 
@@ -149,8 +149,8 @@ export function interleave(pages: ProjectHit[][], sort: SearchSort = "relevance"
 }
 
 /**
- * 两个平台上的同一个项目合成一条（D17e 起只认有证据的，见 {@link sameProject}）：下载量加起来，
- * 显示首选平台那份（设置「内容与下载」→「首选平台」，默认 Modrinth：装的时候不会遇到作者禁止第三方下载，D18），
+ * 两个平台上的同一个项目合成一条（只认有证据的，见 {@link sameProject}）：下载量加起来，
+ * 显示首选平台那份（设置「内容与下载」→「首选平台」，默认 Modrinth：装的时候不会遇到作者禁止第三方下载），
  * 展示图、中文名哪边有用哪边。
  */
 export function merge(
@@ -451,7 +451,7 @@ export const favoriteKindOf = (kind: InstallKind): FavoriteKind => kind;
 
 // ---------- 页面级缓存 ----------
 // 后端已经缓存了 10 分钟的搜索结果；这里再记一份「已经合并好的列表」，
-// 切回同样的分类、关键词时直接显示，不等打字防抖、不闪加载（D17 目标：有缓存时 < 300 毫秒）。
+// 切回同样的分类、关键词时直接显示，不等打字防抖、不闪加载（目标：有缓存时 < 300 毫秒）。
 
 export interface CachedResults {
   entries: Entry[];

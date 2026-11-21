@@ -373,7 +373,7 @@ pub fn run() {
                 Some(directory) => directory.clone(),
                 None => app.path().app_data_dir()?,
             };
-            // 下载历史（D18）：关掉再打开还在
+            // 下载历史：关掉再打开还在
             let jobs = JobRegistry::with_history(data_dir.join("jobs-history.json"));
             events::forward_job_events(app.handle().clone(), &jobs);
 
@@ -397,11 +397,11 @@ pub fn run() {
                 .or_else(|| settings.get().game.directory.map(std::path::PathBuf::from))
                 .unwrap_or_else(|| game::default_game_dir(&data_dir));
             tracing::info!(dir = %game_root.display(), from_env = game_dir_from_env, "游戏目录");
-            // D18 以前的实例在 versions/<实例名>/：搬到 instances/（D18a）。只是改名，瞬间完成；
+            // 早先的实例在 versions/<实例名>/：搬到 instances/。只是改名，瞬间完成；
             // 要在下面的清理、退回没做完的改动之前做（它们按新位置找实例）
             game::migrate_instances(&GameDir::new(&game_root));
             // 上次没删掉的临时文件（安装途中被关掉之类），放后台清，不耽误首屏；
-            // 还能重试的整合包导入留着接着装（D18）
+            // 还能重试的整合包导入留着接着装
             {
                 let game = GameDir::new(&game_root);
                 let keep = downloads::kept_staging(&jobs);
@@ -414,7 +414,7 @@ pub fn run() {
                     "MCL_IGNORE_SYSTEM_JAVA 已设置：不用电脑上的 Java，只用启动器下载的"
                 );
             }
-            // 下载域名先问 DoH，并应用代理设置（设置里改了立刻生效，D17l / D26a）
+            // 下载域名先问 DoH，并应用代理设置（设置里改了立刻生效）
             let current_download = settings.get().download;
             let doh = std::sync::Arc::new(Doh::new(current_download.doh_enabled)?);
             let client = match build_client_with_proxy(doh.clone(), &current_download.proxy) {
@@ -429,7 +429,7 @@ pub fn run() {
                 tracing::warn!("没有 CurseForge 的 API Key：CurseForge 的接口只能走 MCIM 镜像");
             }
             let sources = launcher_core::net::SourcePicker::new(client.clone());
-            // Modrinth、CurseForge 的接口按设置换 MCIM 镜像（D18b）
+            // Modrinth、CurseForge 的接口按设置换 MCIM 镜像
             launcher_core::content::mirror::set_policies(
                 current_download.modrinth_source,
                 current_download.curseforge_source,
@@ -473,9 +473,9 @@ pub fn run() {
                 linked: linked::Linked::open(data_dir.join("linked-roots.json")),
                 accounts,
             });
-            // 挂上的别家目录：别家新装、删掉的版本跟着变（D19），放后台不耽误首屏
+            // 挂上的别家目录：别家新装、删掉的版本跟着变，放后台不耽误首屏
             linked::spawn_rescan(app.handle());
-            // 上次改到一半被关掉的实例：后台退回改之前（D17m）
+            // 上次改到一半被关掉的实例：后台退回改之前
             recovery::spawn(app.handle());
 
             window::spawn_show_fallback(app.handle());

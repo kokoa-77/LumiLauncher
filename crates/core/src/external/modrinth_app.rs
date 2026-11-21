@@ -1,4 +1,4 @@
-//! 读 Modrinth App 的实例清单（D19）。
+//! 读 Modrinth App 的实例清单。
 //!
 //! Modrinth App 把实例信息存在自己的数据库 `%APPDATA%\ModrinthApp\app.db`（SQLite）里，
 //! 实例文件夹在 `<数据文件夹>/profiles/<路径>/`（数据文件夹可以在它的设置里换，记在 `settings.custom_dir`）。

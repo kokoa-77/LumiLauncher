@@ -9,6 +9,7 @@
     "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
     "check:ui": "pnpm --dir app typecheck && pnpm --dir app lint && pnpm --dir app test",
     "check": "pnpm check:rust && pnpm check:ui",
+    "check:bundle": "node scripts/check-bundle.mjs",
     "test:e2e": "node scripts/e2e/run-e2e.mjs"
   }
 }

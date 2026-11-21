@@ -1,4 +1,4 @@
-//! 挂上别家的 `.minecraft`（D19，「原地读」的思路学 Axolotl，代码自己写）。
+//! 挂上别家的 `.minecraft`（「原地读」的思路学 Axolotl，代码自己写）。
 //!
 //! 扫 `versions/` 里每个有版本描述的文件夹，认出游戏版本、加载器和游戏工作目录（版本隔离）：
 //! - **PCL**：版本自己的设置（`versions/<版本>/PCL/Setup.ini` 的 `VersionArgumentIndieV2`，

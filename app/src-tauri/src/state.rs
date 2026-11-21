@@ -43,7 +43,7 @@ pub struct AppState {
     /// 用来验收「没装 Java 也能一键启动」）
     pub ignore_system_java: bool,
     pub client: RwLock<Client>,
-    /// DoH 开关（`client` 用它解析域名；设置里改了在这里开关，D17l）
+    /// DoH 开关（`client` 用它解析域名；设置里改了在这里开关）
     pub doh: std::sync::Arc<launcher_core::net::Doh>,
     /// CurseForge 客户端（Key 在里面，界面拿不到）
     pub curseforge: CurseForge,
@@ -58,7 +58,7 @@ pub struct AppState {
     pub catalog: Catalog,
     /// 本地导入：已经检查过、等用户确认的整合包（键是一次性的令牌）
     pub pending_imports: Mutex<HashMap<String, PackPlan>>,
-    /// 拖进窗口、还没装也没取消的文件（一次性编号 → 认出来的结果，D17g）
+    /// 拖进窗口、还没装也没取消的文件（一次性编号 → 认出来的结果）
     pub drops: Mutex<HashMap<String, crate::drops::PendingDrop>>,
     /// 资源中心的搜索结果（键里带平台、类型、关键词、版本、加载器、第几页）
     pub search_cache: TtlCache<SearchPage>,
@@ -66,23 +66,23 @@ pub struct AppState {
     pub detail_cache: TtlCache<ProjectDetail>,
     /// 收藏夹（存在应用数据目录的 favorites.json）
     pub favorites: Favorites,
-    /// 用户对 Java 的选择：手动添加的、每个大版本的默认（应用数据目录的 java.json，D17h）
+    /// 用户对 Java 的选择：手动添加的、每个大版本的默认（应用数据目录的 java.json）
     pub java_prefs: JavaPrefsStore,
-    /// 我们改过哪些程序的 Windows 显卡设置（关掉「高性能显卡」时按它撤回，D17h）
+    /// 我们改过哪些程序的 Windows 显卡设置（关掉「高性能显卡」时按它撤回）
     pub gpu_ledger: PathBuf,
-    /// 导出完的整合包：任务 ID → 文件（「打开所在文件夹」用，界面只拿任务 ID，D17i）
+    /// 导出完的整合包：任务 ID → 文件（「打开所在文件夹」用，界面只拿任务 ID）
     pub exports: Mutex<HashMap<String, PathBuf>>,
-    /// 同一个实例同一时间只做一件改文件的事（D17l）
+    /// 同一个实例同一时间只做一件改文件的事
     pub turns: crate::turns::InstanceTurns,
-    /// 启动时退回的没做完的改动，等界面来拿（D17m）
+    /// 启动时退回的没做完的改动，等界面来拿
     pub recovery: crate::recovery::RecoveryNotes,
-    /// 装过的文件教会的中文名、两个平台的关联（按游戏目录缓存，识别缓存变了才重读，D17e）
+    /// 装过的文件教会的中文名、两个平台的关联（按游戏目录缓存，识别缓存变了才重读）
     pub names: launcher_core::content::names::NameBook,
-    /// 下载源「自动」时测官方和 BMCLAPI 谁快（D18）
+    /// 下载源「自动」时测官方和 BMCLAPI 谁快
     pub sources: launcher_core::net::SourcePicker,
-    /// 挂上的别家目录、导入候选（D19）
+    /// 挂上的别家目录、导入候选
     pub linked: crate::linked::Linked,
-    /// 账户与皮肤（D19b）
+    /// 账户与皮肤
     pub accounts: crate::accounts::Accounts,
 }
 
@@ -111,7 +111,7 @@ impl AppState {
         self.sources.cached(self.settings.get().download.source)
     }
 
-    /// 「Minecraft 元数据」那行（版本清单、版本描述、加载器版本列表，D18b）：「自动」和文件那行共用一次测速
+    /// 「Minecraft 元数据」那行（版本清单、版本描述、加载器版本列表）：「自动」和文件那行共用一次测速
     pub async fn meta_source(&self) -> DownloadSource {
         self.sources
             .resolve(self.settings.get().download.meta_source)

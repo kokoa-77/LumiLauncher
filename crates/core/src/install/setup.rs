@@ -44,7 +44,7 @@ where
 }
 
 /// 装好一个游戏版本（和加载器）、补全文件，返回 `versions/` 里要启动的版本 ID。
-/// 新建实例、从别家导入实例（D19）都用它。
+/// 新建实例、从别家导入实例都用它。
 pub async fn install_version<F>(
     ctx: &LoaderContext<'_>,
     game_version: &str,
@@ -56,7 +56,7 @@ where
 {
     let vanilla =
         load_or_fetch_version(ctx.game, game_version, ctx.client, ctx.meta_source).await?;
-    // 实例指向 versions/ 里共用的版本（D18a）。
+    // 实例指向 versions/ 里共用的版本。
     let base_id = match loader {
         Some(loader) => {
             loaders::install(ctx, game_version, loader, |p| {

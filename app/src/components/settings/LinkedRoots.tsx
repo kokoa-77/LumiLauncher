@@ -34,7 +34,7 @@ function RootRow({ root, action }: { root: LinkedRootView; action: ReactNode }) 
 }
 
 /**
- * 设置 →「游戏」→「别的启动器的目录」（D19）：挂上官方、PCL、HMCL 的 .minecraft，里面的版本原地读、直接玩。
+ * 设置 →「游戏」→「别的启动器的目录」：挂上官方、PCL、HMCL 的 .minecraft，里面的版本原地读、直接玩。
  * 挂上的目录一行一个，右边「移除」（只从 Lumi 里移除，那边的文件不动）；下面是在电脑上自动找到的，点「挂上」。
  * 界面只拿目录的编号，路径只用来显示。
  */

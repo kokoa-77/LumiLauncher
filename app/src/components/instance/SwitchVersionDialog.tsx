@@ -37,7 +37,7 @@ function isSameVersion(item: ContentItem, v: ContentVersion): boolean {
 }
 
 /**
- * 实例内容「切换版本」弹窗（D25e）：
+ * 实例内容「切换版本」弹窗：
  * 列出该项目兼容当前实例的版本（可一键放宽显示全部），支持展开更新日志，
  * 切换后旧文件保留在内容仓库并写入改动历史，随时一键撤销。
  */

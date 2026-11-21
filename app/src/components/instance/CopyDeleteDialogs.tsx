@@ -11,7 +11,7 @@ import { Field, TextInput } from "../ui/Field";
 import { Switch } from "../ui/Switch";
 
 /**
- * 复制实例（D17i）：起个新名字，默认带上世界。复制在后台进行，任务中心有进度，
+ * 复制实例：起个新名字，默认带上世界。复制在后台进行，任务中心有进度，
  * 复制完右下角提示，点「去看看」打开新实例。
  */
 export function CopyDialog({
@@ -94,8 +94,8 @@ export function CopyDialog({
 }
 
 /**
- * 删除实例（D17i）：整个文件夹移到系统回收站，删完回到实例库。
- * 挂上的别家版本（D19）只从 Lumi 里移除，别家的文件不动。
+ * 删除实例：整个文件夹移到系统回收站，删完回到实例库。
+ * 挂上的别家版本只从 Lumi 里移除，别家的文件不动。
  */
 export function DeleteDialog({
   instance,

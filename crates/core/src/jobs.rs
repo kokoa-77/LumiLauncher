@@ -5,7 +5,7 @@
 //! - 进度推送自动节流（默认每 100 毫秒最多一次），状态变化和完成时立即推送；
 //! - `JobHandle` 被丢弃时如果还没结束，会自动标记为「已取消」或「意外中断」，不会留下卡住的任务。
 //!
-//! 下载中心（D18）：
+//! 下载中心：
 //! - 每个任务记下属于哪个实例、从哪下载（[`JobSource`]）、做过的每一步（[`JobStep`]），
 //!   按最近 5 秒的进度统一算速度和预计剩余时间；
 //! - 用 [`JobRegistry::with_history`] 打开时，任务写进历史文件（开始、换步骤、结束时写，后台线程写，
@@ -46,7 +46,7 @@ pub enum JobState {
     Succeeded,
     Failed,
     Cancelled,
-    /// 启动器关掉时还没做完（只出现在以前的历史里，D18）
+    /// 启动器关掉时还没做完（只出现在以前的历史里）
     Interrupted,
 }
 
@@ -211,7 +211,7 @@ struct Record {
     transient: bool,
     /// 完成量涨得多快（算剩余时间：已有文件跳过得快，也算进度）
     rate: Rate,
-    /// 网络收到的字节涨得多快（算显示的速度，D18 实测）
+    /// 网络收到的字节涨得多快（算显示的速度用）
     net: Rate,
     /// 以前几步加起来的换源次数（每一步的下载各自从 0 数）
     fallback_base: u32,
@@ -839,7 +839,7 @@ impl JobHandle {
         );
     }
 
-    /// 下载进度（D18）：和 [`Self::set_progress_detail`] 一样，另外给出这次真从网络收到的字节，
+    /// 下载进度：和 [`Self::set_progress_detail`] 一样，另外给出这次真从网络收到的字节，
     /// 速度只按它算（已经有、直接跳过的文件不会把速度撑到几百 MB/s）
     /// `fallbacks` 是这一步里换了地址才下好的文件数。
     pub fn set_download_progress(
@@ -871,7 +871,7 @@ impl JobHandle {
         });
     }
 
-    /// 记下这次游戏文件用的下载源（「自动」测速后选的那个，D18 下载历史里显示）
+    /// 记下这次游戏文件用的下载源（「自动」测速后选的那个，下载历史里显示）
     pub fn set_download_source(&self, source: DownloadSource) {
         self.registry.modify(&self.id, |record| {
             record.snapshot.download_source = Some(source);
@@ -1061,7 +1061,7 @@ mod tests {
         job.succeed();
     }
 
-    /// D6 实测：检查 3998 个文件时每个文件都报一次「x/3998」，不能每次都推送
+    /// 实测：检查 3998 个文件时每个文件都报一次「x/3998」，不能每次都推送
     #[test]
     fn progress_details_are_throttled_with_the_progress() {
         let jobs = JobRegistry::with_throttle(Duration::from_secs(60));
@@ -1136,7 +1136,7 @@ mod tests {
         );
     }
 
-    /// D18 实测：本地已经有的文件直接跳过，完成量一下涨很多，速度不能跟着算（跑出过 163 MB/s）；
+    /// 实测：本地已经有的文件直接跳过，完成量一下涨很多，速度不能跟着算（跑出过 163 MB/s）；
     /// 剩余时间反过来要按完成量算（只按网络速度算时，开头报过「还剩 9 小时」）
     #[test]
     fn download_speed_counts_only_network_bytes() {

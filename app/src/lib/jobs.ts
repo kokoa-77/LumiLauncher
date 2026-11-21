@@ -1,5 +1,5 @@
 // 下载中心用的小工具：任务属于哪个实例、做完能不能直接开始游戏、进度、速度、剩余时间怎么写，
-// 下载历史怎么筛，诊断信息怎么拼（D18）。
+// 下载历史怎么筛，诊断信息怎么拼。
 import type { TFunction } from "i18next";
 import type {
   JobProgress,
@@ -42,7 +42,7 @@ export function canRetry(job: Pick<JobSnapshot, "state" | "retryable">): boolean
   );
 }
 
-/** 状态的颜色（开发合同第 5 节的颜色角色）：做完了是主色，失败是红色，取消、中断、进行中是灰色 */
+/** 状态的颜色（docs/DESIGN.md 第 5 节的颜色角色）：做完了是主色，失败是红色，取消、中断、进行中是灰色 */
 export function stateTone(state: JobState): "text-accent" | "text-danger" | "text-fg-muted" {
   if (state === "succeeded") return "text-accent";
   if (state === "failed") return "text-danger";

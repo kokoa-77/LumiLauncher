@@ -1,4 +1,4 @@
-//! 资源中心（D17）：项目详情、收藏夹。搜索命令在 `game.rs`（三个搜索都走 [`AppState::search_cache`]）。
+//! 资源中心：项目详情、收藏夹。搜索命令在 `game.rs`（三个搜索都走 [`AppState::search_cache`]）。
 
 use launcher_core::content::curseforge as cf;
 use launcher_core::content::detail::{ContentVersion, ProjectDetail};
@@ -60,7 +60,7 @@ pub async fn discover_project(
     Ok(detail)
 }
 
-/// 列出项目的版本列表（项目「版本」页签与实例「切换版本」共用，D25e）。
+/// 列出项目的版本列表（项目「版本」页签与实例「切换版本」共用）。
 #[tauri::command]
 #[specta::specta]
 pub async fn discover_versions(
@@ -88,7 +88,7 @@ pub async fn discover_versions(
     Ok(versions)
 }
 
-/// 懒加载 CurseForge 单个版本的更新日志（HTML 原文，前端清洗后展示，D25e）。
+/// 懒加载 CurseForge 单个版本的更新日志（HTML 原文，前端清洗后展示）。
 #[tauri::command]
 #[specta::specta]
 pub async fn discover_version_changelog(
@@ -122,7 +122,7 @@ pub fn favorites_list(state: State<'_, AppState>) -> Vec<Favorite> {
     list
 }
 
-/// 中文关键词查中文名表（D17e）：资源中心拿第一个的英文名去平台搜，其余的给玩家点。不用联网。
+/// 中文关键词查中文名表：资源中心拿第一个的英文名去平台搜，其余的给玩家点。不用联网。
 #[tauri::command]
 #[specta::specta]
 pub fn names_match(query: String) -> Vec<NameMatch> {

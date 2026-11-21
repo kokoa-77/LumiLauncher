@@ -34,11 +34,11 @@ pub struct Settings {
     pub appearance: Appearance,
     pub download: DownloadSettings,
     pub game: GameSettings,
-    /// 世界与存储（D17j / D26a / D26b）：自动备份与自定义备份目录
+    /// 世界与存储：自动备份与自定义备份目录
     pub worlds: WorldSettings,
-    /// 本机跨实例同步（D26b）
+    /// 本机跨实例同步
     pub sync: SyncSettings,
-    /// 启动时自动静默检查启动器更新（D26a，默认开）
+    /// 启动时自动静默检查启动器更新（默认开）
     pub auto_check_updates: bool,
 }
 
@@ -60,7 +60,7 @@ impl Default for Settings {
 const MIN_KEEP_BACKUPS: u32 = 1;
 const MAX_KEEP_BACKUPS: u32 = 20;
 
-/// 世界的设置（D17j / D26b）
+/// 世界的设置
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -70,7 +70,7 @@ pub struct WorldSettings {
     pub auto_backup: bool,
     /// 每个世界最多留几份自动备份（手动的、恢复前的不算）
     pub keep_backups: u32,
-    /// 自定义世界备份存放根目录；`None` 时存放在各实例的 `Lumi/backups/`（D26b）
+    /// 自定义世界备份存放根目录；`None` 时存放在各实例的 `Lumi/backups/`
     pub backup_dir: Option<String>,
 }
 
@@ -84,7 +84,7 @@ impl Default for WorldSettings {
     }
 }
 
-/// `options.txt` 跨实例同步的细分分类（D26b）
+/// `options.txt` 跨实例同步的细分分类
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -110,7 +110,7 @@ impl Default for OptionsSyncCategories {
     }
 }
 
-/// 本机跨实例同步设置（D26b：纯本机、零云端，支持按资产独立开关）
+/// 本机跨实例同步设置（纯本机、零云端，支持按资产独立开关）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -159,11 +159,11 @@ pub struct Appearance {
     pub reduce_motion: bool,
     /// 画面效果：自动（老电脑用流畅）/ 流畅 / 精美
     pub effects: EffectsMode,
-    /// 自动封面：玩的时候悄悄截游戏画面当这个世界的封面（D17d，默认开）
+    /// 自动封面：玩的时候悄悄截游戏画面当这个世界的封面（默认开）
     pub auto_cover: bool,
     /// 主色跟着世界变（招牌 2，默认开）：进到有截图的世界时换成世界的颜色；关掉就一直用下面选的颜色
     pub accent_follow_world: bool,
-    /// 自己选的主色（D19c）：色相 0–360、彩度 0–0.3，亮度按对比度自动算。
+    /// 自己选的主色：色相 0–360、彩度 0–0.3，亮度按对比度自动算。
     /// 跟着世界变时，没有截图的世界、还没进过世界时也用它
     pub accent_hue: f64,
     pub accent_chroma: f64,
@@ -215,26 +215,26 @@ pub enum ThemeMode {
 pub struct DownloadSettings {
     /// Minecraft 文件、加载器与 Java：游戏文件、资源、依赖库、加载器安装器、Java 运行时从哪下（镜像是 BMCLAPI）
     pub source: DownloadSource,
-    /// Minecraft 元数据：版本清单、版本描述、加载器的版本列表从哪拿（镜像是 BMCLAPI，D18b）
+    /// Minecraft 元数据：版本清单、版本描述、加载器的版本列表从哪拿（镜像是 BMCLAPI）
     pub meta_source: DownloadSource,
-    /// Modrinth：搜索、项目和版本查询、文件下载（镜像是 MCIM；文件总是先官方，D18b）
+    /// Modrinth：搜索、项目和版本查询、文件下载（镜像是 MCIM；文件总是先官方）
     pub modrinth_source: DownloadSource,
-    /// CurseForge：搜索、项目和文件查询、文件下载（镜像是 MCIM；Key 不发给镜像，D18b）
+    /// CurseForge：搜索、项目和文件查询、文件下载（镜像是 MCIM；Key 不发给镜像）
     pub curseforge_source: DownloadSource,
-    /// 用 DoH 解析下载域名，防 DNS 污染和劫持（不承诺提速）。问不到时自动退回系统 DNS（`net::doh`，D17l）。
+    /// 用 DoH 解析下载域名，防 DNS 污染和劫持（不承诺提速）。问不到时自动退回系统 DNS（`net::doh`）。
     pub doh_enabled: bool,
     pub max_concurrency: u32,
     /// 补件时在下载文件夹里认领的文件：`true` 移进内容仓库（下载文件夹不留），
     /// `false`（默认）复制一份，原文件不动。拖进窗口、手动选的文件始终复制。
     #[serde(default)]
     pub move_claimed_files: bool,
-    /// 首选平台（D18）：同一个项目两个平台都有时，资源中心显示、安装都先用它
+    /// 首选平台：同一个项目两个平台都有时，资源中心显示、安装都先用它
     pub preferred_platform: Platform,
-    /// 自动装前置（D18）：关掉后只装点的那个，前置自己装
+    /// 自动装前置：关掉后只装点的那个，前置自己装
     pub auto_dependencies: bool,
-    /// 补件时盯着的文件夹（D18）；空 = 系统的「下载」文件夹。只由后端的「选择文件夹」窗口写入
+    /// 补件时盯着的文件夹；空 = 系统的「下载」文件夹。只由后端的「选择文件夹」窗口写入
     pub claim_folder: Option<String>,
-    /// 网络代理设置（D26a）：跟随系统 / 直连 / 自定义 HTTP 或 SOCKS5
+    /// 网络代理设置：跟随系统 / 直连 / 自定义 HTTP 或 SOCKS5
     pub proxy: ProxySettings,
 }
 
@@ -256,7 +256,7 @@ impl Default for DownloadSettings {
     }
 }
 
-/// 网络代理模式（D26a）
+/// 网络代理模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -270,7 +270,7 @@ pub enum ProxyMode {
     Custom,
 }
 
-/// 自定义代理协议（D26a）
+/// 自定义代理协议
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -280,7 +280,7 @@ pub enum ProxyScheme {
     Socks5,
 }
 
-/// 代理配置（D26a）
+/// 代理配置
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -360,11 +360,11 @@ pub enum DownloadSource {
     Official,
     /// 先镜像，失败再换官方
     Mirror,
-    /// 只用官方，不碰镜像（D18）
+    /// 只用官方，不碰镜像
     OfficialOnly,
 }
 
-/// 内容平台（D18「首选平台」）。和 `content::ContentSource` 的写法一样
+/// 内容平台（「首选平台」）。和 `content::ContentSource` 的写法一样
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -387,7 +387,7 @@ pub struct GameSettings {
     pub max_memory_mb: u32,
     /// 游戏目录（.minecraft）的完整路径；`None` 用默认位置。只由后端的「选择文件夹」窗口写入
     pub directory: Option<String>,
-    /// 垃圾回收预设（D17h）
+    /// 垃圾回收预设
     pub gc_preset: GcPreset,
     /// 自定义 JVM 参数（用户输入的原文，启动时按空格和引号拆成数组）
     pub jvm_args: String,
@@ -395,27 +395,27 @@ pub struct GameSettings {
     pub game_args: String,
     /// 高性能显卡：启动前在 Windows「图形设置」里让 Java 用高性能显卡（双显卡笔记本有用，默认开）
     pub high_performance_gpu: bool,
-    /// 游戏窗口（D17i）：游戏默认 / 自定义宽高 / 全屏
+    /// 游戏窗口：游戏默认 / 自定义宽高 / 全屏
     pub window: WindowSettings,
-    /// 启动游戏时额外加的环境变量（D17i 验收时加）
+    /// 启动游戏时额外加的环境变量
     pub env_vars: Vec<EnvVar>,
     /// 兼容旧字段：与 `after_launch == AfterLaunchBehavior::Release` 同步。
     pub release_webview_while_playing: bool,
-    /// 实例首次启动时的默认游戏语言（D26a，仅实例尚无语言配置时写入 `options.txt`）。
+    /// 实例首次启动时的默认游戏语言（仅实例尚无语言配置时写入 `options.txt`）。
     pub default_language: GameLanguage,
-    /// 游戏进入可玩界面后启动器窗口的行为（D26a）：保持显示 / 最小化 / 释放界面。
+    /// 游戏进入可玩界面后启动器窗口的行为：保持显示 / 最小化 / 释放界面。
     pub after_launch: AfterLaunchBehavior,
-    /// 游戏退出后自动恢复并聚焦启动器窗口（D26a，默认开）。
+    /// 游戏退出后自动恢复并聚焦启动器窗口（默认开）。
     pub refocus_on_exit: bool,
-    /// 启动钩子：启动前 / 退出后执行的本地命令（D26c，默认空）
+    /// 启动钩子：启动前 / 退出后执行的本地命令（默认空）
     pub hooks: LaunchHooks,
-    /// 自定义游戏窗口标题模板（D26c，空字符串表示使用 Minecraft 默认标题，支持 `{instance}` / `{version}` / `{loader}` / `{player}`）
+    /// 自定义游戏窗口标题模板（空字符串表示使用 Minecraft 默认标题，支持 `{instance}` / `{version}` / `{loader}` / `{player}`）
     pub custom_window_title: String,
-    /// Discord 活动状态（D26c，纯本地命名管道，默认关闭）
+    /// Discord 活动状态（纯本地命名管道，默认关闭）
     pub discord_rpc: bool,
 }
 
-/// 启动钩子命令（D26c：在游戏启动前与退出后运行）
+/// 启动钩子命令（在游戏启动前与退出后运行）
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -457,7 +457,7 @@ pub fn clean_window_title(text: &str) -> String {
         .collect()
 }
 
-/// 实例首次启动时的默认游戏语言（D26a）
+/// 实例首次启动时的默认游戏语言
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -493,7 +493,7 @@ impl GameLanguage {
     }
 }
 
-/// 游戏启动后的启动器窗口行为（D26a）
+/// 游戏启动后的启动器窗口行为
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -733,7 +733,7 @@ pub enum SettingsError {
 }
 
 /// 旧格式 → 新格式：
-/// - D26a：如果旧文件只写了 `game.releaseWebviewWhilePlaying: true` 而没有 `game.afterLaunch`，
+/// - 如果旧文件只写了 `game.releaseWebviewWhilePlaying: true` 而没有 `game.afterLaunch`，
 ///   平滑迁移为 `game.afterLaunch = "release"`。
 fn migrate(mut value: serde_json::Value) -> serde_json::Value {
     if let Some(game) = value.get_mut("game").and_then(|v| v.as_object_mut())
@@ -916,7 +916,7 @@ mod tests {
 
     #[test]
     fn old_download_settings_keep_their_values() {
-        // D10 加了「补件认领后移走」：以前保存的设置没有这个字段，其他值不能因此丢掉
+        // 加了「补件认领后移走」：以前保存的设置没有这个字段，其他值不能因此丢掉
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         std::fs::write(
@@ -930,7 +930,7 @@ mod tests {
         assert!(!download.doh_enabled);
         assert_eq!(download.max_concurrency, 8);
         assert!(!download.move_claimed_files, "默认复制，不移走");
-        // D18 加的三项、D18b 加的三个下载源也有默认值
+        // 后来加的几项和三个下载源也有默认值
         assert_eq!(download.meta_source, DownloadSource::Auto);
         assert_eq!(download.modrinth_source, DownloadSource::Auto);
         assert_eq!(download.curseforge_source, DownloadSource::Auto);
@@ -941,7 +941,7 @@ mod tests {
 
     #[test]
     fn accent_defaults_and_bounds() {
-        // D19c 加的主色：以前的设置文件没有，补成跟着世界变 + 天空蓝；越界的拉回来
+        // 后来加的主色：以前的设置文件没有，补成跟着世界变 + 天空蓝；越界的拉回来
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         std::fs::write(&path, r#"{ "appearance": { "theme": "dark" } }"#).unwrap();
@@ -959,7 +959,7 @@ mod tests {
 
     #[test]
     fn old_game_settings_get_the_new_launch_options() {
-        // D17h 加了垃圾回收、自定义参数、高性能显卡：以前的设置文件没有这几个字段
+        // 加了垃圾回收、自定义参数、高性能显卡：以前的设置文件没有这几个字段
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         std::fs::write(
@@ -975,8 +975,8 @@ mod tests {
         assert_eq!(game.gc_preset, GcPreset::Auto);
         assert!(game.jvm_args.is_empty() && game.game_args.is_empty());
         assert!(game.high_performance_gpu, "高性能显卡默认开");
-        assert_eq!(game.window, WindowSettings::default(), "D17i 加的游戏窗口");
-        assert!(game.env_vars.is_empty(), "D17i 加的环境变量");
+        assert_eq!(game.window, WindowSettings::default(), "后来加的游戏窗口");
+        assert!(game.env_vars.is_empty(), "后来加的环境变量");
         assert!(!game.release_webview_while_playing, "释放界面默认关");
     }
 

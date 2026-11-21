@@ -1,6 +1,6 @@
 //! 导入计划和导入流程（Modrinth、CurseForge 两种格式共用）。
 //!
-//! 流程（方案 5.3 节第 7 条）：
+//! 流程：
 //! 1. 各格式先**检查整个包**，任何一项不过就拒绝，什么都不写，得到 [`PackPlan`]
 //! 2. 在独立的临时目录里组装：装加载器 → 下载文件并校验 → 放入用户补的文件 → 解压覆盖文件
 //! 3. 补全游戏文件
@@ -88,7 +88,7 @@ pub struct PackPlan {
 }
 
 impl PackPlan {
-    /// 整合包文件在哪（只给后端用：重试本地导入时记下来，D18）
+    /// 整合包文件在哪（只给后端用：重试本地导入时记下来）
     pub fn pack_path(&self) -> &Path {
         &self.pack_path
     }
@@ -127,7 +127,7 @@ pub enum ImportProgress {
 
 /// 按计划导入，返回新实例。`name` 不填就用整合包的名字。
 ///
-/// 能接着装（D18）：临时目录按 `resume_key` 起名（[`super::staging_dir`]），**只在成功后删掉**；
+/// 能接着装：临时目录按 `resume_key` 起名（[`super::staging_dir`]），**只在成功后删掉**；
 /// 失败、取消时留着，用同一个 `resume_key` 再导入一次，下过的文件校验通过就不重下。
 /// 同一个整合包同一时间只能导入一份（调用方用任务键保证），不然两个导入会共用一个临时目录。
 pub async fn import<F>(
@@ -255,7 +255,7 @@ where
     )
     .await?;
 
-    // 6. 全部成功：改名成正式实例并登记（实例指向 versions/ 里共用的版本，D18a）
+    // 6. 全部成功：改名成正式实例并登记（实例指向 versions/ 里共用的版本）
     let display_name = name.unwrap_or(&plan.preview.name);
     let id = instance::unique_id(game, display_name);
     let target = game.instance_dir(&id)?;
@@ -309,7 +309,7 @@ fn extract_overrides(
         let mut entry = archive
             .by_name(entry_name)
             .map_err(|e| ModpackError::Invalid(format!("读取 {entry_name} 失败：{e}")))?;
-        // 边解压边写（D17l，外部审阅指出）：整合包里的大文件（世界、材质包）不先整个读进内存
+        // 边解压边写（外部审阅指出）：整合包里的大文件（世界、材质包）不先整个读进内存
         write_atomic_from(&safe_join(content, relative)?, &mut entry)?;
     }
     Ok(())

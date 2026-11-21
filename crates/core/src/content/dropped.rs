@@ -1,4 +1,4 @@
-//! 拖进窗口的文件（D17g）：按**里面的内容**认是什么，不看扩展名。
+//! 拖进窗口的文件：按**里面的内容**认是什么，不看扩展名。
 //!
 //! - 整合包：有 `modrinth.index.json`（`.mrpack`）或 CurseForge 的 `manifest.json`
 //! - 模组：jar 里有 `neoforge.mods.toml` / `mods.toml` / `fabric.mod.json` / `quilt.mod.json` / `mcmod.info`；
@@ -6,7 +6,7 @@
 //! - 光影包：根上有 `shaders/`
 //! - 资源包：根上有 `pack.mcmeta`，有 `assets/`（只有 `data/` 的是数据包）
 //! - 地图：压缩包或文件夹里有 `level.dat`
-//! - 皮肤：64×64 或 64×32 的 PNG（D19b，设给当前账号）
+//! - 皮肤：64×64 或 64×32 的 PNG（设给当前账号）
 //! - 别的都不装，说清楚为什么（加载器安装器、一包模组、整个游戏目录、图片……）
 //!
 //! 拖进来的路径是用户自己的文件，只读不改；装的时候复制一份。
@@ -42,7 +42,7 @@ pub enum DropKind {
     Schematic,
     /// 一包东西（一堆模组、光影、地图塞在一个 zip 里）：拆开后每一样单独认，见 [`super::bundle`]
     Bundle,
-    /// 皮肤图片（D19b）：不装进实例，设给账号
+    /// 皮肤图片：不装进实例，设给账号
     Skin,
     /// 认不出、或者认出来了但不该装（原因见 [`DropProblem`]）
     Unknown,

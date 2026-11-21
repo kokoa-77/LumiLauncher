@@ -56,7 +56,7 @@ export type HomeHeroTarget =
   | { kind: "server"; entry: RecentServer };
 
 /**
- * 首页「继续你的世界 / 多人服务器」（招牌 1 + D25d）：
+ * 首页「继续你的世界 / 多人服务器」（招牌 1）：
  * 左下角是目标标题与关键事实（世界天数或服务器在线人数/延迟），右下角一个胶囊主按钮和一个「⋯」。
  */
 export function HomeHero({
@@ -232,7 +232,7 @@ export function HomeHero({
           </StaggerItem>
           {world?.note && (
             <StaggerItem className="mt-2 flex min-w-0">
-              {/* 世界笔记（D17j）：第一条没做完的待办，点一下打开笔记 */}
+              {/* 世界笔记：第一条没做完的待办，点一下打开笔记 */}
               <button
                 type="button"
                 className="inline-flex min-w-0 items-center gap-2 rounded-control bg-hero-chip px-3 py-1.5 text-on-hero text-sm ring-1 ring-hero-chip-line ring-inset transition-colors duration-(--motion-press) hover:bg-hero-chip-hover"

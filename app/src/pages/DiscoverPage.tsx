@@ -139,7 +139,7 @@ export function DiscoverPage() {
     sourceParam && SOURCES.includes(sourceParam) ? sourceParam : "all";
   const fromInstance = params.get("from") === "instance";
   const unlocked = params.get("unlock") === "1";
-  // 筛选（D17c）：都记在地址里，从详情页回来还在
+  // 筛选：都记在地址里，从详情页回来还在
   const sortParam = params.get("sort");
   const sort = isSort(sortParam) ? sortParam : "relevance";
   const foundCategory = findCategory(kind, params.get("cat"));
@@ -160,7 +160,7 @@ export function DiscoverPage() {
     () => savedView() ?? (effects === "rich" ? "cards" : "list"),
   );
 
-  // 中文搜索（D17e）：模组的关键词里有汉字时先查中文名表，拿第一个的英文名去平台搜；
+  // 中文搜索：模组的关键词里有汉字时先查中文名表，拿第一个的英文名去平台搜；
   // 结果上方列出其他可能的，点一下换成它，也能按原文搜
   const wantsNames = kind === "mod" && HAN.test(query);
   const [names, setNames] = useState<{ query: string; matches: NameMatch[] } | null>(null);
@@ -189,7 +189,7 @@ export function DiscoverPage() {
 
   // 按实例筛：只有模组、资源包、光影包看实例；解锁后不筛
   const searchTarget = (isContentKind(kind) || kind === "map") && !unlocked ? instanceId : "";
-  // 首选平台（D18）：两个平台都有的项目显示、安装哪边的；「全部来源」时也先排它
+  // 首选平台：两个平台都有的项目显示、安装哪边的；「全部来源」时也先排它
   const preferred = useAppStore((s) => s.settings?.download.preferredPlatform ?? "modrinth");
   const key = `${resultsKey(kind, sourceFilter, searchTarget, searchText, sort, category?.key ?? null)}|${preferred}`;
   // 要搜的平台：只有一个平台有的分类，只搜那一个
@@ -752,7 +752,7 @@ const HAN = /\p{Script=Han}/u;
 
 const SKELETON_ITEMS = [0, 1, 2, 3, 4, 5];
 
-/** 发现内容加载态骨架占位（D25c）：按当前卡片 / 列表视图展示低对比占位，首帧即自适应列数避免跳变 */
+/** 发现内容加载态骨架占位：按当前卡片 / 列表视图展示低对比占位，首帧即自适应列数避免跳变 */
 function DiscoverSkeleton({ view }: { view: View }) {
   if (view === "list") {
     return (
@@ -806,7 +806,7 @@ function DiscoverSkeleton({ view }: { view: View }) {
 }
 
 /**
- * 中文搜索换成了哪个英文名（D17e）：只有一个时说一句「已按 Create 搜索」；
+ * 中文搜索换成了哪个英文名：只有一个时说一句「已按 Create 搜索」；
  * 好几个时列出来点着换；最后一个是按原文搜（平台上有中文名字的项目）。
  */
 function NameChoices({

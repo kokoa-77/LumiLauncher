@@ -2,7 +2,7 @@ import type { ImageFit, ImageKind } from "@/lib/bindings";
 import { imageAt, useCoverTransparent, useSoftCover } from "@/lib/cover";
 
 /**
- * 世界背景图的那一层（首页铺满整窗、首页流畅模式、实例卡片、实例页横幅、世界卡片共用，D17d）。
+ * 世界背景图的那一层（首页铺满整窗、首页流畅模式、实例卡片、实例页横幅、世界卡片共用）。
  * 放在一个 `relative` / `absolute` 的容器里，图都是绝对定位铺满容器：
  * - 截图、自动封面、横的自选图：铺满，多出来的裁掉
  * - 「完整显示」的自选图（立绘、竖图）：整张靠右。自带底色的画，后面垫着它自己缩成 8×8 再放大的一片颜色；

@@ -1,4 +1,4 @@
-// 「日志」页签用的小工具（D17c）：启动记录的时间说法、结局的颜色、在输出里搜索和按错误 / 警告 / 信息筛选。
+// 「日志」页签用的小工具：启动记录的时间说法、结局的颜色、在输出里搜索和按错误 / 警告 / 信息筛选。
 import type { TFunction } from "i18next";
 import type { LaunchOutcome, LaunchRecord, LogLine } from "./bindings";
 

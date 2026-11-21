@@ -233,7 +233,7 @@ function CatalogControl({
 }
 
 /**
- * 共享游戏设置（options.txt）完整 9 栏可视化精细编辑器（D26c）：
+ * 共享游戏设置（options.txt）完整 9 栏可视化精细编辑器：
  * 皮肤自定义 / 视频 / 语言 / 音乐和声音 / 控制 / 按键绑定（支持键盘/鼠标直录）/ 聊天 / 无障碍 / 自定义设置。
  */
 export function SharedOptionsEditorDialog({
@@ -1047,7 +1047,7 @@ export function SharedPacksEditorDialog({
   );
 }
 
-/** 共享命令记录（command_history.txt）可视化管理弹窗（D26c） */
+/** 共享命令记录（command_history.txt）可视化管理弹窗 */
 export function SharedCommandsEditorDialog({
   open,
   onClose,
@@ -1204,7 +1204,7 @@ export function SharedCommandsEditorDialog({
   );
 }
 
-/** 共享创造模式物品栏（hotbar.nbt）管理弹窗（D26c） */
+/** 共享创造模式物品栏（hotbar.nbt）管理弹窗 */
 export function SharedHotbarEditorDialog({
   open,
   onClose,

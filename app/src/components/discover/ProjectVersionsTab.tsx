@@ -38,7 +38,7 @@ const RichText = lazy(() => import("@/components/discover/RichText"));
 const ALL = "__all__";
 
 /**
- * 项目详情「版本」页签（D25e）：
+ * 项目详情「版本」页签：
  * 支持按游戏版本与加载器筛选、展开更新日志、高亮当前实例已安装版本，
  * 并可一键安装指定版本或从已装版本直接切换过去。
  */

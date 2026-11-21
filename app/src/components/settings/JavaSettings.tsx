@@ -30,8 +30,8 @@ export function byMajor(entries: JavaEntry[]): [number, JavaEntry[]][] {
 }
 
 /**
- * 设置 →「Java」（D17h）：找到的、下载的、手动添加的 Java，按大版本分组，每组选一个默认（默认「自动挑选」）；
- * 下面是启动参数（Java 参数 + 参数预设、游戏参数）和环境变量（D17i 验收时改）。
+ * 设置 →「Java」：找到的、下载的、手动添加的 Java，按大版本分组，每组选一个默认（默认「自动挑选」）；
+ * 下面是启动参数（Java 参数 + 参数预设、游戏参数）和环境变量。
  * 界面只拿 Java 的 ID，路径只用来显示。
  */
 export function JavaSettings({ settings, update }: { settings: Settings; update: UpdateSettings }) {

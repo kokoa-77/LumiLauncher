@@ -108,7 +108,7 @@ fn newest(state: &AppState) -> Option<Arc<ClaimSession>> {
 }
 
 /// 窗口的拖放事件：拖进来时通知界面高亮；放下时有正在进行的补件就交给补件，
-/// 没有就当成「拖进来装」（D17g）。
+/// 没有就当成「拖进来装」。
 pub fn on_drag_drop(app: &AppHandle, event: &DragDropEvent) {
     match event {
         DragDropEvent::Enter { .. } => emit(app, FileDragHover(true)),

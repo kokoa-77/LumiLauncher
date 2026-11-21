@@ -1,12 +1,12 @@
-//! 用 DoH（DNS over HTTPS）解析下载域名（D17l，设置里「用 DoH 解析下载域名」，默认开）。
+//! 用 DoH（DNS over HTTPS）解析下载域名（设置里「用 DoH 解析下载域名」，默认开）。
 //!
 //! 有的网络会把 Mojang、Modrinth 的域名解析到错的地址（DNS 污染、运营商劫持），下载就一直失败。
 //! 开着时先问 DoH，问不到再用系统 DNS，**不会因为 DoH 坏了就上不了网**：
 //! - 海外官方源（Mojang、Modrinth、CurseForge、NeoForge、Fabric……）先问 Cloudflare，别的（国内镜像）先问阿里，
-//!   一边问不到再问另一边。D18 实测：阿里会把 `maven.neoforged.net` 答成污染过的地址（连不上），
+//!   一边问不到再问另一边。实测：阿里会把 `maven.neoforged.net` 答成污染过的地址（连不上），
 //!   Cloudflare 的对；而 BMCLAPI 这类国内镜像，阿里给国内节点、Cloudflare 给海外节点。地址直接写 IP，问 DoH 本身不用解析域名
 //! - 系统 DNS 给的是 198.18.x.x（代理软件「假地址」模式，代理在接管域名和分流）：DoH 让开，用系统 DNS，
-//!   不然拿真实地址直连会绕过代理（D18 实测）
+//!   不然拿真实地址直连会绕过代理（实测）
 //! - 两个都问不到：这次用系统 DNS，接下来两分钟都直接用系统 DNS（公司、学校网络常常拦 DoH，不让每个域名都等超时）
 //! - 问到的地址按 TTL 记一会儿（30 秒到 10 分钟），同一个域名不反复问
 //! - `localhost`、没有点的内网名字直接用系统 DNS
@@ -272,7 +272,7 @@ impl Doh {
     }
 }
 
-/// 「测试 DoH」按钮的一行结果（D18）
+/// 「测试 DoH」按钮的一行结果
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -391,7 +391,7 @@ pub fn build_client_with_doh(doh: Arc<Doh>) -> Result<Client, HttpError> {
     build_client_with_proxy(doh, &crate::config::ProxySettings::default())
 }
 
-/// 带 DoH 与代理设置的 HTTP 客户端（D26a）：
+/// 带 DoH 与代理设置的 HTTP 客户端：
 /// - `System`：沿用 reqwest 默认跟随 Windows 系统代理；
 /// - `Direct`：忽略系统与环境变量代理，直连目标；
 /// - `Custom`：使用用户指定的 HTTP 或 SOCKS5 代理。

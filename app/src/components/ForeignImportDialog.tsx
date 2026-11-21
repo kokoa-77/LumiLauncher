@@ -19,7 +19,7 @@ function merge(front: ForeignView[], rest: ForeignView[]) {
 }
 
 /**
- * 从别的启动器导入实例（D19）：列出电脑上 Prism、CurseForge、ATLauncher、Modrinth App 的实例，
+ * 从别的启动器导入实例：列出电脑上 Prism、CurseForge、ATLauncher、Modrinth App 的实例，
  * 点「导入」复制一份进 Lumi（后台任务，进度在下载面板里）；也能自己选文件夹。
  * 选到 PCL、HMCL、官方启动器的游戏目录时不用导入，问一句直接挂上（stores/folders.ts）。
  * `first` 是要排在最前面的（设置里选到的、拖进窗口的实例）。

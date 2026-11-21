@@ -1,4 +1,4 @@
-//! 下载中心（D18）：下载历史、重试、测速、DoH 测试、补件盯的文件夹。
+//! 下载中心：下载历史、重试、测速、DoH 测试、补件盯的文件夹。
 //!
 //! 每种能重试的任务开始时带一份 [`Retry`] 配方（存在历史文件里，界面拿不到：本地整合包的配方里有路径）。
 //! 「重试」按配方再开一个同样的任务，新任务接替历史里的旧记录；下载过的文件校验通过不重下，
@@ -36,7 +36,7 @@ pub enum Retry {
         game_version: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         loader: Option<LoaderRef>,
-        // D19 及以前的任务只有 NeoForge 版本号。
+        // 早先的任务只有 NeoForge 版本号。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         neoforge: Option<String>,
     },
@@ -304,7 +304,7 @@ pub async fn net_doh_test(state: State<'_, AppState>) -> Result<Vec<DnsProbe>, A
     Ok(state.doh.test().await)
 }
 
-/// 设置里的「网络连通性检测」（D26a）：并行探测 6 个核心服务端点
+/// 设置里的「网络连通性检测」：并行探测 6 个核心服务端点
 #[tauri::command]
 #[specta::specta]
 pub async fn net_diagnostics(

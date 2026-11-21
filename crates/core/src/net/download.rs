@@ -50,10 +50,10 @@ pub struct DownloadProgress {
     pub done_bytes: u64,
     /// 已知大小的文件总字节数（有些文件事先不知道大小）
     pub total_bytes: u64,
-    /// 这次真从网络收到的字节，实时累加（算速度用，D18）：已经有、直接跳过的文件不算，
+    /// 这次真从网络收到的字节，实时累加（算速度用）：已经有、直接跳过的文件不算，
     /// 失败重试前收到的也算（网络确实传了）
     pub received_bytes: u64,
-    /// 第一个地址下不下来、换了地址才下好的文件数（D18 下载历史里的「换源」）
+    /// 第一个地址下不下来、换了地址才下好的文件数（下载历史里的「换源」）
     pub fallbacks: u64,
 }
 
@@ -173,7 +173,7 @@ pub struct Downloader {
     mod_mirrors: ModMirrors,
 }
 
-/// 模组文件能不能退到 MCIM 镜像（D18b，按「Modrinth」「CurseForge」两行下载源设置；只用官方时关）。
+/// 模组文件能不能退到 MCIM 镜像（按「Modrinth」「CurseForge」两行下载源设置；只用官方时关）。
 /// 文件总是先从官方 CDN 下，官方的地址都失败了才试镜像。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ModMirrors {
@@ -192,7 +192,7 @@ impl Downloader {
         }
     }
 
-    /// 模组文件失败时退到 MCIM 镜像（D18b）
+    /// 模组文件失败时退到 MCIM 镜像
     pub fn with_mod_mirrors(mut self, mirrors: ModMirrors) -> Self {
         self.mod_mirrors = mirrors;
         self
@@ -602,7 +602,7 @@ mod tests {
         }
     }
 
-    /// D18b：模组文件官方在前，MCIM 补在后面；关掉的平台不补，别的地址不动
+    /// 模组文件官方在前，MCIM 补在后面；关掉的平台不补，别的地址不动
     #[test]
     fn mod_files_get_an_mcim_fallback_after_the_official_cdn() {
         let item = |url: &str| DownloadItem {

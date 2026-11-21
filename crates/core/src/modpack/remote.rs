@@ -122,7 +122,7 @@ fn pack_file(version: &Version, dir: &Path) -> Result<DownloadItem, ModpackError
         .ok_or_else(|| ModpackError::Invalid("整合包没有有效的 SHA-1，无法校验".to_owned()))?;
     Ok(DownloadItem {
         urls: vec![file.url.clone()],
-        // 名字固定（D18）：`dir` 是这次导入自己的文件夹，重试时下过的整合包校验通过直接用
+        // 名字固定：`dir` 是这次导入自己的文件夹，重试时下过的整合包校验通过直接用
         path: dir.join("pack.mrpack"),
         sha1: Some(sha1),
         size: (file.size > 0).then_some(file.size),

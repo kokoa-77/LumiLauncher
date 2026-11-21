@@ -4,7 +4,7 @@ import type { MenuItem } from "@/components/ui/Menu";
 import type { InstanceSummary } from "@/lib/bindings";
 import { useGameStore } from "@/stores/game";
 
-/** 实例卡片和实例页「⋮」里共用的三项（D17k）：置顶、移到分组、桌面快捷方式 */
+/** 实例卡片和实例页「⋮」里共用的三项：置顶、移到分组、桌面快捷方式 */
 export function instanceMenuItems(instance: InstanceSummary, t: TFunction): MenuItem[] {
   const store = useGameStore.getState();
   const pinned = instance.pinnedAt !== null;

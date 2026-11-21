@@ -83,7 +83,7 @@ describe("首页未游玩实例标题", () => {
     expect(markup).toContain(">1.21.11-NeoForge 21.11.14-beta</h1>");
   });
 
-  it("没有单人存档但存在多人服务器时，首页展示多人服直达入口（D25d）", () => {
+  it("没有单人存档但存在多人服务器时，首页展示多人服直达入口", () => {
     useGameStore.setState({
       instances: [{ ...base, name: "联机实例" }],
       instancesLoaded: true,

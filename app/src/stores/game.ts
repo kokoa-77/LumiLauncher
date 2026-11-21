@@ -61,7 +61,7 @@ function showLaunchAuthIssue(
   return true;
 }
 
-/** 启动前检查发现空闲内存不够，等用户选怎么办（D17h） */
+/** 启动前检查发现空闲内存不够，等用户选怎么办 */
 export interface MemoryShort {
   instanceId: string;
   world?: string;
@@ -69,7 +69,7 @@ export interface MemoryShort {
   check: MemoryCheck;
 }
 
-/** 启动前本地预检发现必崩风险，等用户选怎么办（D25d） */
+/** 启动前本地预检发现必崩风险，等用户选怎么办 */
 export interface PreflightAsk {
   instanceId: string;
   world?: string;
@@ -82,7 +82,7 @@ export interface LaunchOptions {
   memoryMb?: number;
   /** 不做启动前检查（用户在提示里已经选了「照样启动」） */
   skipCheck?: boolean;
-  /** 不做启动前模组/Java 预检（用户在预检提示里已经选了「仍然启动」，D25d） */
+  /** 不做启动前模组/Java 预检（用户在预检提示里已经选了「仍然启动」） */
   skipPreflight?: boolean;
 }
 
@@ -102,12 +102,12 @@ interface GameStore {
   recordsVersion: Record<string, number>;
   /** 每个实例最近玩的世界（首页换世界、实例封面用）；还没读完为 null */
   recentWorlds: RecentWorld[] | null;
-  /** 各实例的多人服务器（首页直达、换世界/服务器用，D25d）；还没读完为 null */
+  /** 各实例的多人服务器（首页直达、换世界/服务器用）；还没读完为 null */
   recentServers: RecentServer[] | null;
-  /** 世界备份变了（备份、恢复、删除，D17j）就加一，备份列表和世界页签据此刷新 */
+  /** 世界备份变了（备份、恢复、删除）就加一，备份列表和世界页签据此刷新 */
   backupsVersion: number;
   bumpBackups: () => void;
-  /** 大世界第一次自动备份前问用户（D17j）；没有为 null */
+  /** 大世界第一次自动备份前问用户；没有为 null */
   backupAsk: BackupAsk | null;
   dismissBackupAsk: () => void;
   refreshRecentWorlds: () => Promise<void>;
@@ -124,7 +124,7 @@ interface GameStore {
     server?: string,
     options?: LaunchOptions,
   ) => Promise<boolean>;
-  /** 置顶 / 取消置顶（D17k） */
+  /** 置顶 / 取消置顶 */
   setPinned: (instanceId: string, pinned: boolean) => Promise<void>;
   /** 挪到分组；`null` 是不分组 */
   setGroup: (instanceId: string, group: string | null) => Promise<void>;
@@ -138,12 +138,12 @@ interface GameStore {
   /** 空闲内存不够、等用户选怎么办；没有为 null */
   memoryShort: MemoryShort | null;
   dismissMemoryShort: () => void;
-  /** 启动前预检发现问题、等用户选怎么办（D25d）；没有为 null */
+  /** 启动前预检发现问题、等用户选怎么办；没有为 null */
   preflightAsk: PreflightAsk | null;
   dismissPreflight: () => void;
   stop: (instanceId: string) => Promise<void>;
   /**
-   * 点了「结束」（D17l）：还在准备（下载、补文件）就直接取消；游戏进程已经起来了，
+   * 点了「结束」：还在准备（下载、补文件）就直接取消；游戏进程已经起来了，
    * 先把 `stopAsk` 填上弹窗问一句（强行结束没保存的进度会丢）
    */
   requestStop: (instanceId: string) => void;
@@ -164,10 +164,10 @@ interface GameStore {
   dismissJob: (jobId: string) => void;
   /** 开始一个用户刚点的后台任务（拖进来的文件开始装）：自动打开任务中心看进度 */
   showTasksFor: (jobId: string) => void;
-  /** 下载历史弹窗开着吗（D18） */
+  /** 下载历史弹窗开着吗 */
   historyOpen: boolean;
   setHistoryOpen: (open: boolean) => void;
-  /** 重试一个失败或取消的任务（D18）：新任务接替旧的那条；成功返回 true */
+  /** 重试一个失败或取消的任务：新任务接替旧的那条；成功返回 true */
   retryJob: (jobId: string) => Promise<boolean>;
 }
 
@@ -436,14 +436,14 @@ export function isActive(session: SessionSnapshot | undefined): boolean {
   return kind !== undefined && kind !== "exited" && kind !== "crashed";
 }
 
-/** 复制实例的任务 → 复制出来的实例 ID（复制完提示里「去看看」用，D17i） */
+/** 复制实例的任务 → 复制出来的实例 ID（复制完提示里「去看看」用） */
 const copyTargets = new Map<string, string>();
 
 export function rememberCopy(jobId: string, instanceId: string): void {
   copyTargets.set(jobId, instanceId);
 }
 
-/** 导出、复制实例结束（D17i）：导出完能「打开所在文件夹」，复制完刷新实例列表、能「去看看」 */
+/** 导出、复制实例结束：导出完能「打开所在文件夹」，复制完刷新实例列表、能「去看看」 */
 function onInstanceJob(payload: JobSnapshot, store: typeof useGameStore): void {
   const isExport = payload.key.startsWith("instance-export:");
   const isCopy = payload.key.startsWith("instance-copy:");
@@ -488,7 +488,7 @@ function onInstanceJob(payload: JobSnapshot, store: typeof useGameStore): void {
 }
 
 /**
- * 双击桌面快捷方式（D17k）：直接启动；启动器窗口最小化着，要玩家处理的时候（内存不够、启动出错、
+ * 双击桌面快捷方式：直接启动；启动器窗口最小化着，要玩家处理的时候（内存不够、启动出错、
  * 准备失败、游戏崩溃）才把窗口拉出来。
  */
 async function playFromShortcut(request: PlayRequest) {
@@ -527,7 +527,7 @@ async function playFromShortcut(request: PlayRequest) {
   });
 }
 
-/** 任务栏图标上的进度（D17k）：准备时按进度走，游戏窗口出来前一直转，其余不显示 */
+/** 任务栏图标上的进度：准备时按进度走，游戏窗口出来前一直转，其余不显示 */
 function followTaskbarProgress() {
   let last: number | null | undefined;
   return useGameStore.subscribe((state) => {
@@ -561,7 +561,7 @@ export async function initGameEvents(): Promise<() => void> {
     events.jobUpdated.listen(({ payload }) => {
       const previous = store.getState().jobs[payload.id];
       store.setState((s) => ({ jobs: { ...s.jobs, [payload.id]: payload } }));
-      // 拖进窗口装的文件（D17g）：装完说一声，能直接开始游戏
+      // 拖进窗口装的文件：装完说一声，能直接开始游戏
       if (payload.key.startsWith("drop:") && previous?.state === "running") {
         const instanceId = payload.key.slice("drop:".length, payload.key.lastIndexOf(":"));
         const watching = store.getState().tasksOpen;
@@ -589,7 +589,7 @@ export async function initGameEvents(): Promise<() => void> {
         void store.getState().refreshRecentWorlds();
       }
       if (payload.key.startsWith("content:")) store.getState().bumpContent();
-      // 世界备份、恢复做完（D17j）：备份列表要刷新；恢复后世界的天数、封面也变了
+      // 世界备份、恢复做完：备份列表要刷新；恢复后世界的天数、封面也变了
       if (payload.key.startsWith("backup:")) {
         store.getState().bumpBackups();
         void store.getState().refreshRecentWorlds();
@@ -598,7 +598,7 @@ export async function initGameEvents(): Promise<() => void> {
     events.backupAsk.listen(({ payload }) => {
       store.setState({ backupAsk: payload });
     }),
-    // 后台重新扫了挂上的别家目录，实例有变化（D19）
+    // 后台重新扫了挂上的别家目录，实例有变化
     events.instancesChanged.listen(() => {
       void store.getState().refreshInstances();
       void store.getState().refreshRecentWorlds();

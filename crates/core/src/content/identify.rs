@@ -67,7 +67,7 @@ pub struct IdentityCache {
     /// 哈希 → CurseForge 项目编号（按指纹认出来的；同一个文件从 Modrinth 装的也算）
     #[serde(default)]
     curseforge_projects: BTreeMap<String, u32>,
-    /// 哈希 → 模组自带语言文件里认出的中文名（D17e）；认过但没认出是空字符串
+    /// 哈希 → 模组自带语言文件里认出的中文名；认过但没认出是空字符串
     #[serde(default)]
     zh_names: BTreeMap<String, String>,
 }
