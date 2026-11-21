@@ -10,7 +10,7 @@
 
   <p>
     <a href="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml">
-      <img src="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml/badge.svg" alt="CI" />
+      <img src="https://github.com/kokoa-77/LumiLauncher/actions/workflows/ci.yml/badge.svg" alt="Lumi Desktop CI" />
     </a>
     <a href="LICENSE">
       <img src="https://img.shields.io/badge/license-GPL--3.0--only-blue.svg" alt="许可证: GPL-3.0-only" />
@@ -25,6 +25,35 @@
 ---
 
 > **独立声明**：Lumi 是独立第三方启动器，**并非 Minecraft 官方产品**，**与 Mojang Studios 及 Microsoft 无隶属关系，亦未获得其认可**。游玩需要合法拥有 Minecraft Java 版游玩权的 Microsoft 正版账户。
+
+## 界面一览
+
+<p align="center">
+  <img src="docs/screenshots/01-home-dark.png" alt="Lumi 沉浸式世界封面首页与一键直达" width="100%" />
+</p>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/02-instances-light.png" alt="浅色主题实例库与分组管理" width="100%" />
+      <p align="center"><sub><strong>实例库（浅色主题）</strong> · 独立实例隔离、分组管理与外部启动器迁移</sub></p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/03-instance-detail.png" alt="实例详情与模组内容管理" width="100%" />
+      <p align="center"><sub><strong>实例内容与永不玩坏</strong> · 模组检查更新、锁定版本与改动历史回滚</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/04-discover.png" alt="内置 Modrinth 与 CurseForge 资源发现页" width="100%" />
+      <p align="center"><sub><strong>统一资源发现</strong> · 内置 Modrinth &amp; CurseForge 模组、整合包、光影与地图</sub></p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/05-instance-sync.png" alt="零云端本机跨实例同步设置" width="100%" />
+      <p align="center"><sub><strong>本机跨实例同步</strong> · 零云端安全同步按键画面、服务器、通用包与快捷栏</sub></p>
+    </td>
+  </tr>
+</table>
 
 ## 核心亮点
 
@@ -85,12 +114,6 @@ pnpm --dir app tauri build --bundles nsis
 
 了解代码结构请阅读 [ARCHITECTURE.md](ARCHITECTURE.md)，参与贡献请先查看 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## 路线图
-
-- **v1.0**：Windows 10/11 安装版与便携版、签名自动更新，以及 Mojang AppID 获批后的完整正版游玩发布。
-- **v1.1+**：冲突模组自动定位、时间线回滚、世界成长相册、游玩周报、模组去重存储与大文件多连接下载。
-- **v1.2+**：跨平台支持（**Linux** AppImage / `.deb` / Flatpak 先行，随后跟进 **macOS** Apple Silicon & Intel `.dmg`）、主题包与一键开服。
-
 ## 代码签名政策（Code Signing Policy）
 
 项目计划在通过开源审核后，采用 [SignPath.io](https://signpath.io/) 与 [SignPath Foundation](https://signpath.org/) 提供的免费开源 Windows 代码签名证书。
@@ -99,7 +122,18 @@ pnpm --dir app tauri build --bundles nsis
 - **签名审批人（Approvers）**：项目负责人（`kokoa-77`），每次正式发布前人工复核并批准构建产物。
 - **隐私政策**：见 [PRIVACY.md](PRIVACY.md) 与 [SECURITY.md](SECURITY.md)。
 
+## 二次分发、Fork 与品牌保护政策
+
+你可以严格依照 **`GPL-3.0-only`**（含 [LICENSE](LICENSE) 中的 GPL 第 7 条附加条款）学习、Fork、修改与再分发 Lumi 的源代码。任何再分发的修改版本**必须同样以 `GPL-3.0-only` 开源**，保留原作者版权声明并明确标注改动说明，严禁闭源套壳。
+
+为防止仿冒版本误导玩家并保护原创视觉资产，所有 Fork 与自定义构建**必须遵守**：
+
+1. **明确去品牌化**：清楚声明你的派生版本并非 Lumi 官方项目，与 `kokoa-77` 及 Lumi 无任何隶属或背书关系；不得沿用 `Lumi`、`微光`、`Lumi Launcher` 名称或应用标识 `com.lumilauncher.lumi`。
+2. **替换原创品牌与美术资产**：Lumi 的应用图标与 Logo（`app/src-tauri/icons/`）、原创插画（`app/src/assets/art/`）、品牌宣传图（`docs/screenshots/social-preview.png`）与开发者头像**保留全部权利（All Rights Reserved）**，不随代码开放用于换皮或二次分发。
+3. **禁止沿用官方凭据与密钥**：不得内置或复用 Lumi 的 Microsoft Entra Client ID（`LUMI_MICROSOFT_CLIENT_ID`）、自动更新公钥（`LUMI_UPDATER_PUBKEY`）或任何第三方 API Key，请申请你自己的凭据或将其留空。
+
 ## 致谢与开源许可
 
 - Lumi 接入 **Mojang / Microsoft**、**Modrinth** 与 **CurseForge** 官方服务，并可选接入 **BMCLAPI**、**MCIM** 社区镜像（账号认证始终直连官方，不经任何镜像）。全部第三方开源依赖与许可清单见 [THIRD_PARTY.md](THIRD_PARTY.md)。
-- 本项目采用 **GNU General Public License v3.0 only（`GPL-3.0-only`）** 开源（附第 7 条品牌与名称保护附加条款），详见 [LICENSE](LICENSE)。
+- **源代码**：采用 **GNU General Public License v3.0 only（`GPL-3.0-only`）** 开源（附第 7 条品牌与名称保护附加条款），详见 [LICENSE](LICENSE)。
+- **品牌与原创美术资产**：Copyright © 2026 `kokoa-77`，保留全部权利（All Rights Reserved）。
