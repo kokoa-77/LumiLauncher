@@ -25,7 +25,7 @@ regex = "1"
 reqwest = { version = "0.13", features = ["stream", "socks"] }
 # 读 Modrinth App 的实例清单（它存在 SQLite 数据库里，D19）。bundled：自带 SQLite，不依赖电脑上装没装；
 # 0.41.1 发布满两周（0.42、0.43 是这几天才出的）
-rusqlite = { version = "0.41", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 sha1 = "0.11"
 getrandom = "0.4"
 # Microsoft 刷新令牌存 Windows 凭据管理器。keyring 4 只引用核心与 Windows 存储。
