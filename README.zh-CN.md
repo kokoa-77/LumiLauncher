@@ -19,7 +19,7 @@
 
   <p>
     <a href="https://qm.qq.com/q/vSHOPvOKt2"><img src="https://img.shields.io/badge/QQ%E7%BE%A4-%E5%8A%A0%E5%85%A5-12B7F5?logo=qq&logoColor=white" alt="QQ 群" /></a>
-    <a href="https://pd.qq.com/s/N7vbhid6xg?b=9"><img src="https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-%E5%8A%A0%E5%85%A5-12B7F5?logo=qq&logoColor=white" alt="QQ 频道" /></a>
+    <a href="https://pd.qq.com/s/Nr15r3slq"><img src="https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-%E5%8A%A0%E5%85%A5-12B7F5?logo=qq&logoColor=white" alt="QQ 频道" /></a>
     <a href="https://space.bilibili.com/25681030"><img src="https://img.shields.io/badge/B%E7%AB%99-%E5%BC%80%E5%8F%91%E8%80%85-00A1D6?logo=bilibili&logoColor=white" alt="开发者 B 站" /></a>
     <a href="https://discord.gg/vrAQ7HwUCw"><img src="https://img.shields.io/badge/Discord-%E5%8A%A0%E5%85%A5-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
     <a href="https://afdian.com/a/lumilauncher"><img src="https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-%E8%B5%9E%E5%8A%A9-946CE6" alt="在爱发电赞助" /></a>
@@ -159,7 +159,7 @@ Windows 安装包暂未进行代码签名，可能触发 SmartScreen 和部分�
 |---|---|
 | [GitHub Issues](https://github.com/kokoa-77/LumiLauncher/issues/new/choose) | 报告问题、游戏崩溃和功能建议（中文、英文都可以） |
 | [GitHub Discussions](https://github.com/kokoa-77/LumiLauncher/discussions) | 交流想法、提问、分享你的配置 |
-| [QQ 群](https://qm.qq.com/q/vSHOPvOKt2) · [QQ 频道](https://pd.qq.com/s/N7vbhid6xg?b=9) | 中文玩家交流、版本公告与使用求助 |
+| [QQ 群](https://qm.qq.com/q/vSHOPvOKt2) · [QQ 频道](https://pd.qq.com/s/Nr15r3slq) | 中文玩家交流、版本公告与使用求助 |
 | [开发者 B 站](https://space.bilibili.com/25681030) | 开发进度与视频 |
 | [Discord](https://discord.gg/vrAQ7HwUCw) | 与其他玩家和开发者交流，中文、英文分区 |
 

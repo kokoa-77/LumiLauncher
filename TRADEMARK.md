@@ -59,7 +59,7 @@ Only these are run by the Lumi project:
 | Source code & downloads | <https://github.com/kokoa-77/LumiLauncher> (official downloads only from [Releases](https://github.com/kokoa-77/LumiLauncher/releases) and the official website above) |
 | Discord | <https://discord.gg/vrAQ7HwUCw> |
 | QQ group | [Lumi Launcher 官方交流 1 群](https://qm.qq.com/q/vSHOPvOKt2) |
-| QQ Channel | [Lumi Launcher](https://pd.qq.com/s/N7vbhid6xg?b=9) |
+| QQ Channel | [Lumi Launcher](https://pd.qq.com/s/Nr15r3slq) |
 | Developer on Bilibili | <https://space.bilibili.com/25681030> |
 | Sponsorship (afdian) | <https://afdian.com/a/lumilauncher> |
 
@@ -130,7 +130,7 @@ Lumi 的源代码是自由软件，以 `GPL-3.0-only` 发布，你可以学习�
 | 源代码与下载 | <https://github.com/kokoa-77/LumiLauncher>（官方下载仅通过上方官网与 [Releases](https://github.com/kokoa-77/LumiLauncher/releases) 提供） |
 | Discord | <https://discord.gg/vrAQ7HwUCw> |
 | QQ 群 | [Lumi Launcher 官方交流 1 群](https://qm.qq.com/q/vSHOPvOKt2) |
-| QQ 频道 | [Lumi Launcher](https://pd.qq.com/s/N7vbhid6xg?b=9) |
+| QQ 频道 | [Lumi Launcher](https://pd.qq.com/s/Nr15r3slq) |
 | 开发者 B 站 | <https://space.bilibili.com/25681030> |
 | 赞助（爱发电） | <https://afdian.com/a/lumilauncher> |
 
