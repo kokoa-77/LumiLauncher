@@ -40,7 +40,7 @@
     </td>
     <td width="50%">
       <img src="docs/screenshots/03-instance-detail.png" alt="实例详情与模组内容管理" width="100%" />
-      <p align="center"><sub><strong>实例内容与永不玩坏</strong> · 模组检查更新、锁定版本与改动历史回滚</sub></p>
+      <p align="center"><sub><strong>实例内容管理</strong> · 模组检查更新、锁定版本与改动历史回滚</sub></p>
     </td>
   </tr>
   <tr>
@@ -58,11 +58,11 @@
 ## 核心亮点
 
 - **直达你的世界与多人服**：沉浸式全窗首页展示最近游玩的世界或常用服务器，支持自动截取游戏封面与一键 Quick Play 直连。
-- **随实例变色与微光动效**：基于 Tauri 2 + Rust + React 19 打造；支持 Windows 11 云母（Mica）背景、深浅主题、低配流畅模式与可选轻柔 Web Audio 音效。
-- **永不玩坏**：模组变动自动快照与改动历史一键撤销、启动前 `< 50ms` 模组/Java 硬伤预检，以及世界自动备份与恢复。
-- **内置 Modrinth 与 CurseForge**：统一浏览、安装与更新模组、整合包（`.mrpack` / CurseForge）、光影、材质包、地图与服务器；尊重作者分发限制，受限 CurseForge 文件通过官方页面下载并按哈希认领，绝不绕过 CDN 规则。
+- **随实例变色与微光动效**：基于 Tauri 2 + Rust + React 19 构建；支持 Windows 11 云母（Mica）背景、深浅主题、低配流畅模式与可选轻柔 Web Audio 音效。
+- **改坏了能撤回**：模组变动自动快照与改动历史一键撤销、启动前 `< 50ms` 模组/Java 硬伤预检，以及世界自动备份与恢复。
+- **内置 Modrinth 与 CurseForge**：统一浏览、安装与更新模组、整合包（`.mrpack` / CurseForge）、光影、材质包、地图与服务器；尊重作者分发限制，受限 CurseForge 文件通过官方页面下载并按哈希认领，不绕过 CDN 规则。
 - **纯本机跨实例同步**：零云端、零账号绑定，支持 6 类高频资产按需同步（`options.txt` 9 栏可视化编辑与键盘/鼠标直录、`servers.dat` 无损 NBT 去重合并、通用材质包、通用光影、命令记录与创造模式物品栏），首次开启自动备份，支持单实例细粒度排除。
-- **国际主流目录与无缝迁移**：采用 `instances/<实例名>/` 隔离布局并共享游戏本体；支持在「设置 → 游戏」原地关联官方 / PCL / HMCL 目录，或在「新建实例 → 从其他启动器导入」从 Prism / MultiMC、Modrinth App、CurseForge、ATLauncher 导入实例。
+- **主流目录布局与迁移**：采用 `instances/<实例名>/` 隔离布局并共享游戏本体；支持在「设置 → 游戏」原地关联官方 / PCL / HMCL 目录，或在「新建实例 → 从其他启动器导入」从 Prism / MultiMC、Modrinth App、CurseForge、ATLauncher 导入实例。
 - **稳定快速的下载引擎**：并发断点续传、哈希校验、可选 DoH 与网络代理（跟随系统 / 直连 / 自定义 HTTP·SOCKS5），可选 BMCLAPI / MCIM 社区加速镜像（账号认证始终直连 Microsoft / Mojang 官方接口）。
 - **克制收纳的高阶能力**：自动发现并一键安装官方 Java、内存分配建议、存储空间分析与闲置版本清理、启动前后钩子、自定义游戏窗口标题、可选本机 Discord 活动状态，以及二次确认脱敏上传 `mclo.gs`。
 
