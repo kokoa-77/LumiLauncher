@@ -7,7 +7,7 @@
   <p>Open the launcher and jump straight back into your world.</p>
 
   <p>
-    <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
+    <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a> · <a href="https://lumilauncher.pages.dev">Official Website</a> · <a href="https://lumilauncher.pages.dev/demo">Live Browser Demo</a>
   </p>
 
   <p>
@@ -68,7 +68,7 @@
 
 ## Download & Install
 
-Download the latest version from **[GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases)**, the only official download source.
+Download the latest version from the **[Official Website](https://lumilauncher.pages.dev/#download)** or **[GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases)**, the only official download sources.
 
 | File | What it is |
 |---|---|
@@ -81,12 +81,12 @@ Download the latest version from **[GitHub Releases](https://github.com/kokoa-77
 **"Windows protected your PC":** the Windows installer is not code-signed yet, so Microsoft Defender SmartScreen may warn you the first time. Click **More info → Run anyway**. To make sure the file is genuine, verify its checksum first:
 
 ```powershell
-Get-FileHash .\Lumi_0.6.0_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Lumi_0.6.1_x64-setup.exe -Algorithm SHA256
 ```
 
 The output must match the line for that file in `SHA256SUMS.txt` on the same release page.
 
-> **Beware of counterfeits.** Lumi is only published on GitHub Releases. Copies from other download sites, "cracked" or "premium" builds and anything asking for your Microsoft password are not official. See [TRADEMARK.md](TRADEMARK.md) for the list of official channels.
+> **Beware of counterfeits.** Lumi is only published on the [Official Website](https://lumilauncher.pages.dev) and [GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases). Copies from other download sites, "cracked" or "premium" builds and anything asking for your Microsoft password are not official. See [TRADEMARK.md](TRADEMARK.md) for the list of official channels.
 
 ## Account Authentication & Release Status
 

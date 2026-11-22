@@ -7,7 +7,7 @@
   <p>点亮你的世界 · 打开就有游戏可以点</p>
 
   <p>
-    <a href="README.md">English</a> · <strong>简体中文</strong>
+    <a href="README.md">English</a> · <strong>简体中文</strong> · <a href="https://lumilauncher.pages.dev/zh/">官方网站</a> · <a href="https://lumilauncher.pages.dev/zh/demo">浏览器在线试玩</a>
   </p>
 
   <p>
@@ -62,13 +62,13 @@
 - **永不玩坏**：模组变动自动快照与改动历史一键撤销、启动前 `< 50ms` 模组/Java 硬伤预检，以及世界自动备份与恢复。
 - **内置 Modrinth 与 CurseForge**：统一浏览、安装与更新模组、整合包（`.mrpack` / CurseForge）、光影、材质包、地图与服务器；尊重作者分发限制，受限 CurseForge 文件通过官方页面下载并按哈希认领，绝不绕过 CDN 规则。
 - **纯本机跨实例同步**：零云端、零账号绑定，支持 6 类高频资产按需同步（`options.txt` 9 栏可视化编辑与键盘/鼠标直录、`servers.dat` 无损 NBT 去重合并、通用材质包、通用光影、命令记录与创造模式物品栏），首次开启自动备份，支持单实例细粒度排除。
-- **国际主流目录与无缝迁移**：采用 `instances/<实例名>/` 隔离布局并共享游戏本体；支持原地挂接官方 / PCL / HMCL 目录，或从 Prism / MultiMC、Modrinth App、CurseForge、ATLauncher 导入实例。
+- **国际主流目录与无缝迁移**：采用 `instances/<实例名>/` 隔离布局并共享游戏本体；支持在「设置 → 游戏」原地关联官方 / PCL / HMCL 目录，或在「新建实例 → 从其他启动器导入」从 Prism / MultiMC、Modrinth App、CurseForge、ATLauncher 导入实例。
 - **稳定快速的下载引擎**：并发断点续传、哈希校验、可选 DoH 与网络代理（跟随系统 / 直连 / 自定义 HTTP·SOCKS5），可选 BMCLAPI / MCIM 社区加速镜像（账号认证始终直连 Microsoft / Mojang 官方接口）。
 - **克制收纳的高阶能力**：自动发现并一键安装官方 Java、内存分配建议、存储空间分析与闲置版本清理、启动前后钩子、自定义游戏窗口标题、可选本机 Discord 活动状态，以及二次确认脱敏上传 `mclo.gs`。
 
 ## 下载与安装
 
-请从 **[GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases)** 下载最新版本，这是唯一的官方下载渠道。
+请从 **[官方网站](https://lumilauncher.pages.dev/zh/#download)** 或 **[GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases)** 下载最新版本，这两个是仅有的官方下载渠道。
 
 | 文件 | 说明 |
 |---|---|
@@ -81,12 +81,12 @@
 **提示「Windows 已保护你的电脑」**：Windows 安装包暂未进行代码签名，首次运行时 Microsoft Defender SmartScreen 可能弹出提醒，点击 **更多信息 → 仍要运行** 即可。如需确认文件未被篡改，可以先核对校验和：
 
 ```powershell
-Get-FileHash .\Lumi_0.6.0_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Lumi_0.6.1_x64-setup.exe -Algorithm SHA256
 ```
 
 输出的值应与同一发布页 `SHA256SUMS.txt` 中对应文件的那一行一致。
 
-> **谨防冒名版本**：Lumi 只在 GitHub Releases 发布。其他下载站的转载、所谓「破解版」「高级版」以及任何索要 Microsoft 密码的程序都不是官方版本。官方渠道列表见 [TRADEMARK.md](TRADEMARK.md#简体中文)。
+> **谨防冒名版本**：Lumi 只在[官方网站](https://lumilauncher.pages.dev/zh/)与 [GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases) 发布。其他下载站的转载、所谓「破解版」「高级版」以及任何索要 Microsoft 密码的程序都不是官方版本。官方渠道列表见 [TRADEMARK.md](TRADEMARK.md#简体中文)。
 
 ## 账号认证与当前状态
 
