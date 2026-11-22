@@ -35,6 +35,16 @@ use crate::paths::GameDir;
 pub const META_DIR: &str = "Lumi";
 /// 以前用过的名字（定名前的代号）：启动时改成 [`META_DIR`]（[`migrate_legacy`]）
 const LEGACY_META_DIRS: &[&str] = &["UnnamedLauncher"];
+
+/// 是不是 Lumi 放自己文件的文件夹（现在的或以前的名字，不分大小写）。
+/// 整合包里的这类文件夹不解压：里面的实例设置能写启动前后运行的命令
+pub fn is_meta_dir(name: &str) -> bool {
+    name.eq_ignore_ascii_case(META_DIR)
+        || LEGACY_META_DIRS
+            .iter()
+            .any(|legacy| name.eq_ignore_ascii_case(legacy))
+}
+
 const CONFIG_FILE: &str = "instance.json";
 /// 2：实例搬到 `instances/`，记下要启动的版本
 const CONFIG_FORMAT: u32 = 2;

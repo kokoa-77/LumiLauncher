@@ -120,6 +120,15 @@ pub(super) fn collect_overrides(
             if SHORTCUT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext)) {
                 return Err(ModpackError::Rejected(format!("包含快捷方式：{name}")));
             }
+            // Lumi 自己的实例设置文件夹不从包里解压：instance.json 能写启动前后运行的命令
+            if relative
+                .split(['/', '\\'])
+                .find(|part| !part.is_empty() && *part != ".")
+                .is_some_and(crate::instance::is_meta_dir)
+            {
+                tracing::warn!(entry = %name, "整合包里带了 Lumi 的实例设置文件夹，已跳过");
+                continue;
+            }
             check_relative(relative)?;
             conflicts.add(relative, *layer)?;
             total_bytes += entry.size();

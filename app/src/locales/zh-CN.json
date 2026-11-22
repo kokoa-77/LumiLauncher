@@ -1473,7 +1473,7 @@
       "backupDirResetDoneEmpty": "已恢复为默认世界备份位置",
       "profileGroup": "偏好设置备份",
       "profileLabel": "导出或导入启动器设置",
-      "profileHint": "仅包含外观、下载、内存与游戏偏好，自动剥离本机路径，不包含任何账号登录凭据。",
+      "profileHint": "仅包含外观、下载、内存与游戏偏好。本机路径、启动前后命令、环境变量与 Java 参数只保留在本机，不导出也不导入；不包含任何账号登录凭据。",
       "export": "导出设置",
       "import": "导入设置",
       "exported": "已导出偏好设置",

@@ -1475,7 +1475,7 @@
       "backupDirResetDoneEmpty": "Restored default backup location",
       "profileGroup": "Settings backup",
       "profileLabel": "Export or import launcher settings",
-      "profileHint": "Includes appearance, download, memory, and game preferences. Local paths are stripped and account credentials are never included.",
+      "profileHint": "Includes appearance, download, memory, and game preferences. Local paths, launch commands, environment variables, and Java arguments stay on this computer and are never exported or imported. Account credentials are never included.",
       "export": "Export settings",
       "import": "Import settings",
       "exported": "Settings exported",

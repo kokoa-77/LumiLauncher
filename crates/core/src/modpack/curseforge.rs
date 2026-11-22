@@ -473,6 +473,22 @@ mod tests {
     }
 
     #[test]
+    fn skips_lumi_meta_folders_in_overrides() {
+        let p = pack(
+            &manifest(NEOFORGE, ""),
+            &[
+                ("overrides/config/a.toml", "x=1"),
+                ("overrides/Lumi/instance.json", "{}"),
+                ("overrides/lumi/journal.json", "{}"),
+                ("overrides/./UnnamedLauncher/instance.json", "{}"),
+            ],
+        );
+        let cf = inspect(p.path()).unwrap();
+        let paths: Vec<&str> = cf.overrides.iter().map(|(_, rel)| rel.as_str()).collect();
+        assert_eq!(paths, ["config/a.toml"], "实例设置文件夹不从包里解压");
+    }
+
+    #[test]
     fn rejects_unsafe_overrides() {
         let p = pack(
             &manifest(NEOFORGE, ""),

@@ -503,10 +503,12 @@ impl Backups {
         let world = self.world_dir(folder)?;
         if world.join("level.dat").is_file() {
             let now = fingerprint(&world)?;
-            let saved = self
-                .load_index()
-                .get(folder)
-                .is_some_and(|w| w.entries.iter().any(|e| e.fingerprint == now));
+            // 和某份备份一样、而且那份的 ZIP 还在，才算已经备过（ZIP 被手动删了、挪走了要重新备）
+            let saved = self.load_index().get(folder).is_some_and(|w| {
+                w.entries.iter().any(|e| {
+                    e.fingerprint == now && self.zip_path(folder, &e.id).is_ok_and(|p| p.is_file())
+                })
+            });
             if !saved {
                 self.create(folder, BackupReason::BeforeRestore, keep, cancel, |_, _| {})?;
             }
@@ -994,6 +996,36 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().starts_with(TEMP_PREFIX))
             .collect();
         assert!(leftovers.is_empty());
+    }
+
+    #[test]
+    fn restore_backs_up_again_when_the_matching_zip_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = world(dir.path(), "w", &[("level.dat", b"v1")]);
+        let b = Backups::new(dir.path());
+        let old = create(&b, "w", BackupReason::AfterPlay);
+        std::fs::write(w.join("level.dat"), b"v2 now").unwrap();
+        let latest = create(&b, "w", BackupReason::AfterPlay);
+        // 和现在一样的那份 ZIP 被手动删了：记录还在，文件没了
+        std::fs::remove_file(b.locate("w", &latest.id).unwrap()).unwrap();
+
+        b.restore("w", &old.id, 3, &CancellationToken::new(), |_, _| {})
+            .unwrap();
+        assert_eq!(std::fs::read(w.join("level.dat")).unwrap(), b"v1");
+        let before = b
+            .list("w")
+            .into_iter()
+            .find(|i| i.reason == BackupReason::BeforeRestore)
+            .expect("恢复前要先把现在的世界备一份");
+        let zip = b.locate("w", &before.id).unwrap();
+        let mut archive = zip::ZipArchive::new(File::open(&zip).unwrap()).unwrap();
+        let mut level = Vec::new();
+        archive
+            .by_name("w/level.dat")
+            .unwrap()
+            .read_to_end(&mut level)
+            .unwrap();
+        assert_eq!(level, b"v2 now");
     }
 
     #[test]

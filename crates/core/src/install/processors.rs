@@ -35,8 +35,8 @@ use crate::net::{
 use crate::paths::GameDir;
 use crate::process::hidden_command;
 
-/// 回执文件名（放在 `versions/<版本>/` 里）
-const RECEIPT_FILE: &str = "launcher-install.json";
+/// 回执文件名（放在 `versions/<版本>/` 里；清理闲置版本时据此认出 Lumi 装的文件）
+pub const RECEIPT_FILE: &str = "launcher-install.json";
 const RECEIPT_FORMAT: u32 = 1;
 /// 处理器失败时，错误详情里保留的输出行数
 const OUTPUT_TAIL_LINES: usize = 40;

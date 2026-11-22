@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::content::STAGING_DIR;
 use crate::content::store::STORE_DIR;
+use crate::external::Launcher;
+use crate::external::root::detect_launcher;
 use crate::fs::{read_json, safe_file_name};
+use crate::install::processors::RECEIPT_FILE;
 use crate::instance::{META_DIR, list as list_instances};
 use crate::paths::GameDir;
 
@@ -210,19 +213,26 @@ pub fn clean_cache(
 }
 
 /// 找出 `versions/` 下已没有任何 Lumi 实例直接或间接（`inheritsFrom`）引用的闲置版本目录。
+/// 只列能放心删的：游戏目录不是别家启动器的，版本文件夹里也只有能重新下载的文件（[`only_game_files`]）。
 pub fn find_unused_versions(game: &GameDir) -> Vec<UnusedVersion> {
-    let referenced = collect_referenced_versions(game);
     let mut unused = Vec::new();
+    if shared_with_other_launcher(game) {
+        return unused;
+    }
+    let referenced = collect_referenced_versions(game);
     let Ok(entries) = std::fs::read_dir(game.versions()) else {
         return unused;
     };
     for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if !kind.is_dir() || kind.is_symlink() {
             continue;
         }
+        let path = entry.path();
         let id = entry.file_name().to_string_lossy().into_owned();
-        if id.starts_with('.') || referenced.contains(&id) {
+        if id.starts_with('.') || referenced.contains(&id) || !only_game_files(&path, &id) {
             continue;
         }
         let bytes = dir_size(&path).0;
@@ -235,11 +245,17 @@ pub fn find_unused_versions(game: &GameDir) -> Vec<UnusedVersion> {
     unused
 }
 
-/// 仅删除明确传入且**复核后仍未被任何实例引用**的闲置版本目录。
+/// 仅删除明确传入、且**复核后仍是闲置**的版本目录（没被任何实例引用、不是别家启动器的目录、里面只有能重新下载的文件）。
 pub fn clean_unused_versions(game: &GameDir, ids: &[String]) -> UnusedVersionsCleanResult {
-    let referenced = collect_referenced_versions(game);
     let mut freed_bytes = 0u64;
     let mut removed_count = 0u32;
+    if shared_with_other_launcher(game) {
+        return UnusedVersionsCleanResult {
+            freed_bytes: 0.0,
+            removed_count,
+        };
+    }
+    let referenced = collect_referenced_versions(game);
     let mut seen = HashSet::new();
 
     for id in ids {
@@ -250,7 +266,9 @@ pub fn clean_unused_versions(game: &GameDir, ids: &[String]) -> UnusedVersionsCl
             continue;
         };
         let dir = game.versions().join(safe_name);
-        if !dir.is_dir() {
+        // 不跟着链接走：只认真正的文件夹
+        let plain_dir = std::fs::symlink_metadata(&dir).is_ok_and(|m| m.is_dir());
+        if !plain_dir || !only_game_files(&dir, id) {
             continue;
         }
         let size = dir_size(&dir).0;
@@ -264,6 +282,39 @@ pub fn clean_unused_versions(game: &GameDir, ids: &[String]) -> UnusedVersionsCl
         freed_bytes: freed_bytes as f64,
         removed_count,
     }
+}
+
+/// 游戏目录是别家启动器的（官方启动器、PCL、HMCL）：里面的版本可能是别家装的、别家在用，不清理
+fn shared_with_other_launcher(game: &GameDir) -> bool {
+    !matches!(detect_launcher(game.root()), Launcher::Other)
+}
+
+/// 版本文件夹里是不是只有 Lumi 装游戏时放的、能重新下载的文件：版本描述、游戏本体、安装回执、natives 文件夹。
+/// 别家启动器开了版本隔离时，存档、模组、配置都在版本文件夹里（PCL 还有 `PCL/`、HMCL 有 `hmclversion.cfg`）；
+/// 多出任何一样都不算闲置，一律不碰。
+fn only_game_files(dir: &Path, id: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    let json = format!("{id}.json");
+    let jar = format!("{id}.jar");
+    entries.into_iter().all(|entry| {
+        let Ok(entry) = entry else {
+            return false;
+        };
+        let Ok(kind) = entry.file_type() else {
+            return false;
+        };
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if kind.is_file() {
+            name == json || name == jar || name == RECEIPT_FILE
+        } else if kind.is_dir() && !kind.is_symlink() {
+            name.starts_with("natives-")
+        } else {
+            false
+        }
+    })
 }
 
 fn collect_referenced_versions(game: &GameDir) -> HashSet<String> {
@@ -552,6 +603,69 @@ mod tests {
         assert!(game.versions().join("1.21.1").exists());
         assert!(game.versions().join("neoforge-1.21.1").exists());
         assert!(!game.versions().join("1.19.4").exists());
+    }
+
+    #[test]
+    fn never_lists_or_cleans_versions_holding_other_files() {
+        let root = tempfile::tempdir().unwrap();
+        let game = GameDir::new(root.path());
+        let version = |id: &str, extra: &[&str]| {
+            let vdir = game.versions().join(id);
+            std::fs::create_dir_all(vdir.join("natives-windows-x86_64")).unwrap();
+            std::fs::write(vdir.join(format!("{id}.json")), "{}").unwrap();
+            std::fs::write(vdir.join(format!("{id}.jar")), vec![9u8; 100]).unwrap();
+            for name in extra {
+                if let Some(dir) = name.strip_suffix('/') {
+                    std::fs::create_dir_all(vdir.join(dir).join("New World")).unwrap();
+                } else {
+                    std::fs::write(vdir.join(name), "x").unwrap();
+                }
+            }
+        };
+        // Lumi 装的：版本描述、本体、回执、natives
+        version("1.19.4", &[RECEIPT_FILE]);
+        // 版本隔离：存档、模组、配置在版本文件夹里
+        version("1.20.1-隔离", &["saves/", "mods/", "options.txt"]);
+
+        let unused: Vec<String> = find_unused_versions(&game)
+            .into_iter()
+            .map(|v| v.id)
+            .collect();
+        assert_eq!(unused, ["1.19.4"]);
+
+        // 界面强传带存档的版本也不删
+        let all = ["1.19.4", "1.20.1-隔离"].map(str::to_owned);
+        let res = clean_unused_versions(&game, &all);
+        assert_eq!(res.removed_count, 1);
+        assert!(!game.versions().join("1.19.4").exists());
+        assert!(
+            game.versions()
+                .join("1.20.1-隔离")
+                .join("saves")
+                .join("New World")
+                .is_dir()
+        );
+
+        // 认出是 PCL / HMCL 的游戏目录：整个目录都不清理，连只有游戏文件的版本也不列
+        for marker in ["PCL/", "hmclversion.cfg"] {
+            let root = tempfile::tempdir().unwrap();
+            let game = GameDir::new(root.path());
+            for (id, extra) in [("1.19.4", &[][..]), ("1.20.4-别家", &[marker][..])] {
+                let vdir = game.versions().join(id);
+                std::fs::create_dir_all(&vdir).unwrap();
+                std::fs::write(vdir.join(format!("{id}.json")), "{}").unwrap();
+                for name in extra {
+                    match name.strip_suffix('/') {
+                        Some(dir) => std::fs::create_dir_all(vdir.join(dir)).unwrap(),
+                        None => std::fs::write(vdir.join(name), "x").unwrap(),
+                    }
+                }
+            }
+            assert!(find_unused_versions(&game).is_empty(), "{marker}");
+            let res = clean_unused_versions(&game, &["1.19.4".to_owned()]);
+            assert_eq!(res.removed_count, 0, "{marker}");
+            assert!(game.versions().join("1.19.4").is_dir(), "{marker}");
+        }
     }
 
     #[test]

@@ -693,23 +693,31 @@ impl Settings {
         self
     }
 
-    /// 导出可迁移的偏好 JSON：自动剥离与本机强绑定的目录路径，且不包含任何登录凭据。
+    /// 导出可迁移的偏好 JSON：不写只属于这台电脑的几项（见 [`Self::keep_machine_bound`]），且不包含任何登录凭据。
     pub fn export_portable(&self) -> Result<String, serde_json::Error> {
         let mut portable = self.clone().normalized();
-        portable.game.directory = None;
-        portable.download.claim_folder = None;
-        portable.worlds.backup_dir = None;
+        portable.keep_machine_bound(&Self::default());
         serde_json::to_string_pretty(&portable)
     }
 
-    /// 从导出的偏好 JSON 解析设置：走版本迁移、缺省补齐和范围规范化，并保留本机原有目录路径。
+    /// 从导出的偏好 JSON 解析设置：走版本迁移、缺省补齐和范围规范化，只属于这台电脑的几项保留本机原来的值。
     pub fn import_portable(&self, raw: &str) -> Result<Self, serde_json::Error> {
         let value: serde_json::Value = serde_json::from_str(raw)?;
         let mut imported = with_defaults(migrate(value))?.normalized();
-        imported.game.directory = self.game.directory.clone();
-        imported.download.claim_folder = self.download.claim_folder.clone();
-        imported.worlds.backup_dir = self.worlds.backup_dir.clone();
+        imported.keep_machine_bound(self);
         Ok(imported)
+    }
+
+    /// 只属于这台电脑、不随偏好文件走的几项，从 `from` 照搬：
+    /// 本机目录路径，以及会在这台电脑上执行命令的启动前后命令、环境变量、自定义 Java 参数。
+    /// 别人分享的偏好文件不能借这几项在导入的电脑上执行命令，导出时也不带出玩家自己填的值。
+    fn keep_machine_bound(&mut self, from: &Self) {
+        self.game.directory = from.game.directory.clone();
+        self.download.claim_folder = from.download.claim_folder.clone();
+        self.worlds.backup_dir = from.worlds.backup_dir.clone();
+        self.game.hooks = from.game.hooks.clone();
+        self.game.env_vars = from.game.env_vars.clone();
+        self.game.jvm_args = from.game.jvm_args.clone();
     }
 }
 
@@ -1121,6 +1129,49 @@ mod tests {
         assert_eq!(
             imported.download.claim_folder.as_deref(),
             Some(r"E:\OtherDownloads")
+        );
+    }
+
+    #[test]
+    fn portable_settings_never_carry_commands_or_env_vars() {
+        let mut local = Settings::default();
+        local.game.hooks.pre_launch = "echo local-pre".to_owned();
+        local.game.hooks.post_exit = "echo local-post".to_owned();
+        local.game.env_vars = vec![EnvVar {
+            name: "MY_TOKEN".to_owned(),
+            value: "secret-value".to_owned(),
+        }];
+        local.game.jvm_args = "-XX:+UseZGC".to_owned();
+
+        // 导出：这几项不写进文件
+        let exported = local.export_portable().unwrap();
+        for leaked in [
+            "local-pre",
+            "local-post",
+            "MY_TOKEN",
+            "secret-value",
+            "UseZGC",
+        ] {
+            assert!(!exported.contains(leaked), "导出的偏好里不该有 {leaked}");
+        }
+
+        // 别人分享的文件里写了命令、环境变量、Java 参数：一概不用，保留本机原来的
+        let mut shared: serde_json::Value =
+            serde_json::from_str(&Settings::default().export_portable().unwrap()).unwrap();
+        shared["game"]["hooks"]["preLaunch"] = "calc.exe".into();
+        shared["game"]["hooks"]["postExit"] = "calc.exe".into();
+        shared["game"]["envVars"] =
+            serde_json::json!([{ "name": "JAVA_TOOL_OPTIONS", "value": "-javaagent:x.jar" }]);
+        shared["game"]["jvmArgs"] = "-XX:OnOutOfMemoryError=calc.exe".into();
+        shared["appearance"]["theme"] = serde_json::to_value(ThemeMode::Dark).unwrap();
+        let imported = local.import_portable(&shared.to_string()).unwrap();
+        assert_eq!(imported.game.hooks, local.game.hooks);
+        assert_eq!(imported.game.env_vars, local.game.env_vars);
+        assert_eq!(imported.game.jvm_args, local.game.jvm_args);
+        assert_eq!(
+            imported.appearance.theme,
+            ThemeMode::Dark,
+            "其他偏好照常导入"
         );
     }
 
