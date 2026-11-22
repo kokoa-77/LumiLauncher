@@ -662,9 +662,13 @@ const recordLog = (id: string) =>
         { level: "info", thread: "Server thread", message: "Stopping server" },
       ];
 
-// 核对界面用：preview.html?theme=dark&fx=lite 直接切深浅色和画面效果，&accent=fixed 让主色不跟世界封面变
-// （截图脚本靠它）
+// 核对界面用：preview.html?theme=dark&fx=lite 直接切深浅色和画面效果，&accent=fixed 让主色不跟世界封面变，
+// 再加 &hue=350&chroma=0.148 指定固定主色的色相和彩度（截图脚本靠它）
 const query = previewQuery;
+const queryNumber = (key: string, fallback: number) => {
+  const value = Number(query.get(key));
+  return query.has(key) && Number.isFinite(value) ? value : fallback;
+};
 let settings = {
   schemaVersion: 2,
   appearance: {
@@ -672,8 +676,8 @@ let settings = {
     reduceMotion: query.get("motion") === "reduce",
     autoCover: true,
     accentFollowWorld: query.get("accent") !== "fixed",
-    accentHue: 245,
-    accentChroma: 0.15,
+    accentHue: queryNumber("hue", 245),
+    accentChroma: queryNumber("chroma", 0.15),
     effects: query.get("fx") ?? "auto",
   },
   download: {
