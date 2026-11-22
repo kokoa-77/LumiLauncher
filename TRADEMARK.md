@@ -31,7 +31,7 @@ You may mirror an **unmodified** official build if all of the following are true
 
 - The files are byte-for-byte identical to the official release (their SHA-256 matches `SHA256SUMS.txt` on the release page)
 - They are not wrapped in another installer, downloader or archive that adds software, ads or changes
-- You link to the official release page and do not charge for the download
+- You link to the official release page and state that Lumi itself is free and the Lumi project never charges for it
 
 ### Forks and Modified Builds
 
@@ -47,7 +47,7 @@ If you distribute a modified version, you must:
 
 - Presenting any build, website, account or group as official Lumi when it is not
 - Using the Lumi names or icon in domain names, app store listings, social media accounts or paid ads in a way that could make people think they are official
-- Selling Lumi or charging for access to it, or bundling it with malware, adware, cryptocurrency miners or unrelated software
+- Charging money in Lumi's name, or making people think they must pay to get the official Lumi; bundling it with malware, adware, cryptocurrency miners or unrelated software
 
 ### Official Channels
 
@@ -102,7 +102,7 @@ Lumi 的源代码是自由软件，以 `GPL-3.0-only` 发布，你可以学习�
 
 - 文件与官方发布的逐字节一致（SHA-256 和发布页的 `SHA256SUMS.txt` 对得上）
 - 没有套上别的安装器、下载器或压缩包来夹带软件、广告或做任何改动
-- 注明并链接官方发布页，且不收取下载费用
+- 注明并链接官方发布页，并注明 Lumi 本身免费、官方不收取任何费用
 
 ### Fork 与修改版
 
@@ -118,7 +118,7 @@ Lumi 的源代码是自由软件，以 `GPL-3.0-only` 发布，你可以学习�
 
 - 把任何非官方的版本、网站、账号或群说成是官方 Lumi
 - 在域名、应用商店上架、社交媒体账号或付费广告里使用 Lumi 的名称或图标，让人误以为是官方
-- 售卖 Lumi 或对下载收费，或把它和病毒、广告软件、挖矿程序、无关软件捆绑在一起
+- 以 Lumi 的名义收费，或让人以为付费才能得到官方版本；把它和病毒、广告软件、挖矿程序、无关软件捆绑在一起
 
 ### 官方渠道
 
