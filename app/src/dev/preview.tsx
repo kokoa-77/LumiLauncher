@@ -461,7 +461,8 @@ const fakeHit = (i: number, source: "modrinth" | "curseForge", kind: string) => 
     description,
     author,
     iconUrl: i % 4 === 3 ? null : sampleIcons[i % sampleIcons.length],
-    downloads: Math.round(2.5e8 / (i + 1)),
+    // 两个平台各算一份；排第一的合计约 2.56 亿，和钠在 Modrinth 上的真实量级一致，不夸大
+    downloads: Math.round(1.28e8 / (i + 1)),
     // 每三个里有一个分类很多，卡片上会收成「+N」
     displayCategories:
       i % 3 === 0
@@ -661,7 +662,8 @@ const recordLog = (id: string) =>
         { level: "info", thread: "Server thread", message: "Stopping server" },
       ];
 
-// 核对界面用：preview.html?theme=dark&fx=lite 直接切深浅色和画面效果（截图脚本靠它）
+// 核对界面用：preview.html?theme=dark&fx=lite 直接切深浅色和画面效果，&accent=fixed 让主色不跟世界封面变
+// （截图脚本靠它）
 const query = previewQuery;
 let settings = {
   schemaVersion: 2,
@@ -669,7 +671,7 @@ let settings = {
     theme: query.get("theme") ?? "light",
     reduceMotion: query.get("motion") === "reduce",
     autoCover: true,
-    accentFollowWorld: true,
+    accentFollowWorld: query.get("accent") !== "fixed",
     accentHue: 245,
     accentChroma: 0.15,
     effects: query.get("fx") ?? "auto",
