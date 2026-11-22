@@ -2,9 +2,11 @@
 // `pnpm --dir app dev` 后浏览器打开 http://localhost:1420/preview.html 。正式包不包含它（vite 只打包 index.html）。
 // 后端做的事（下载、启动游戏）这里都不会真的发生。
 import type { AccountsState, AccountView, UpdateMode, UpdateOffer } from "@/lib/bindings";
-import cobblemonIcon from "./fixtures/icon-cobblemon.png";
-import fomIcon from "./fixtures/icon-fom.png";
-import optimizationIcon from "./fixtures/icon-optimization.png";
+// 原创的简单示意图标（不用真实整合包的图标）。用 PNG：世界小图会在地址后面加尺寸参数，
+// 而几 KB 的 SVG 打包时会被内联成 data 地址，加了参数就坏了
+import gearsIcon from "./fixtures/icon-gears.png";
+import pastureIcon from "./fixtures/icon-pasture.png";
+import swiftIcon from "./fixtures/icon-swift.png";
 // 原创的抽象人形（透明底的竖图），代替「自己选的立绘」看完整显示的样子
 import standinArt from "./fixtures/standin-art.png";
 import worldShot from "./fixtures/world-shot.jpg";
@@ -44,22 +46,22 @@ const instances: PreviewInstance[] = [
     pinnedAt: now - 10 * HOUR,
   },
   {
-    id: "Cobblemon Official Modpack [NeoForge]",
-    name: "Cobblemon Official Modpack [NeoForge]",
+    id: "Sunny Pastures [NeoForge]",
+    name: isEnPreview ? "Sunny Pastures [NeoForge]" : "晴空牧场 [NeoForge]",
     gameVersion: "1.21.1",
     loader: "NeoForge 21.1.209",
-    pack: "Cobblemon Official Modpack [NeoForge]",
+    pack: "Sunny Pastures [NeoForge]",
     createdAt: now - 60 * HOUR,
     lastPlayed: now - 26 * HOUR,
     group: isEnPreview ? "Modpacks" : "整合包",
     pinnedAt: now - 12 * HOUR,
   },
   {
-    id: "命运齿轮FOM机械动力航空学【Fate's Machinery】",
-    name: isEnPreview ? "Fate's Machinery [Create]" : "命运齿轮 · 机械动力",
+    id: "Gearworks",
+    name: isEnPreview ? "Gearworks [Create]" : "齿轮工坊 · 机械动力",
     gameVersion: "1.21.1",
     loader: "NeoForge 21.1.215",
-    pack: "命运齿轮FOM机械动力航空学【Fate's Machinery】",
+    pack: "Gearworks",
     createdAt: now - 50 * HOUR,
     lastPlayed: now - 70 * HOUR,
     group: isEnPreview ? "Modpacks" : "整合包",
@@ -241,7 +243,7 @@ const worldBackups = new Map<string, FakeBackup[]>([
 
 // 自己选的背景图（换背景图、完整显示 / 铺满、恢复默认都只改这里）：实例 ID + 存档文件夹 → 图
 const backgrounds = new Map<string, { url: string; fit: "cover" | "contain" }>([
-  ["Cobblemon Official Modpack [NeoForge]/Tutorial World v4", { url: standinArt, fit: "contain" }],
+  ["Sunny Pastures [NeoForge]/Pasture World", { url: standinArt, fit: "contain" }],
 ]);
 const backgroundKey = (args: Record<string, unknown>) =>
   `${String(args.instanceId)}/${String(args.folder)}`;
@@ -268,10 +270,10 @@ const previewRecentServers = [
     address: "play.lumi.example",
   },
   {
-    instanceId: "Cobblemon Official Modpack [NeoForge]",
+    instanceId: "Sunny Pastures [NeoForge]",
     quickPlay: true,
-    name: isEnPreview ? "Cobblemon Official" : "Cobblemon 官方服",
-    address: "mc.cobblemon.example",
+    name: isEnPreview ? "Sunny Pastures Server" : "晴空牧场服",
+    address: "pastures.lumi.example",
   },
 ];
 
@@ -289,12 +291,19 @@ const recent = [
     ),
   },
   {
-    instanceId: "Cobblemon Official Modpack [NeoForge]",
+    instanceId: "Sunny Pastures [NeoForge]",
     quickPlay: true,
-    world: world("Tutorial World v4", "Cobbled Farms", 42, 26, cobblemonIcon, "icon"),
+    world: world(
+      "Pasture World",
+      isEnPreview ? "Sunny Fields" : "晴空草原",
+      42,
+      26,
+      pastureIcon,
+      "icon",
+    ),
   },
   {
-    instanceId: "命运齿轮FOM机械动力航空学【Fate's Machinery】",
+    instanceId: "Gearworks",
     quickPlay: true,
     world: world(
       "Clockwork City",
@@ -308,7 +317,7 @@ const recent = [
   {
     instanceId: "Optimization",
     quickPlay: true,
-    world: world("New World", "New World", 301, 160, optimizationIcon, "icon"),
+    world: world("New World", "New World", 301, 160, swiftIcon, "icon"),
   },
 ];
 
@@ -413,7 +422,7 @@ const sampleProjects: [string, string, string, string[], "client" | "both" | "ei
     "both",
   ],
 ];
-const sampleIcons = [optimizationIcon, cobblemonIcon, fomIcon];
+const sampleIcons = [swiftIcon, pastureIcon, gearsIcon];
 const PAGE = 20;
 const TOTAL = 36;
 
@@ -732,7 +741,7 @@ let previewSharedOptions: Record<string, string> = {
 };
 let previewSharedServers = [
   { name: "微光生存服", address: "play.lumi.example" },
-  { name: "Cobblemon 官方服", address: "mc.cobblemon.example" },
+  { name: "晴空牧场服", address: "pastures.lumi.example" },
 ];
 let previewSharedPacks: Record<string, { name: string; isDir: boolean; bytes: number }[]> = {
   resourcePacks: [{ name: "Faithful-32x.zip", isDir: false, bytes: 18_400_000 }],
@@ -754,7 +763,7 @@ type Overrides = {
 };
 const instanceOverrides = new Map<string, Overrides>([
   [
-    "命运齿轮FOM机械动力航空学【Fate's Machinery】",
+    "Gearworks",
     {
       memory: { auto: false, maxMemoryMb: 8192 },
       javaId: null,
@@ -904,11 +913,11 @@ function exportPreview(id: string) {
 // 内存与 Java：控制台里 `__previewMemory(3000)` 把「可用」改成 3000 MB，看内存不够的提示
 const TOTAL_MB = 32_563;
 let availableMb = 9_400;
-/** 每个实例的模组数（「命运齿轮」136 个，可用 4.5 GB 时自动模式想要 5.5 GB、给不够） */
+/** 每个实例的模组数（「齿轮工坊」136 个，可用 4.5 GB 时自动模式想要 5.5 GB、给不够） */
 const modCounts: Record<string, number> = {
   [DEMO_INSTANCE_ID]: 12,
-  "Cobblemon Official Modpack [NeoForge]": 73,
-  "命运齿轮FOM机械动力航空学【Fate's Machinery】": 136,
+  "Sunny Pastures [NeoForge]": 73,
+  Gearworks: 136,
   Optimization: 40,
 };
 function memoryCheck(instanceId: string) {
@@ -1001,7 +1010,7 @@ const droppedSample = [
     problem: null,
     title: "Just Enough Items",
     version: "19.21.0",
-    icon: cobblemonIcon,
+    icon: pastureIcon,
     size: 1_400_000,
   },
   {
@@ -1108,7 +1117,7 @@ const droppedBundle = [
     problem: null,
     title: `示例模组 ${i + 1}`,
     version: `1.${i}.0`,
-    icon: i % 3 === 0 ? cobblemonIcon : null,
+    icon: i % 3 === 0 ? pastureIcon : null,
     size: 300_000 + i * 20_000,
     from: bundleName,
   })),
@@ -1160,7 +1169,7 @@ const droppedBundle = [
 const droppedPack = [
   {
     token: "d-modpack",
-    name: "Cobblemon Official Modpack.mrpack",
+    name: "Sunny Pastures.mrpack",
     kind: "modpack",
     problem: null,
     title: null,
@@ -1574,9 +1583,9 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     token: "pack-1",
     preview: {
       format: "modrinth",
-      name: "Cobblemon Official Modpack",
+      name: "Sunny Pastures",
       version: "1.6.1",
-      summary: "宝可梦风格的整合包",
+      summary: "放牧与农场主题的整合包",
       gameVersion: "1.21.1",
       loader: { kind: "neoforge", version: "21.1.209" },
       fileCount: 142,
@@ -1987,7 +1996,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
       quickPlay: true,
       worlds: [
         entry.world,
-        world("创造测试", "创造测试", 1, 30, cobblemonIcon, "icon"),
+        world("创造测试", "创造测试", 1, 30, pastureIcon, "icon"),
         { ...world("空岛", "空岛生存", 18, 200, worldShot, "screenshot"), hardcore: true },
         { ...world("旧存档", "旧存档", 120, 900, "", "icon"), imageUrl: null, imageKind: null },
       ].map((w) => withBackground(id, w)),
@@ -2325,8 +2334,8 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     new URLSearchParams(location.search).has("recovered")
       ? [
           {
-            instanceId: "Cobblemon",
-            instanceName: "Cobblemon Official Modpack",
+            instanceId: "Sunny Pastures [NeoForge]",
+            instanceName: isEnPreview ? "Sunny Pastures" : "晴空牧场",
             summary: "更新 Sodium 等 3 项",
             ok: true,
             message: null,

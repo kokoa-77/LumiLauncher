@@ -33,8 +33,8 @@ const progress = (
 describe("任务中心的小工具", () => {
   it("从键名认出实例", () => {
     expect(jobInstance("drop:验收测试:abc")).toBe("验收测试");
-    expect(jobInstance("content:Cobblemon Official Modpack [NeoForge]:update")).toBe(
-      "Cobblemon Official Modpack [NeoForge]",
+    expect(jobInstance("content:Sunny Pastures [NeoForge]:update")).toBe(
+      "Sunny Pastures [NeoForge]",
     );
     expect(jobInstance("launch:Optimization")).toBe("Optimization");
     expect(jobInstance("modpack-import:file:整合包")).toBeNull();
