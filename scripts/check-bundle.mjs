@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// First-screen bundle budget (CLAUDE.md §12 / CONTRIBUTING): the JS that index.html loads
+// First-screen bundle budget (docs/DESIGN.md §12 / CONTRIBUTING): the JS that index.html loads
 // before anything is lazily imported must stay within 250 KiB after gzip.
 // Run after `pnpm --dir app build`. Exits with 1 when the budget is exceeded.
 

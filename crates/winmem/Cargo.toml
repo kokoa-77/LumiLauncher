@@ -10,7 +10,7 @@ publish.workspace = true
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }
 
-# 不继承工作区的 `unsafe_code = "forbid"`（开发合同第 8 节第 9 条），其余规则照旧，
+# 不继承工作区的 `unsafe_code = "forbid"`（docs/DESIGN.md 第 8 节第 10 条），其余规则照旧，
 # 另外要求每个 unsafe 块都写明为什么安全
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

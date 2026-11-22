@@ -23,7 +23,7 @@ md-5 = "0.11"
 regex = "1"
 # 默认功能：rustls + 系统证书校验 + HTTP/2 + 跟随 Windows 系统代理 + SOCKS5 代理支持
 reqwest = { version = "0.13", features = ["stream", "socks"] }
-# 读 Modrinth App 的实例清单（它存在 SQLite 数据库里，D19）。bundled：自带 SQLite，不依赖电脑上装没装；
+# 读 Modrinth App 的实例清单（它存在 SQLite 数据库里）。bundled：自带 SQLite，不依赖电脑上装没装；
 # 0.41.1 发布满两周（0.42、0.43 是这几天才出的）
 rusqlite = { version = "0.41", features = ["bundled"] }
 sha1 = "0.11"
@@ -57,11 +57,11 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
-# 自动封面（D17d）：xcap 找游戏窗口、看它在不在最前面；win-screenshot 只截窗口内容区（不带标题栏）。
+# 自动封面：xcap 找游戏窗口、看它在不在最前面；win-screenshot 只截窗口内容区（不带标题栏）。
 # 两个都只在 Windows 上编译，用的是界面框架已经在用的 windows 0.62；xcap 不开默认功能（不要录屏、WGC）
 xcap = { version = "0.9", default-features = false }
 win-screenshot = "4"
-# 删除实例时移到回收站（D17i）。Windows 上用系统的文件操作接口，放不进回收站时系统会弹窗问，不会悄悄永久删除；
+# 删除实例时移到回收站。Windows 上用系统的文件操作接口，放不进回收站时系统会弹窗问，不会悄悄永久删除；
 # 用的是界面框架已经在用的 windows 0.62。不开默认功能（只在 Linux 上用得到）
 trash = { version = "5.3", default-features = false, features = ["coinit_apartmentthreaded"] }
 # 只要解压，用纯 Rust 实现，不编译 C 代码
