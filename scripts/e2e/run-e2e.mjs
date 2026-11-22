@@ -1,11 +1,15 @@
 /**
- * Lumi 端到端自动化测试套件（tauri-driver + W3C WebDriver）
+ * Lumi 端到端自动化测试（tauri-driver + W3C WebDriver）
  *
- * 特点：
- * - 零新增第三方 npm 依赖（直接用 Node 原生 fetch 调 W3C WebDriver HTTP 协议）
- * - 100% 隔离便携沙盒（Lumi.portable + 独立临时 MCL_GAME_DIR），绝不触碰真实用户数据
+ * - 不引入新的 npm 依赖：直接用 Node 自带的 fetch 调 WebDriver 的 HTTP 接口
+ * - 在隔离的便携沙盒里运行（Lumi.portable + 独立的临时 MCL_GAME_DIR），不读写真实用户数据
  * - 覆盖：首次运行引导、首页世界与登录拦截、世界分享卡片、实例库与详情页签、
  *         发现内容与面包屑导航、命令面板、关于页合规/弹窗叠层、语言与流畅模式切换、下载中心
+ *
+ * 可选环境变量：
+ * - LUMI_E2E_BINARY：要测试的 Lumi 可执行文件（默认找 target 下的 debug / release 产物）
+ * - LUMI_E2E_TAURI_DRIVER、LUMI_E2E_EDGE_DRIVER：两个驱动的位置（默认从 PATH 找）
+ * - LUMI_E2E_TEMP：沙盒所在目录（默认系统临时目录）
  */
 
 import { spawn } from "node:child_process";
@@ -20,14 +24,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const KEEP_SANDBOX = process.argv.includes("--keep");
 
-const DEFAULT_TAURI_DRIVER = "D:\\dev\\cargo\\bin\\tauri-driver.exe";
-const DEFAULT_EDGE_DRIVER = "D:\\dev\\tools\\msedgedriver\\msedgedriver.exe";
+const TAURI_DRIVER_ENV = "LUMI_E2E_TAURI_DRIVER";
+const EDGE_DRIVER_ENV = "LUMI_E2E_EDGE_DRIVER";
+// cargo install 的默认位置，PATH 里没有 tauri-driver 时再找这里
+const CARGO_BIN_DIR = path.join(process.env.CARGO_HOME || path.join(os.homedir(), ".cargo"), "bin");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function findExecutable(name, fallbacks) {
+function findExecutable(name, envVar, fallbacks = []) {
+  const fromEnv = process.env[envVar];
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
   const pathDirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
   for (const dir of pathDirs) {
     const candidate = path.join(dir, name);
@@ -135,9 +143,9 @@ function buildLevelDat({ levelName, lastPlayedMs, dayTimeTicks = 72000n, gameTyp
   return zlib.gzipSync(Buffer.concat(chunks));
 }
 
-/** 创建 100% 隔离的便携版沙盒环境与样本实例 */
+/** 创建隔离的便携版沙盒和样本实例 */
 function createSandbox(appBinary) {
-  const baseTemp = fs.existsSync("D:\\dev\\tmp") ? "D:\\dev\\tmp" : os.tmpdir();
+  const baseTemp = process.env.LUMI_E2E_TEMP || os.tmpdir();
   const sandboxDir = path.join(baseTemp, `lumi-e2e-${Date.now()}`);
   fs.mkdirSync(sandboxDir, { recursive: true });
 
@@ -393,15 +401,21 @@ async function waitForDriverReady(port, timeoutMs = 15000) {
 }
 
 async function runSuite() {
-  const tauriDriver = findExecutable("tauri-driver.exe", [DEFAULT_TAURI_DRIVER]);
-  const edgeDriver = findExecutable("msedgedriver.exe", [DEFAULT_EDGE_DRIVER]);
+  const tauriDriver = findExecutable("tauri-driver.exe", TAURI_DRIVER_ENV, [
+    path.join(CARGO_BIN_DIR, "tauri-driver.exe"),
+  ]);
+  const edgeDriver = findExecutable("msedgedriver.exe", EDGE_DRIVER_ENV);
   const appBinary = findAppBinary();
 
   if (!tauriDriver) {
-    throw new Error(`找不到 tauri-driver.exe（可运行 cargo install tauri-driver --locked 安装到 D:\\dev\\cargo\\bin）`);
+    throw new Error(
+      `找不到 tauri-driver.exe。可运行 cargo install tauri-driver --locked 安装，或用环境变量 ${TAURI_DRIVER_ENV} 指定位置`,
+    );
   }
   if (!edgeDriver) {
-    throw new Error(`找不到 msedgedriver.exe（请下载与本机 WebView2 同版本的 Edge WebDriver 到 ${DEFAULT_EDGE_DRIVER}）`);
+    throw new Error(
+      `找不到 msedgedriver.exe。请下载与本机 WebView2 同版本的 Edge WebDriver，放进 PATH 或用环境变量 ${EDGE_DRIVER_ENV} 指定位置`,
+    );
   }
   if (!appBinary) {
     throw new Error("找不到已编译的 Lumi 桌面可执行文件，请先运行 pnpm --dir app exec tauri build --debug --no-bundle");
