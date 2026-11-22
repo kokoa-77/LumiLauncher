@@ -25,9 +25,11 @@ if ($Version -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-
 
 $release = Join-Path $TargetDirectory 'release'
 $exePath = Join-Path $release 'launcher-app.exe'
-$installerName = "Lumi_$($Version)_x64-setup.exe"
-$installerPath = Join-Path $release "bundle/nsis/$installerName"
-$portableName = "Lumi_$($Version)_x64-portable.zip"
+# Tauri 按程序名（Lumi）给安装器命名；对外发布的文件统一叫 LumiLauncher，程序本身仍叫 Lumi
+$bundleInstallerName = "Lumi_$($Version)_x64-setup.exe"
+$installerPath = Join-Path $release "bundle/nsis/$bundleInstallerName"
+$installerName = "LumiLauncher_$($Version)_x64-setup.exe"
+$portableName = "LumiLauncher_$($Version)_x64-portable.zip"
 
 foreach ($file in @($exePath, $installerPath)) {
     if (!(Test-Path -LiteralPath $file -PathType Leaf) -or (Get-Item -LiteralPath $file).Length -eq 0) {
@@ -59,7 +61,8 @@ if (!$Unsigned) {
     if ([Convert]::ToHexString($keyBytes, 2, 8) -cne [Convert]::ToHexString($signatureBytes, 2, 8)) {
         throw '生成安装器签名的私钥与更新器公钥不匹配。'
     }
-    $expectedComment = '^trusted comment: timestamp:[0-9]+\tfile:' + [regex]::Escape($installerName) + '\tversion:' + [regex]::Escape($Version) + '$'
+    # 签名注释里记的是 Tauri 生成时的文件名；改名发布不影响验签（更新器只校验内容）
+    $expectedComment = '^trusted comment: timestamp:[0-9]+\tfile:' + [regex]::Escape($bundleInstallerName) + '\tversion:' + [regex]::Escape($Version) + '$'
     if ($signatureLines[2] -cnotmatch $expectedComment) {
         throw 'Tauri 生成的签名须绑定同名安装器及发行版本。'
     }
@@ -74,7 +77,7 @@ if ((Test-Path -LiteralPath $output -PathType Leaf) -or
 $stage = Join-Path ([IO.Path]::GetDirectoryName($output)) ".lumi-release-$([Guid]::NewGuid().ToString('N'))"
 [void] [IO.Directory]::CreateDirectory($stage)
 try {
-    Copy-Item -LiteralPath $installerPath -Destination $stage
+    Copy-Item -LiteralPath $installerPath -Destination (Join-Path $stage $installerName)
 
     $zip = [IO.Compression.ZipFile]::Open((Join-Path $stage $portableName), [IO.Compression.ZipArchiveMode]::Create)
     try {
@@ -99,7 +102,7 @@ Lumi 便携版
     }
 
     if (!$Unsigned) {
-        Copy-Item -LiteralPath $signaturePath -Destination $stage
+        Copy-Item -LiteralPath $signaturePath -Destination (Join-Path $stage "$installerName.sig")
         @{
             version = $Version
             platforms = @{

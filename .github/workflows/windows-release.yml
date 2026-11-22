@@ -153,8 +153,8 @@ jobs:
         run: |
           sha256sum --strict --check SHA256SUMS.txt
           version="$(jq -er '.version' latest.json)"
-          installer="Lumi_${version}_x64-setup.exe"
-          portable="Lumi_${version}_x64-portable.zip"
+          installer="LumiLauncher_${version}_x64-setup.exe"
+          portable="LumiLauncher_${version}_x64-portable.zip"
           gh release create "v${version}" "$installer" "$installer.sig" "$portable" latest.json SHA256SUMS.txt \
-            --target "$GITHUB_SHA" --draft --title "Lumi v${version}" \
+            --target "$GITHUB_SHA" --draft --title "Lumi Launcher v${version}" \
             --notes $'Lumi Windows release candidate draft. Verify SHA256SUMS.txt and live official account regression before publishing.\n\nLumi is an independent third-party launcher and is NOT an official Minecraft product, nor approved by or associated with Mojang Studios or Microsoft.'
