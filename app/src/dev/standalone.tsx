@@ -78,7 +78,7 @@ const settings: Settings = {
   },
 };
 useAppStore.setState({
-  info: { version: "0.6.0（展示页）", backdrop: "solid", memoryMb: 32768 },
+  info: { version: "0.6.2（展示页）", backdrop: "solid", memoryMb: 32768 },
   settings,
   gameDir: { path: String.raw`C:\Games\Lumi\.minecraft`, locked: true },
   saveSettings: async (next) => useAppStore.setState({ settings: next }),

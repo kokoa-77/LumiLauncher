@@ -1609,7 +1609,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   // 界面开始监听拖放事件时调用；预览里没有通过双击 .mrpack 打开、等着交给界面的文件
   drops_shell_ready: () => null,
   modpack_discard: () => null,
-  app_info: () => ({ version: "0.6.1（预览）", backdrop: "solid", memoryMb: 32768 }),
+  app_info: () => ({ version: "0.6.2（预览）", backdrop: "solid", memoryMb: 32768 }),
   memory_status: () => {
     // 像真的一样每次读都有一点起伏
     availableMb = Math.max(1500, availableMb + Math.round((Math.random() - 0.5) * 120));

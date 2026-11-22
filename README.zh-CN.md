@@ -81,7 +81,7 @@
 **提示「Windows 已保护你的电脑」**：Windows 安装包暂未进行代码签名，首次运行时 Microsoft Defender SmartScreen 可能弹出提醒，点击 **更多信息 → 仍要运行** 即可。如需确认文件未被篡改，可以先核对校验和：
 
 ```powershell
-Get-FileHash .\Lumi_0.6.1_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Lumi_0.6.2_x64-setup.exe -Algorithm SHA256
 ```
 
 输出的值应与同一发布页 `SHA256SUMS.txt` 中对应文件的那一行一致。
