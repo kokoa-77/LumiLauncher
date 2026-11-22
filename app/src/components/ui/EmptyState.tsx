@@ -1,20 +1,32 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { SpotArt } from "../art/SpotArt";
+import { SpotArt, type SpotArtKind } from "../art/SpotArt";
+
+const SPOT_KINDS = new Set<string>([
+  "rollback",
+  "empty-library",
+  "empty-worlds",
+  "empty-search",
+  "error",
+]);
 
 interface EmptyStateProps {
   icon: LucideIcon;
   title: string;
   hint: string;
   action?: ReactNode;
-  illustration?: string | ReactNode;
+  illustration?: SpotArtKind | string | ReactNode;
 }
 
 export function EmptyState({ icon: Icon, title, hint, action, illustration }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-panel border border-line border-dashed px-6 py-14 text-center">
       {typeof illustration === "string" ? (
-        <SpotArt src={illustration} />
+        SPOT_KINDS.has(illustration) ? (
+          <SpotArt kind={illustration as SpotArtKind} />
+        ) : (
+          <SpotArt src={illustration} />
+        )
       ) : (
         (illustration ?? (
           <div className="grid size-12 place-items-center rounded-icon bg-accent-soft text-accent">

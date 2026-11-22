@@ -1,7 +1,5 @@
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
-import homeDay from "@/assets/art/home-day.webp";
-import homeNight from "@/assets/art/home-night.webp";
 import { LightField } from "@/components/art/LightField";
 import { SceneBackground } from "@/components/art/SceneBackground";
 import { duration, ease } from "@/lib/motion";
@@ -71,7 +69,7 @@ export function HomeBackdrop({ backdrop, ready }: { backdrop: Backdrop | null; r
         </>
       ) : (
         <div className="absolute inset-0 bg-linear-to-b from-sky-top to-sky-bottom">
-          {ready && <SceneBackground art={{ night: homeNight, day: homeDay }} showInLite />}
+          {ready && <SceneBackground kind="home" showInLite />}
           {ready && animated && (
             <LightField count={18} seed={41} area="low" className="absolute inset-0" />
           )}

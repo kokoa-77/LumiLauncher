@@ -1,6 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode, useEffect } from "react";
 import { useRouteError } from "react-router";
-import error from "@/assets/art/error.webp";
 import i18n from "@/lib/i18n";
 import { reportError } from "@/lib/report";
 import { SpotArt } from "./art/SpotArt";
@@ -41,7 +40,7 @@ function ErrorFallback() {
   return (
     <div className="grid h-full place-items-center p-8">
       <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-        <SpotArt src={error} />
+        <SpotArt kind="error" />
         <p className="font-semibold text-lg">{i18n.t("error.boundaryTitle")}</p>
         <p className="text-fg-muted text-sm">{i18n.t("error.boundaryHint")}</p>
         <Button

@@ -3,7 +3,6 @@ import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
-import emptyLibrary from "@/assets/art/empty-library.webp";
 import { groupNames } from "@/components/GroupDialog";
 import { InstanceTile } from "@/components/InstanceTile";
 import { NewInstanceDialog } from "@/components/NewInstanceDialog";
@@ -357,7 +356,7 @@ export function InstancesPage() {
       {loaded && instances.length === 0 && importing.length === 0 ? (
         <EmptyState
           icon={Boxes}
-          illustration={emptyLibrary}
+          illustration="empty-library"
           title={t("instances.empty")}
           hint={t("instances.emptyHint")}
         />

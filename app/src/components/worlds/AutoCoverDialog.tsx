@@ -2,7 +2,6 @@ import { Check, Images, Lock, Unlock } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import emptyWorlds from "@/assets/art/empty-worlds.webp";
 import { formatTime } from "@/components/HistoryDialog";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
@@ -115,7 +114,7 @@ export function AutoCoverDialog({
         ) : items.length === 0 ? (
           <EmptyState
             icon={Images}
-            illustration={emptyWorlds}
+            illustration="empty-worlds"
             title={t("background.autoEmpty")}
             hint={t("background.autoEmptyHint")}
           />

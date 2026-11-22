@@ -14,7 +14,6 @@ import {
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import emptyWorlds from "@/assets/art/empty-worlds.webp";
 import { useBackgroundItems } from "@/components/backgroundItems";
 import { ServerIcon, ServerStatusLine, useServerStatus } from "@/components/ServerStatus";
 import { Button } from "@/components/ui/Button";
@@ -289,7 +288,7 @@ export function WorldsTab({ instance }: { instance: InstanceSummary }) {
         {list.length === 0 ? (
           <EmptyState
             icon={Globe}
-            illustration={emptyWorlds}
+            illustration="empty-worlds"
             title={t("detail.worlds.empty")}
             hint={t("detail.worlds.emptyHint")}
             action={

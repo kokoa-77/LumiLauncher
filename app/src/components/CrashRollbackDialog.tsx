@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import rollback from "@/assets/art/rollback.webp";
 import { unwrap } from "@/lib/api";
 import { commands, type RollbackOffer } from "@/lib/bindings";
 import { logError, reportError } from "@/lib/report";
@@ -102,7 +101,7 @@ export function CrashRollbackDialog() {
     >
       {offer && (
         <div className="flex flex-col gap-3">
-          <SpotArt src={rollback} className="size-24 self-center" />
+          <SpotArt kind="rollback" className="size-24 self-center" />
           <p className="text-fg-muted text-sm">
             {t(offer.verified ? "safety.introVerified" : "safety.intro", {
               name,

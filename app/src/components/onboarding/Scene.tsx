@@ -43,7 +43,7 @@ export function Scene({
             animate={{ opacity: 1, transition: { duration: duration.page, ease: ease.out } }}
             exit={{ opacity: 0, transition: { duration: duration.page, ease: ease.in } }}
           >
-            <SceneBackground art={art} />
+            <SceneBackground kind={art} />
             <div className="absolute inset-0 bg-linear-to-t from-hero-scrim/65 via-transparent to-transparent" />
           </motion.div>
         )}

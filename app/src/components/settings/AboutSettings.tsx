@@ -2,7 +2,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown, ChevronUp, ExternalLink, Scale, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import aboutNight from "@/assets/art/about-night.webp";
 import authorKokoa77 from "@/assets/art/author-kokoa77.png";
 import lumiMark from "@/assets/art/lumi-mark.png";
 import type { AppInfo } from "@/lib/bindings";
@@ -63,9 +62,9 @@ export function AboutSettings({
 
   return (
     <>
-      {/* 顶部夜空品牌横幅：叠加正式转正的原版柔光图标、标语与版本胶囊 */}
+      {/* 顶部微光矢量品牌横幅：叠加正式转正的原版柔光图标、标语与版本胶囊 */}
       <div className="relative h-28 overflow-hidden rounded-panel border border-line bg-linear-to-b from-sky-top to-sky-bottom">
-        <SceneBackground art={{ night: aboutNight }} />
+        <SceneBackground kind="about" showInLite />
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 bg-linear-to-t from-hero-scrim/85 via-hero-scrim/30 to-transparent"

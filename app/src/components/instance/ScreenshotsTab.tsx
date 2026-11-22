@@ -1,7 +1,6 @@
 import { FolderOpen, Image as ImageIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import emptyWorlds from "@/assets/art/empty-worlds.webp";
 import { Lightbox } from "@/components/Lightbox";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -74,7 +73,7 @@ export function ScreenshotsTab({ instance }: { instance: InstanceSummary }) {
       {shots.length === 0 ? (
         <EmptyState
           icon={ImageIcon}
-          illustration={emptyWorlds}
+          illustration="empty-worlds"
           title={t("detail.screenshots.empty")}
           hint={t("detail.screenshots.emptyHint")}
         />

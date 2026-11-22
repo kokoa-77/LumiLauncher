@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
-import emptySearch from "@/assets/art/empty-search.webp";
 import {
   availableOn,
   DEFAULT_FILTER,
@@ -639,7 +638,7 @@ export function DiscoverPage() {
             ) : (
               <EmptyState
                 icon={Compass}
-                illustration={emptySearch}
+                illustration="empty-search"
                 title={t("discover.noResult")}
                 hint={
                   category || sort !== "relevance"

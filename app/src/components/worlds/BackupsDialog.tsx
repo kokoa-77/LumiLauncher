@@ -2,7 +2,6 @@ import { Archive, FolderOpen, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import emptyWorlds from "@/assets/art/empty-worlds.webp";
 import { formatTime } from "@/components/HistoryDialog";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
@@ -151,7 +150,7 @@ export function BackupsDialog({
           {list?.length === 0 ? (
             <EmptyState
               icon={Archive}
-              illustration={emptyWorlds}
+              illustration="empty-worlds"
               title={t("backup.empty")}
               hint={t("backup.emptyHint")}
             />

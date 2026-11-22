@@ -154,6 +154,20 @@
   --mote: oklch(var(--accent-l-light) var(--accent-c-light) var(--accent-h) / 0.7);
   --mote-core: oklch(var(--accent-l-light) var(--accent-c-light) var(--accent-h) / 0.28);
   --glow: oklch(var(--accent-l-light) var(--accent-c-light) var(--accent-h) / 0.28);
+
+  /* 纯 2D 柔光叠层空状态插画（随实例主色与昼夜实时融合） */
+  --art-back: oklch(91.5% 0.036 var(--accent-h) / 0.78);
+  --art-front: oklch(100% 0 0 / 0.92);
+  --art-stroke: oklch(54% 0.075 var(--accent-h) / 0.28);
+  --art-fill-light: oklch(93% 0.03 var(--accent-h));
+  --art-fill-mid: oklch(83.5% 0.062 var(--accent-h));
+  --art-line: oklch(54% 0.045 var(--accent-h) / 0.28);
+
+  /* 纯 2D 柔光矢量场景背景（首页默认、首次引导、关于横幅） */
+  --scene-hill-far: oklch(91.5% 0.032 var(--accent-h) / 0.65);
+  --scene-hill-mid: oklch(94.5% 0.024 var(--accent-h) / 0.82);
+  --scene-hill-near: oklch(97.2% 0.012 var(--accent-h) / 0.95);
+  --scene-beacon: oklch(80% 0.15 78);
 }
 
 /* 深色 = 夜晚：夜空蓝的底，三层从深到浅（窗口 → 内容面板 → 卡片和控件） */
@@ -197,6 +211,20 @@
   --mote: oklch(97% 0.03 var(--accent-h));
   --mote-core: oklch(var(--accent-l-dark) var(--accent-c-dark) var(--accent-h) / 0.75);
   --glow: oklch(var(--accent-l-dark) var(--accent-c-dark) var(--accent-h) / 0.32);
+
+  /* 纯 2D 柔光叠层空状态插画（夜间保持柔和通透与清晰边界） */
+  --art-back: oklch(33% 0.052 var(--accent-h) / 0.72);
+  --art-front: oklch(26% 0.032 var(--night-h) / 0.9);
+  --art-stroke: oklch(100% 0 0 / 0.2);
+  --art-fill-light: oklch(30.5% 0.048 var(--accent-h));
+  --art-fill-mid: oklch(42% 0.075 var(--accent-h));
+  --art-line: oklch(100% 0 0 / 0.24);
+
+  /* 纯 2D 柔光矢量场景背景（夜空层叠山丘与星光） */
+  --scene-hill-far: oklch(25% 0.048 var(--night-h) / 0.78);
+  --scene-hill-mid: oklch(20% 0.038 var(--night-h) / 0.88);
+  --scene-hill-near: oklch(15.5% 0.026 var(--night-h) / 0.96);
+  --scene-beacon: oklch(86% 0.14 82);
 }
 
 /* 只给一小块换主色（实例卡片用自己世界的颜色）：元素上写好那五个变量，再加 accent-scope 类 */

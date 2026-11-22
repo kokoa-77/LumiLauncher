@@ -11,6 +11,11 @@ import worldShot from "./fixtures/world-shot.jpg";
 
 const now = Date.now();
 const HOUR = 3_600_000;
+// __LUMI_DEMO_NATIVE__: 演示与官网试玩直接读 `?lang=en|zh-CN`
+const previewQuery = new URLSearchParams(location.search);
+const isEnPreview = previewQuery.get("lang") === "en";
+const DEMO_INSTANCE_ID = "Lumi Survival";
+const DEMO_WORLD_FOLDER = "Starlight Valley";
 
 type PreviewInstance = {
   id: string;
@@ -22,14 +27,14 @@ type PreviewInstance = {
   lastPlayed: number | null;
   group: string | null;
   pinnedAt: number | null;
-  /** 挂上的别家版本是哪家的 */
+  /** 关联的别家版本是哪家的 */
   linked?: string | null;
 };
 
 const instances: PreviewInstance[] = [
   {
-    id: "验收测试",
-    name: "验收测试",
+    id: DEMO_INSTANCE_ID,
+    name: isEnPreview ? "Lumi Survival" : "微光生存",
     gameVersion: "1.21.1",
     loader: "NeoForge 21.1.265",
     pack: null,
@@ -46,19 +51,19 @@ const instances: PreviewInstance[] = [
     pack: "Cobblemon Official Modpack [NeoForge]",
     createdAt: now - 60 * HOUR,
     lastPlayed: now - 26 * HOUR,
-    group: "整合包",
-    pinnedAt: null,
+    group: isEnPreview ? "Modpacks" : "整合包",
+    pinnedAt: now - 12 * HOUR,
   },
   {
     id: "命运齿轮FOM机械动力航空学【Fate's Machinery】",
-    name: "命运齿轮FOM机械动力航空学【Fate's Machinery】",
+    name: isEnPreview ? "Fate's Machinery [Create]" : "命运齿轮 · 机械动力",
     gameVersion: "1.21.1",
     loader: "NeoForge 21.1.215",
     pack: "命运齿轮FOM机械动力航空学【Fate's Machinery】",
     createdAt: now - 50 * HOUR,
     lastPlayed: now - 70 * HOUR,
-    group: "整合包",
-    pinnedAt: null,
+    group: isEnPreview ? "Modpacks" : "整合包",
+    pinnedAt: now - 13 * HOUR,
   },
   {
     id: "Optimization",
@@ -68,8 +73,8 @@ const instances: PreviewInstance[] = [
     pack: "Optimization",
     createdAt: now - 90 * HOUR,
     lastPlayed: now - 160 * HOUR,
-    group: "测试",
-    pinnedAt: null,
+    group: isEnPreview ? "Performance" : "性能",
+    pinnedAt: now - 14 * HOUR,
   },
   {
     id: "1.21.1",
@@ -113,7 +118,7 @@ const instances: PreviewInstance[] = [
 const linkedRoots = [
   {
     id: "root-pcl2",
-    path: String.raw`D:\PCL2\.minecraft`,
+    path: String.raw`C:\Games\PCL2\.minecraft`,
     name: "PCL2",
     launcher: "pcl",
     versions: 5,
@@ -192,17 +197,25 @@ type FakeNotes = {
 };
 const worldNotes = new Map<string, FakeNotes>([
   [
-    "验收测试/新的世界",
+    `${DEMO_INSTANCE_ID}/${DEMO_WORLD_FOLDER}`,
     {
       places: [
-        { name: "家", x: 120, y: 64, z: -340, dimension: "overworld" },
-        { name: "下界传送门", x: 15, y: 70, z: -42, dimension: "nether" },
+        { name: isEnPreview ? "Base" : "家", x: 120, y: 64, z: -340, dimension: "overworld" },
+        {
+          name: isEnPreview ? "Nether Portal" : "下界传送门",
+          x: 15,
+          y: 70,
+          z: -42,
+          dimension: "nether",
+        },
       ],
       todos: [
-        { text: "砍够一组橡木", done: true },
-        { text: "去找要塞", done: false },
+        { text: isEnPreview ? "Gather a stack of oak logs" : "砍够一组橡木", done: true },
+        { text: isEnPreview ? "Find the Stronghold" : "去找要塞", done: false },
       ],
-      text: "村庄在出生点东边，铁匠铺有钻石马铠",
+      text: isEnPreview
+        ? "Village east of spawn with diamond horse armor in the blacksmith"
+        : "村庄在出生点东边，铁匠铺有钻石马铠",
     },
   ],
 ]);
@@ -217,7 +230,7 @@ const noteLine = (notes: FakeNotes | undefined) => {
 type FakeBackup = { id: string; at: number; reason: string; size: number };
 const worldBackups = new Map<string, FakeBackup[]>([
   [
-    "验收测试/新的世界",
+    `${DEMO_INSTANCE_ID}/${DEMO_WORLD_FOLDER}`,
     [
       { id: "3", at: Date.now() - 2 * 3600_000, reason: "afterPlay", size: 48_200_000 },
       { id: "2", at: Date.now() - 26 * 3600_000, reason: "afterPlay", size: 47_900_000 },
@@ -248,20 +261,32 @@ function withBackground<T extends { imageUrl: string | null; imageKind: string |
 const lockedAutoCovers = new Map<string, string>();
 const lockedContent = new Set<string>();
 const previewRecentServers = [
-  { instanceId: "验收测试", quickPlay: true, name: "微光生存服", address: "play.lumi.example" },
+  {
+    instanceId: DEMO_INSTANCE_ID,
+    quickPlay: true,
+    name: isEnPreview ? "Lumi Survival SMP" : "微光生存服",
+    address: "play.lumi.example",
+  },
   {
     instanceId: "Cobblemon Official Modpack [NeoForge]",
     quickPlay: true,
-    name: "Cobblemon 官方服",
+    name: isEnPreview ? "Cobblemon Official" : "Cobblemon 官方服",
     address: "mc.cobblemon.example",
   },
 ];
 
 const recent = [
   {
-    instanceId: "验收测试",
+    instanceId: DEMO_INSTANCE_ID,
     quickPlay: true,
-    world: world("新的世界", "新的世界", 3, 2, worldShot, "screenshot"),
+    world: world(
+      DEMO_WORLD_FOLDER,
+      isEnPreview ? "Starlight Valley" : "星光山谷",
+      3,
+      2,
+      worldShot,
+      "screenshot",
+    ),
   },
   {
     instanceId: "Cobblemon Official Modpack [NeoForge]",
@@ -271,7 +296,14 @@ const recent = [
   {
     instanceId: "命运齿轮FOM机械动力航空学【Fate's Machinery】",
     quickPlay: true,
-    world: world("新的世界", "齿轮之城", 7, 70, worldShot, "auto"),
+    world: world(
+      "Clockwork City",
+      isEnPreview ? "Clockwork City" : "齿轮之城",
+      7,
+      70,
+      worldShot,
+      "auto",
+    ),
   },
   {
     instanceId: "Optimization",
@@ -282,36 +314,104 @@ const recent = [
 
 // 资源中心的假数据：三十来个项目，能翻页、能看大图卡片和合并两个平台
 const sampleProjects: [string, string, string, string[], "client" | "both" | "either"][] = [
-  ["Sodium", "现代的渲染引擎，大幅提升帧率，减少卡顿。", "jellysquid3", ["optimization"], "client"],
+  [
+    "Sodium",
+    isEnPreview
+      ? "Modern rendering engine that dramatically boosts frame rates and reduces stutter."
+      : "现代的渲染引擎，大幅提升帧率，减少卡顿。",
+    "jellysquid3",
+    ["optimization"],
+    "client",
+  ],
   [
     "Iris Shaders",
-    "兼容 OptiFine 光影包的光影加载器。",
+    isEnPreview
+      ? "Modern shaders mod compatible with OptiFine shader packs."
+      : "兼容 OptiFine 光影包的光影加载器。",
     "coderbot",
     ["decoration", "optimization"],
     "client",
   ],
   [
     "Create",
-    "机械动力：齿轮、传送带和会动的机器。",
+    isEnPreview
+      ? "Aesthetic kinetic technology: gears, belts, trains, and moving contraptions."
+      : "机械动力：齿轮、传送带和会动的机器。",
     "simibubi",
     ["technology", "decoration"],
     "both",
   ],
-  ["Jade", "看着方块就显示它是什么、属于哪个模组。", "Snownee", ["utility"], "client"],
-  ["Waystones", "传送石碑，在世界各处快速移动。", "BlayTheNinth", ["transportation"], "both"],
-  ["AppleSkin", "在饱食度条上显示食物能回复多少。", "squeek502", ["food", "utility"], "client"],
+  [
+    "Jade",
+    isEnPreview
+      ? "Shows clean HUD information about the block or entity you are looking at."
+      : "看着方块就显示它是什么、属于哪个模组。",
+    "Snownee",
+    ["utility"],
+    "client",
+  ],
+  [
+    "Waystones",
+    isEnPreview
+      ? "Teleportation waystones for effortless travel across your worlds."
+      : "传送石碑，在世界各处快速移动。",
+    "BlayTheNinth",
+    ["transportation"],
+    "both",
+  ],
+  [
+    "AppleSkin",
+    isEnPreview
+      ? "Adds saturation and exhaustion overlays right onto the hunger bar."
+      : "在饱食度条上显示食物能回复多少。",
+    "squeek502",
+    ["food", "utility"],
+    "client",
+  ],
   [
     "Farmer's Delight",
-    "农夫乐事：种田、做菜、煮汤。",
+    isEnPreview ? "Cozy farming, cooking, and hearty meals." : "农夫乐事：种田、做菜、煮汤。",
     "vectorwing",
     ["food", "decoration"],
     "both",
   ],
-  ["Xaero's Minimap", "小地图，带路点和洞穴模式。", "xaero96", ["utility"], "client"],
-  ["Entity Culling", "看不见的实体不渲染，省帧率。", "tr7zw", ["optimization"], "client"],
-  ["Ferrite Core", "降低内存占用。", "malte0811", ["optimization"], "either"],
-  ["Supplementaries", "上百种小装饰和实用小东西。", "MehVahdJukaar", ["decoration"], "both"],
-  ["Comforts", "睡袋和吊床。", "TheIllusiveC4", ["decoration"], "both"],
+  [
+    "Xaero's Minimap",
+    isEnPreview ? "Minimap with waypoints and cave mode." : "小地图，带路点和洞穴模式。",
+    "xaero96",
+    ["utility"],
+    "client",
+  ],
+  [
+    "Entity Culling",
+    isEnPreview ? "Skip rendering hidden entities to boost FPS." : "看不见的实体不渲染，省帧率。",
+    "tr7zw",
+    ["optimization"],
+    "client",
+  ],
+  [
+    "Ferrite Core",
+    isEnPreview ? "Reduces Minecraft memory usage." : "降低内存占用。",
+    "malte0811",
+    ["optimization"],
+    "either",
+  ],
+  [
+    "Supplementaries",
+    isEnPreview
+      ? "Hundreds of charming vanilla-friendly decorations."
+      : "上百种小装饰和实用小东西。",
+    "MehVahdJukaar",
+    ["decoration"],
+    "both",
+  ],
+  [
+    "Comforts",
+    isEnPreview ? "Sleeping bags and hammocks for travelers." : "睡袋和吊床。",
+    "TheIllusiveC4",
+    ["decoration"],
+    "both",
+  ],
 ];
 const sampleIcons = [optimizationIcon, cobblemonIcon, fomIcon];
 const PAGE = 20;
@@ -485,7 +585,7 @@ const record = (
   javaPath: String.raw`C:\Games\Lumi\.minecraft\.mcl-java\java-runtime-delta\bin\javaw.exe`,
   javaVersion: "21.0.7",
   memoryMb: 6144,
-  quickPlay: { kind: "world", folder: "新的世界" },
+  quickPlay: { kind: "world", folder: DEMO_WORLD_FOLDER },
   mods: recordMods,
   outcome,
   exitCode: 0,
@@ -520,9 +620,9 @@ const recordLog = (id: string) =>
         {
           level: "info",
           thread: "main",
-          message: "ModLauncher running: args [--username, Kokoa77]",
+          message: "ModLauncher running: args [--username, LumiPlayer]",
         },
-        { level: "info", thread: "Render thread", message: "Setting user: Kokoa77" },
+        { level: "info", thread: "Render thread", message: "Setting user: LumiPlayer" },
         {
           level: "warn",
           thread: "Render thread",
@@ -547,17 +647,17 @@ const recordLog = (id: string) =>
         },
       ]
     : [
-        { level: "info", thread: "Render thread", message: "Setting user: Kokoa77" },
+        { level: "info", thread: "Render thread", message: "Setting user: LumiPlayer" },
         { level: "info", thread: "Render thread", message: "Sound engine started" },
         { level: "info", thread: "Server thread", message: "Stopping server" },
       ];
 
 // 核对界面用：preview.html?theme=dark&fx=lite 直接切深浅色和画面效果（截图脚本靠它）
-const query = new URLSearchParams(location.search);
+const query = previewQuery;
 let settings = {
   schemaVersion: 2,
   appearance: {
-    theme: query.get("theme") ?? "system",
+    theme: query.get("theme") ?? "light",
     reduceMotion: query.get("motion") === "reduce",
     autoCover: true,
     accentFollowWorld: true,
@@ -579,7 +679,7 @@ let settings = {
     proxy: { mode: "system", scheme: "http", host: "", port: 7890 },
   },
   game: {
-    playerName: "Kokoa77",
+    playerName: "LumiPlayer",
     memoryAuto: true,
     maxMemoryMb: 4096,
     directory: null,
@@ -788,9 +888,13 @@ function exportPreview(id: string) {
       },
     ],
     worlds:
-      id === "验收测试"
+      id === DEMO_INSTANCE_ID
         ? [
-            { folder: "新的世界", name: "新的世界", size: 38_000_000 },
+            {
+              folder: DEMO_WORLD_FOLDER,
+              name: isEnPreview ? "Starlight Valley" : "星光山谷",
+              size: 38_000_000,
+            },
             { folder: "Voidblock", name: "Voidblock 空岛", size: 12_500_000 },
           ]
         : [],
@@ -802,7 +906,7 @@ const TOTAL_MB = 32_563;
 let availableMb = 9_400;
 /** 每个实例的模组数（「命运齿轮」136 个，可用 4.5 GB 时自动模式想要 5.5 GB、给不够） */
 const modCounts: Record<string, number> = {
-  验收测试: 12,
+  [DEMO_INSTANCE_ID]: 12,
   "Cobblemon Official Modpack [NeoForge]": 73,
   "命运齿轮FOM机械动力航空学【Fate's Machinery】": 136,
   Optimization: 40,
@@ -1094,10 +1198,10 @@ let previewHistory = (() => {
   const hour = 60 * minute;
   return [
     pastJob("past-sodium", {
-      key: "content:验收测试:AANobbMI",
+      key: `content:${DEMO_INSTANCE_ID}:AANobbMI`,
       title: "安装 Sodium",
       source: "modrinth",
-      instanceId: "验收测试",
+      instanceId: DEMO_INSTANCE_ID,
       progress: { done: 1_292_934, total: 1_292_934, unit: "bytes", message: "放进实例" },
       startedAt: now - 42 * minute,
       finishedAt: now - 42 * minute + 9000,
@@ -1185,10 +1289,10 @@ let previewHistory = (() => {
       finishedAt: now - 60 * hour + 4000,
     }),
     pastJob("past-backup", {
-      key: "backup:验收测试:新的世界",
-      title: "备份世界「新的世界」",
+      key: `backup:${DEMO_INSTANCE_ID}:${DEMO_WORLD_FOLDER}`,
+      title: isEnPreview ? "Back up Starlight Valley" : "备份世界「星光山谷」",
       source: "local",
-      instanceId: "验收测试",
+      instanceId: DEMO_INSTANCE_ID,
       progress: { done: 31_000_000, total: 31_000_000, unit: "bytes", message: null },
       startedAt: now - 72 * hour,
       finishedAt: now - 72 * hour + 6000,
@@ -1239,7 +1343,7 @@ let previewAuthError: string | null = null;
 let cancelPreviewLogin: (() => void) | null = null;
 const microsoftAccount: AccountView = {
   id: "acc-microsoft",
-  name: "Kokoa77",
+  name: "LumiPlayer",
   uuid: "1c1a3a4e-0000-4000-8000-000000000003",
   hasSkin: true,
   skinModel: "slim",
@@ -1342,7 +1446,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   jobs_retry: (args) => {
     const old = previewHistory.find((j) => j.id === args.id);
     previewHistory = previewHistory.filter((j) => j.id !== args.id);
-    return fakeJob(old?.key ?? "content:验收测试:retry", old?.title ?? "重试");
+    return fakeJob(old?.key ?? `content:${DEMO_INSTANCE_ID}:retry`, old?.title ?? "重试");
   },
   net_speed_last: () => null,
   net_speed_test: () =>
@@ -1492,7 +1596,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   }),
   drops_discard: () => null,
   modpack_discard: () => null,
-  app_info: () => ({ version: "0.6.0（预览）", backdrop: "solid", memoryMb: 32768 }),
+  app_info: () => ({ version: "0.6.1（预览）", backdrop: "solid", memoryMb: 32768 }),
   memory_status: () => {
     // 像真的一样每次读都有一点起伏
     availableMb = Math.max(1500, availableMb + Math.round((Math.random() - 0.5) * 120));
@@ -2227,7 +2331,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
           },
           {
             instanceId: "Fabric Pack",
-            instanceName: "验收测试",
+            instanceName: isEnPreview ? "Lumi Survival" : "微光生存",
             summary: "",
             ok: false,
             message:
@@ -2310,7 +2414,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     joinedServers = [{ name: String(args.name), address }, ...joinedServers];
     return true;
   },
-  instances_screenshots: (args) => (args.instanceId === "验收测试" ? screenshots : []),
+  instances_screenshots: (args) => (args.instanceId === DEMO_INSTANCE_ID ? screenshots : []),
   instances_open_screenshots: () => null,
   worlds_open_folder: () => null,
   launch_start: (args) => {
@@ -2343,7 +2447,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     if (run) emitPreview("session-updated", run.session({ kind: "exited", code: 0 }));
     return true;
   },
-  launch_records: (args) => (args.instanceId === "验收测试" ? records : []),
+  launch_records: (args) => (args.instanceId === DEMO_INSTANCE_ID ? records : []),
   launch_record_log: (args) => {
     const lines = recordLog(String(args.recordId));
     return { lines, total: lines.length, skipped: 0 };
@@ -2463,9 +2567,9 @@ Object.assign(window, {
   // 大世界要不要自动备份：控制台里 `__previewBackupAsk()`
   __previewBackupAsk: () =>
     emitPreview("backup-ask", {
-      instanceId: "验收测试",
-      folder: "新的世界",
-      worldName: "新的世界",
+      instanceId: DEMO_INSTANCE_ID,
+      folder: DEMO_WORLD_FOLDER,
+      worldName: isEnPreview ? "Starlight Valley" : "星光山谷",
       bytes: 1_520_000_000,
     }),
   __previewMemory: (mb: number) => {
