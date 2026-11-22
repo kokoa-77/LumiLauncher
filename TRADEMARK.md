@@ -40,7 +40,7 @@ If you distribute a modified version, you must:
 1. **Use your own name, application ID and icon.** Do not use `Lumi`, `Lumi Launcher`, `微光` or anything confusingly similar as your product name, and do not reuse `com.lumilauncher.lumi`
 2. **Replace the brand assets** listed above with your own. They are licensed under `GPL-3.0-only` together with the code, but the Section 7 terms forbid using them in a way that implies your build is official Lumi
 3. **Say clearly that your build is modified** and that it is not made, endorsed or supported by the Lumi project
-4. **Never reuse Lumi's credentials.** Register your own Microsoft Entra application, generate your own updater keys and request your own API keys, or leave them unset
+4. **Do not reuse Lumi's credentials.** Register your own Microsoft Entra application, generate your own updater keys and request your own API keys, or leave them unset
 5. **Keep the license and copyright notices**, and publish your source code under `GPL-3.0-only`, as the license requires
 
 ### What Is Not Allowed
@@ -111,7 +111,7 @@ Lumi 的源代码是自由软件，以 `GPL-3.0-only` 发布，你可以学习�
 1. **用自己的名称、应用 ID 和图标**：产品名不得使用 `Lumi`、`Lumi Launcher`、`微光` 或容易混淆的近似名称，不得沿用 `com.lumilauncher.lumi`
 2. **换掉上面列出的品牌素材**：它们和代码一样以 `GPL-3.0-only` 发布，但第 7 条附加条款禁止用它们让人以为你的版本是官方 Lumi
 3. **明确说明这是修改版**，并非由 Lumi 项目制作、认可或提供支持
-4. **绝不沿用 Lumi 的凭据**：自己注册 Microsoft Entra 应用、生成自己的更新密钥、申请自己的 API Key，或者留空
+4. **不得沿用 Lumi 的凭据**：自己注册 Microsoft Entra 应用、生成自己的更新密钥、申请自己的 API Key，或者留空
 5. **保留许可证与版权声明**，并按许可证要求以 `GPL-3.0-only` 公开源代码
 
 ### 不允许的

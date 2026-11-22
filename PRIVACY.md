@@ -4,7 +4,7 @@
 
 **English** · [简体中文](#简体中文)
 
-Lumi (`com.lumilauncher.lumi`) is an independent, open-source desktop launcher for Minecraft: Java Edition developed by `kokoa-77` and contributors. We built Lumi to be **strictly local-first with zero telemetry**.
+Lumi (`com.lumilauncher.lumi`) is an independent, open-source desktop launcher for Minecraft: Java Edition developed by `kokoa-77` and contributors. Lumi is **local-first and collects no telemetry**.
 
 ---
 
@@ -12,7 +12,7 @@ Lumi (`com.lumilauncher.lumi`) is an independent, open-source desktop launcher f
 
 ### 1. Data We Do NOT Collect
 - Lumi does **not** collect telemetry, usage analytics, crash tracking, advertising identifiers, hardware fingerprints, or personal information.
-- Lumi operates **no backend user database** and never sends your account credentials, world saves, mod lists, or settings to any Lumi-operated server.
+- Lumi operates **no backend user database** and does not send your account credentials, world saves, mod lists, or settings to any Lumi-operated server.
 
 ### 2. Local Data Stored on Your Device
 All launcher data stays on your own computer:
@@ -22,10 +22,10 @@ All launcher data stays on your own computer:
 
 ### 3. External Network Connections
 Lumi only connects to external services required for features you initiate:
-- **Microsoft / Xbox Live / Mojang Official Services**: Used strictly for OAuth 2.0 Authorization Code + PKCE sign-in, Java Edition play entitlement verification, official Java profile retrieval, and official Minecraft asset/runtime downloads. Authentication traffic **never** passes through third-party download mirrors.
+- **Microsoft / Xbox Live / Mojang Official Services**: Used for OAuth 2.0 Authorization Code + PKCE sign-in, Java Edition play entitlement verification, official Java profile retrieval, and official Minecraft asset/runtime downloads. Authentication traffic **does not** pass through third-party download mirrors.
 - **Mod loader sources (Fabric, Quilt, Forge, NeoForge)**: Used to list loader versions and download loader files when you create or update an instance.
 - **Modrinth & CurseForge**: Used when you browse, search, install, or check updates for mods, modpacks, resource packs, shaders, worlds, or servers.
-- **Optional Download Mirrors (BMCLAPI / MCIM)**: Used only for public game assets or public mod metadata/files according to your download settings. Personal API keys (e.g., CurseForge key) and authentication requests are never sent to mirrors.
+- **Optional Download Mirrors (BMCLAPI / MCIM)**: Used only for public game assets or public mod metadata/files according to your download settings. Personal API keys (e.g., CurseForge key) and authentication requests are not sent to mirrors.
 - **DNS-over-HTTPS (on by default)**: Domain names of download sources are resolved over HTTPS, through Cloudflare (`1.1.1.1`) for official overseas sources and AliDNS (`223.5.5.5`) for mirrors in mainland China. Only the domain names are sent, and Lumi falls back to your system DNS if they cannot be reached. You can turn this off under **Settings → Use DoH for download domains**.
 - **Download speed test**: When the download source is set to Auto, Lumi briefly measures the official servers and BMCLAPI to pick the faster one.
 - **Minecraft servers**: To show player counts, latency and icons, Lumi sends a standard server list ping directly to the servers on your home screen, in your server lists, or in Discover. Server addresses with SRV records are looked up through your system's DNS servers.
@@ -48,7 +48,7 @@ Every request Lumi makes identifies itself with the User-Agent `LumiLauncher/<ve
 
 ### 1. 我们不收集任何数据
 - Lumi **不收集**任何遥测数据、使用统计、自动崩溃上报、广告标识、硬件指纹或个人隐私信息。
-- Lumi **没有自建用户后台服务器**，绝不会将你的账号凭据、世界存档、模组清单或个人设置上传至开发者服务器。
+- Lumi **没有自建用户后台服务器**，不会把你的账号凭据、世界存档、模组清单或个人设置上传到开发者的服务器。
 
 ### 2. 仅保存在你本机的数据
 所有启动器数据均存放于你自己的电脑上：
@@ -58,14 +58,14 @@ Every request Lumi makes identifies itself with the User-Agent `LumiLauncher/<ve
 
 ### 3. 外部网络连接说明
 Lumi 仅在你使用对应功能时连接必要的外部服务：
-- **Microsoft / Xbox Live / Mojang 官方服务**：用于系统浏览器 OAuth 2.0 授权码 + PKCE 登录、Java 版游玩权核验、官方档案读取与官方游戏资产下载。**账号认证流量绝不经过任何第三方镜像。**
+- **Microsoft / Xbox Live / Mojang 官方服务**：用于系统浏览器 OAuth 2.0 授权码 + PKCE 登录、Java 版游玩权核验、官方档案读取与官方游戏资产下载。**账号认证的请求不经过任何第三方镜像。**
 - **模组加载器官方源（Fabric、Quilt、Forge、NeoForge）**：新建或更新实例时，用于列出加载器版本并下载加载器文件。
 - **Modrinth 与 CurseForge**：用于搜索、安装、更新模组、整合包、材质包、光影、地图与服务器。
-- **可选社区下载镜像（BMCLAPI / MCIM）**：按你在「内容与下载」中的设置用于加速公开游戏文件或公开模组元数据；你的个人 API Key 与账号认证绝不发送给镜像。
+- **可选社区下载镜像（BMCLAPI / MCIM）**：按你在「内容与下载」中的设置用于加速公开游戏文件或公开模组元数据；你的个人 API Key 和账号认证请求不会发给镜像。
 - **DNS over HTTPS（默认开启）**：下载源的域名通过 HTTPS 解析：海外官方源使用 Cloudflare（`1.1.1.1`），国内镜像使用阿里公共 DNS（`223.5.5.5`）。只发送域名本身，无法连接时自动改用系统 DNS。可在 **设置 → 用 DoH 解析下载域名** 中关闭。
 - **下载测速**：下载源设为「自动」时，Lumi 会短暂测试官方服务器与 BMCLAPI 的速度，选用较快的一个。
 - **Minecraft 服务器**：为显示在线人数、延迟和图标，Lumi 会向首页、服务器列表或发现页中的服务器直接发送标准的服务器列表查询；带 SRV 记录的服务器地址通过系统 DNS 查询。
-- **可选手动日志分享（`mclo.gs`）**：绝不自动上传，仅在你手动点击并二次确认后，先经过自动脱敏再上传日志。
+- **可选手动日志分享（`mclo.gs`）**：不会自动上传，只有在你手动点击并再次确认后，才会先脱敏再上传日志。
 - **GitHub Releases（检查更新）**：安装版在每次启动时从 GitHub Releases 下载一次很小的 `latest.json`，查看是否有新版 Lumi；便携版不检查更新。
 - **本机 Discord 活动状态（可选，默认关闭）**：仅在你手动开启后，通过本机命名管道（`\\.\pipe\discord-ipc-*`）与本机 Discord 客户端通信。
 

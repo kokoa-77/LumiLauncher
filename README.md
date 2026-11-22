@@ -40,7 +40,7 @@
     </td>
     <td width="50%">
       <img src="docs/screenshots/03-instance-detail.png" alt="Instance detail view with mod management and update checks" width="100%" />
-      <p align="center"><sub><strong>Instance Content &amp; Safety</strong> · Mod updates, version pinning &amp; change history rollback</sub></p>
+      <p align="center"><sub><strong>Instance Content</strong> · Mod updates, version locking &amp; change history rollback</sub></p>
     </td>
   </tr>
   <tr>
@@ -49,22 +49,22 @@
       <p align="center"><sub><strong>Unified Discover</strong> · Modrinth &amp; CurseForge mods, modpacks, shaders, and worlds</sub></p>
     </td>
     <td width="50%">
-      <img src="docs/screenshots/05-instance-sync.png" alt="Zero-cloud local instance sync settings" width="100%" />
-      <p align="center"><sub><strong>Local Instance Sync</strong> · Zero-cloud sync for options, servers, packs, and hotbars</sub></p>
+      <img src="docs/screenshots/05-instance-sync.png" alt="Local instance sync settings" width="100%" />
+      <p align="center"><sub><strong>Local Instance Sync</strong> · Sync options, servers, packs and hotbars on your PC</sub></p>
     </td>
   </tr>
 </table>
 
 ## Highlights
 
-- **Jump Straight Into Your World** — Full-bleed immersive home screen featuring your latest world or favorite multiplayer server, with one-click Quick Play launch and automatic world cover capture.
-- **Instance-Adaptive Accent & Polished UI** — Built with Tauri 2, Rust, and React 19. Supports Windows 11 Mica backdrop, Light / Dark / System themes, reduced-motion / performance mode, and optional subtle Web Audio feedback.
-- **Undo Any Mod Change** — Automatic mod-change snapshots, full content revision history with one-click rollback, `< 50ms` pre-launch mod & Java preflight checks, and automatic world backups.
-- **Modrinth & CurseForge Built In** — Unified discovery and management for mods, modpacks (`.mrpack` & CurseForge), shaders, resource packs, worlds, and servers. Respects creator distribution settings: restricted CurseForge files open the official download page and claim files cleanly via SHA verification without bypassing CDN rules.
-- **Zero-Cloud Local Instance Sync** — Safely synchronize up to 6 local asset categories across instances (`options.txt` with categorized visual editor & keybind capture, `servers.dat` lossless NBT merge, shared resource packs, shared shaders, command history, and saved hotbars) with automatic first-time backup and per-instance opt-outs.
-- **Modern Instance Layout & External Migration** — Clean `instances/<name>/` isolation with shared vanilla assets. Link existing official / PCL / HMCL `.minecraft` directories in place or import from Prism / MultiMC, Modrinth App, CurseForge, and ATLauncher.
-- **Fast, Resilient Downloads** — Multi-source download engine with hash verification, resumable `.part` downloads, optional DNS-over-HTTPS (DoH), configurable proxies (System / Direct / HTTP·SOCKS5), and optional BMCLAPI / MCIM mirrors (authentication always goes directly to official Microsoft & Mojang endpoints).
-- **Power-User Tools, Kept Out of the Way** — Automatic Java detection & official runtime download, memory advisor, storage analyzer & unused version cleaner, launch hooks, custom game window titles, optional local Discord Rich Presence, and manual double-confirmed `mclo.gs` crash upload with automatic secret redaction.
+- **Jump Straight Into Your World** — Lumi opens on the world or multiplayer server you played last. World covers are captured from the game automatically, and Quick Play takes you straight in.
+- **An Accent Color per Instance** — Every world and modpack gets its own accent color. Supports the Windows 11 Mica backdrop, light / dark / system themes, reduced motion, a Lite mode for older PCs, and optional interface sounds (off by default).
+- **Undo Any Mod Change** — Every mod change leaves a snapshot you can undo from the change history. Before launch, Lumi checks locally for missing dependencies, duplicate mod IDs, wrong loaders and incompatible Java. Worlds are backed up automatically.
+- **Modrinth & CurseForge Built In** — Search, install and update mods, modpacks (`.mrpack` & CurseForge), shaders, resource packs, worlds and servers in one place, with dependencies filled in automatically. CurseForge files whose authors block third-party downloads open on the official page and are matched by SHA-256 once downloaded.
+- **Local Instance Sync** — Sync 6 kinds of content between instances on your PC (`options.txt` with a 9-category visual editor and direct keybind capture, `servers.dat` merged and de-duplicated as NBT, shared resource packs, shared shaders, command history and saved hotbars), with no cloud service or account. The first sync makes a backup automatically, and any instance can opt out per category.
+- **Instance Layout & Migration** — Each instance lives in `instances/<name>/` and shares the vanilla game files. Link existing official / PCL / HMCL `.minecraft` folders in place (nothing is copied), or import from Prism / MultiMC, Modrinth App, CurseForge and ATLauncher.
+- **Downloads** — Concurrent downloads with hash verification, resumable `.part` files, optional DNS-over-HTTPS (DoH), configurable proxies (System / Direct / HTTP·SOCKS5), and optional BMCLAPI / MCIM mirrors (sign-in always goes directly to official Microsoft & Mojang endpoints).
+- **Other Tools** — Java detection and official runtime download, memory suggestions, storage analysis and unused version cleanup, launch hooks, custom game window titles, optional Discord Rich Presence, and log upload to `mclo.gs` after you confirm, with secrets redacted.
 
 ## Download & Install
 
@@ -72,7 +72,7 @@ Download the latest version from the **[Official Website](https://lumilauncher.p
 
 | File | What it is |
 |---|---|
-| `Lumi_<version>_x64-setup.exe` | **Installer (recommended).** Installs for the current user, adds Start menu shortcuts and receives signed automatic updates. |
+| `Lumi_<version>_x64-setup.exe` | **Installer (recommended).** Installs for the current user, adds Start menu shortcuts and receives signed automatic updates (pre-review builds don't include automatic updates). |
 | `Lumi_<version>_x64-portable.zip` | **Portable.** Extract to any writable folder and run `Lumi.exe`. Settings and the default game directory are stored in the `LumiData` folder next to it. Updates are manual. |
 | `SHA256SUMS.txt` | Checksums for verifying the files above. |
 
@@ -96,7 +96,7 @@ The output must match the line for that file in `SHA256SUMS.txt` on the same rel
 
 ## Privacy & Security
 
-Lumi collects **zero telemetry, zero analytics, and zero advertisements**.
+Lumi has **no telemetry, no analytics and no ads**.
 
 - Refresh tokens are stored per account in **Windows Credential Manager** (or session memory only if the system credential store is unavailable).
 - Verified Minecraft game session credentials are passed to the Java game process over its **standard input (`stdin`) pipe** (`SessionPipe.java`) rather than process command-line arguments, environment variables, or temporary argument files.
@@ -126,7 +126,7 @@ Yes. You can link existing official, PCL or HMCL `.minecraft` folders in place (
 <details>
 <summary><strong>My antivirus or SmartScreen flags Lumi. Is it safe?</strong></summary>
 
-The Windows installer is not code-signed yet, which can trigger warnings from SmartScreen and some antivirus software. Download only from GitHub Releases and compare the file's SHA-256 with `SHA256SUMS.txt`. If the checksum matches, you can report the warning to your antivirus vendor as a false positive. Automatic updates are signed and verified by Lumi before they are installed.
+The Windows installer is not code-signed yet, which can trigger warnings from SmartScreen and some antivirus software. Download only from the official website or GitHub Releases and compare the file's SHA-256 with `SHA256SUMS.txt`. If the checksum matches, you can report the warning to your antivirus vendor as a false positive. Automatic updates are signed and verified by Lumi before they are installed.
 </details>
 
 <details>
@@ -134,7 +134,7 @@ The Windows installer is not code-signed yet, which can trigger warnings from Sm
 
 - Installer version: settings in `%APPDATA%\com.lumilauncher.lumi`, logs in `%LOCALAPPDATA%\com.lumilauncher.lumi\logs`. The default game directory is `%APPDATA%\com.lumilauncher.lumi\minecraft`, unless you chose another folder in Settings → Game directory.
 - Portable version: everything is in the `LumiData` folder next to `Lumi.exe`.
-- Sign-in tokens are kept in Windows Credential Manager, never in plain files.
+- Sign-in tokens are kept in Windows Credential Manager, not in plain files.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md#data-locations) for the full list.
 </details>
@@ -163,11 +163,11 @@ Lumi currently supports Windows 10 and 11 only. Other platforms may come later.
 | [QQ Group](https://qm.qq.com/q/vSHOPvOKt2) · [QQ Channel](https://pd.qq.com/s/Nr15r3slq) | Chinese-speaking community, announcements and help |
 | [Bilibili](https://space.bilibili.com/25681030) | Development updates and videos from the developer (Chinese) |
 
-Please report bugs on GitHub rather than only in chat, so they are not lost. Security issues go through [private vulnerability reporting](https://github.com/kokoa-77/LumiLauncher/security/advisories/new), never in public.
+Please report bugs on GitHub rather than only in chat, so they are not lost. Please report security issues through [private vulnerability reporting](https://github.com/kokoa-77/LumiLauncher/security/advisories/new) rather than in public.
 
 ## Sponsor
 
-Every Lumi feature is free for everyone, forever. If Lumi helps you, you can support its development on [afdian](https://afdian.com/a/lumilauncher), a Chinese creator-support platform. Sponsorship is entirely voluntary and never unlocks features, early builds or faster support.
+Every Lumi feature is free for everyone. If Lumi helps you, you can support its development on [afdian](https://afdian.com/a/lumilauncher), a Chinese creator-support platform. Sponsorship is voluntary and does not unlock features, early builds or faster support.
 
 ## Contributing
 
@@ -210,7 +210,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the codebase layout, [docs/DESIGN.md]
 
 - Official builds are produced from this repository by the [Windows release workflow](.github/workflows/windows-release.yml) on GitHub Actions, and every release includes `SHA256SUMS.txt`.
 - **The Windows installer and executable are not code-signed yet.** Windows may show a SmartScreen warning; verify the checksum as described in [Download & Install](#download--install).
-- **Automatic updates are signed.** The installed version only accepts update packages signed with Lumi's updater key, and verifies the signature before installing.
+- **Automatic updates are signed.** The installed version only accepts update packages signed with Lumi's updater key, and verifies the signature before installing. Pre-review builds don't include automatic updates.
 
 ## Forks, Redistribution & Brand
 
@@ -218,14 +218,14 @@ You are free to study, fork, modify and redistribute Lumi's source code under **
 
 1. Use its **own name, application ID and icon**, not `Lumi`, `Lumi Launcher`, `微光` or `com.lumilauncher.lumi`.
 2. Say clearly that it is **not official Lumi** and not endorsed by the Lumi project.
-3. **Never reuse Lumi's credentials** (Microsoft Entra Client ID, updater keys, API keys).
+3. **Do not reuse Lumi's credentials** (Microsoft Entra Client ID, updater keys, API keys).
 4. Stay open source under `GPL-3.0-only` and keep the original copyright notices.
 
 Mirroring unmodified official builds is allowed if the files are identical to the release. Full details, including the official channels and how to report counterfeits, are in **[TRADEMARK.md](TRADEMARK.md)**.
 
 ## Acknowledgments & License
 
-- Lumi integrates with official **Mojang / Microsoft**, **[Modrinth](https://modrinth.com/)** and **[CurseForge](https://www.curseforge.com/minecraft)** services, and optionally uses the community mirrors **[BMCLAPI](https://bmclapidoc.bangbang93.com/)** (by bangbang93) and **[MCIM](https://www.mcimirror.top/)** for faster downloads in mainland China (authentication requests never use mirrors). Thanks to everyone who keeps these services running.
+- Lumi integrates with official **Mojang / Microsoft**, **[Modrinth](https://modrinth.com/)** and **[CurseForge](https://www.curseforge.com/minecraft)** services, and optionally uses the community mirrors **[BMCLAPI](https://bmclapidoc.bangbang93.com/)** (by bangbang93) and **[MCIM](https://www.mcimirror.top/)** for faster downloads in mainland China (sign-in requests don't go through mirrors). Thanks to everyone who keeps these services running.
 - Open-source libraries used by Lumi and their licenses are listed in the app under **Settings → About → Third-party libraries & licenses**.
 - **Source Code**: Licensed under **GNU General Public License v3.0 only (`GPL-3.0-only`)** with Section 7 brand and name protection terms. See [LICENSE](LICENSE).
 - **Brand & Original Artwork**: Copyright © 2026 `kokoa-77`. Distributed with the code under `GPL-3.0-only`; the Section 7 terms restrict how modified versions may use the Lumi names, icon and illustrations.

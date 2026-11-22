@@ -49,22 +49,22 @@
       <p align="center"><sub><strong>统一资源发现</strong> · 内置 Modrinth &amp; CurseForge 模组、整合包、光影与地图</sub></p>
     </td>
     <td width="50%">
-      <img src="docs/screenshots/05-instance-sync.png" alt="零云端本机跨实例同步设置" width="100%" />
-      <p align="center"><sub><strong>本机跨实例同步</strong> · 零云端安全同步按键画面、服务器、通用包与快捷栏</sub></p>
+      <img src="docs/screenshots/05-instance-sync.png" alt="本机跨实例同步设置" width="100%" />
+      <p align="center"><sub><strong>本机跨实例同步</strong> · 在本机同步按键、画面、服务器、通用包和快捷栏</sub></p>
     </td>
   </tr>
 </table>
 
 ## 核心亮点
 
-- **直达你的世界与多人服**：沉浸式全窗首页展示最近游玩的世界或常用服务器，支持自动截取游戏封面与一键 Quick Play 直连。
-- **随实例变色与微光动效**：基于 Tauri 2 + Rust + React 19 构建；支持 Windows 11 云母（Mica）背景、深浅主题、低配流畅模式与可选轻柔 Web Audio 音效。
-- **改坏了能撤回**：模组变动自动快照与改动历史一键撤销、启动前 `< 50ms` 模组/Java 硬伤预检，以及世界自动备份与恢复。
-- **内置 Modrinth 与 CurseForge**：统一浏览、安装与更新模组、整合包（`.mrpack` / CurseForge）、光影、材质包、地图与服务器；尊重作者分发限制，受限 CurseForge 文件通过官方页面下载并按哈希认领，不绕过 CDN 规则。
-- **纯本机跨实例同步**：零云端、零账号绑定，支持 6 类高频资产按需同步（`options.txt` 9 栏可视化编辑与键盘/鼠标直录、`servers.dat` 无损 NBT 去重合并、通用材质包、通用光影、命令记录与创造模式物品栏），首次开启自动备份，支持单实例细粒度排除。
-- **主流目录布局与迁移**：采用 `instances/<实例名>/` 隔离布局并共享游戏本体；支持在「设置 → 游戏」原地关联官方 / PCL / HMCL 目录，或在「新建实例 → 从其他启动器导入」从 Prism / MultiMC、Modrinth App、CurseForge、ATLauncher 导入实例。
-- **稳定快速的下载引擎**：并发断点续传、哈希校验、可选 DoH 与网络代理（跟随系统 / 直连 / 自定义 HTTP·SOCKS5），可选 BMCLAPI / MCIM 社区加速镜像（账号认证始终直连 Microsoft / Mojang 官方接口）。
-- **克制收纳的高阶能力**：自动发现并一键安装官方 Java、内存分配建议、存储空间分析与闲置版本清理、启动前后钩子、自定义游戏窗口标题、可选本机 Discord 活动状态，以及二次确认脱敏上传 `mclo.gs`。
+- **直达你的世界与多人服**：打开 Lumi，首页就是你最近玩的世界或常用的服务器；封面从游戏截图自动生成，点「继续」就能用 Quick Play 直接进入。
+- **随实例变色**：每个世界和整合包都有自己的主色。支持 Windows 11 云母（Mica）背景、浅色 / 深色 / 跟随系统主题、减少动效、给老电脑用的流畅模式，以及可选的界面音效（默认关闭）。
+- **改坏了能撤回**：每次改动模组都会自动留快照，可以在改动历史里一键撤销；启动前在本地检查缺少前置、modId 重复、加载器不对和 Java 版本不匹配；世界存档支持自动备份与恢复。
+- **内置 Modrinth 与 CurseForge**：在同一个界面里搜索、安装和更新模组、整合包（`.mrpack` / CurseForge）、光影、材质包、地图和服务器，前置自动补齐；作者不允许第三方下载的 CurseForge 文件会打开官方页面，下载后按哈希认领。
+- **本机跨实例同步**：在本机的实例之间同步 6 类内容（`options.txt` 分 9 类可视化编辑、按键可直接录入；`servers.dat` 按 NBT 合并去重；共享材质包；共享光影；命令记录；创造模式物品栏），不经过云端，也不需要账号；第一次开启会先自动备份，单个实例可以按项排除。
+- **主流目录布局与迁移**：采用 `instances/<实例名>/` 隔离布局并共享游戏本体；支持在「设置 → 游戏」直接关联官方 / PCL / HMCL 目录（不复制文件），或在「新建实例 → 从其他启动器导入」从 Prism / MultiMC、Modrinth App、CurseForge、ATLauncher 导入实例。
+- **下载**：并发下载、断点续传、哈希校验、可选 DoH 与网络代理（跟随系统 / 直连 / 自定义 HTTP·SOCKS5），可选 BMCLAPI / MCIM 社区加速镜像（账号认证始终直连 Microsoft / Mojang 官方接口）。
+- **其他功能**：自动识别电脑上的 Java 或一键安装官方 Java、内存分配建议、存储空间分析和闲置版本清理、启动前后运行的命令（钩子）、自定义游戏窗口标题、可选的 Discord 活动状态，以及确认后脱敏上传日志到 `mclo.gs`。
 
 ## 下载与安装
 
@@ -72,7 +72,7 @@
 
 | 文件 | 说明 |
 |---|---|
-| `Lumi_<版本号>_x64-setup.exe` | **安装版（推荐）**。为当前用户安装，添加开始菜单快捷方式，并接收经过签名的自动更新。 |
+| `Lumi_<版本号>_x64-setup.exe` | **安装版（推荐）**。为当前用户安装，添加开始菜单快捷方式，并接收经过签名的自动更新（预审构建不含自动更新）。 |
 | `Lumi_<版本号>_x64-portable.zip` | **便携版**。解压到任意可写的文件夹后运行 `Lumi.exe`；设置和默认游戏目录保存在旁边的 `LumiData` 文件夹中，需要手动更新。 |
 | `SHA256SUMS.txt` | 用于核对以上文件的校验和。 |
 
@@ -91,15 +91,15 @@ Get-FileHash .\Lumi_0.6.2_x64-setup.exe -Algorithm SHA256
 ## 账号认证与当前状态
 
 - **官方正版游玩权核验**：通过系统浏览器执行 **OAuth 2.0 授权码 + PKCE** 登录 Lumi 自有 Microsoft Entra 应用，并在启动前经由 Microsoft / Xbox Live / Minecraft 官方服务核验 Java 版游玩权限与官方档案。
-- **绝不绕过正版验证**：不提供离线用户名游玩、第三方皮肤站登录、认证注入器或非官方披风。
+- **不绕过正版验证**：不提供离线用户名游玩、第三方皮肤站登录、认证注入器或非官方披风。
 - **预审构建说明**：在未注入已获批的 `LUMI_MICROSOFT_CLIENT_ID` 的公开预审包中，Microsoft 登录入口默认关闭，你仍可浏览实例、存档、资源与设置；待 Mojang AppID 获准后发布正式可玩版本。
 
 ## 隐私与安全
 
-Lumi **零遥测、零行为统计、零广告**。
+Lumi **不收集遥测和行为统计，也没有广告**。
 
 - 刷新令牌按账号隔离保存在 **Windows 凭据管理器**（系统凭据库不可用时仅存于当前会话内存）。
-- 核验通过的 Minecraft 游戏会话凭据经由 Java 子进程**标准输入（`stdin`）管道**交付（`SessionPipe.java`），绝不暴露在系统进程命令行、环境变量或临时参数文件中。
+- 核验通过的 Minecraft 游戏会话凭据经由 Java 子进程**标准输入（`stdin`）管道**交付（`SessionPipe.java`），不会出现在系统进程命令行、环境变量或临时参数文件里。
 - 普通日志、崩溃日志与导出的诊断包均统一经过自动脱敏处理（`<redacted>`）。
 - 详细说明见 [PRIVACY.md](PRIVACY.md) 与 [SECURITY.md](SECURITY.md)。
 
@@ -120,13 +120,13 @@ Lumi **零遥测、零行为统计、零广告**。
 <details>
 <summary><strong>能继续使用原来的 <code>.minecraft</code>、PCL 或 HMCL 的目录吗？</strong></summary>
 
-可以。官方、PCL、HMCL 的 `.minecraft` 目录可以原地挂上（不移动、不复制任何文件），也可以从 Prism Launcher / MultiMC、Modrinth App、CurseForge、ATLauncher 导入实例。移除挂上的目录只删除 Lumi 这边的记录。
+可以。官方、PCL、HMCL 的 `.minecraft` 目录可以在「设置 → 游戏」直接关联（不复制文件），也可以从 Prism Launcher / MultiMC、Modrinth App、CurseForge、ATLauncher 导入实例。移除关联只删 Lumi 这边的记录，原目录的文件不动。
 </details>
 
 <details>
 <summary><strong>杀毒软件或 SmartScreen 报毒，安全吗？</strong></summary>
 
-Windows 安装包暂未进行代码签名，可能触发 SmartScreen 和部分杀毒软件的提醒。请只从 GitHub Releases 下载，并将文件的 SHA-256 与 `SHA256SUMS.txt` 核对；校验和一致时，可以向杀毒软件厂商报告误报。自动更新包带有签名，Lumi 会在安装前校验。
+Windows 安装包暂未进行代码签名，可能触发 SmartScreen 和部分杀毒软件的提醒。请只从官方网站或 GitHub Releases 下载，并将文件的 SHA-256 与 `SHA256SUMS.txt` 核对；校验和一致时，可以向杀毒软件厂商报告误报。自动更新包带有签名，Lumi 会在安装前校验。
 </details>
 
 <details>
@@ -167,7 +167,7 @@ Windows 安装包暂未进行代码签名，可能触发 SmartScreen 和部分�
 
 ## 赞助
 
-Lumi 的所有功能对所有人永远免费。如果它帮到了你，欢迎在[爱发电](https://afdian.com/a/lumilauncher)支持开发。赞助完全自愿，不会换来额外功能、抢先版或优先处理问题。
+Lumi 的所有功能对所有人免费。如果它帮到了你，欢迎在[爱发电](https://afdian.com/a/lumilauncher)支持开发。赞助是自愿的，不会换来额外功能、抢先版或优先处理问题。
 
 ## 参与贡献
 
@@ -210,7 +210,7 @@ pnpm --dir app tauri build --bundles nsis
 
 - 官方版本由本仓库的 [Windows 发布工作流](.github/workflows/windows-release.yml) 在 GitHub Actions 上构建，每个版本都附带 `SHA256SUMS.txt`。
 - **Windows 安装包和程序暂未进行代码签名**，可能出现 SmartScreen 提醒，请按[下载与安装](#下载与安装)中的方法核对校验和。
-- **自动更新带有签名**：已安装的 Lumi 只接受用 Lumi 更新密钥签名的更新包，并在安装前校验签名。
+- **自动更新带有签名**：已安装的 Lumi 只接受用 Lumi 更新密钥签名的更新包，并在安装前校验签名。预审构建不含自动更新。
 
 ## Fork、转载与品牌
 
@@ -218,7 +218,7 @@ pnpm --dir app tauri build --bundles nsis
 
 1. 使用**自己的名称、应用 ID 和图标**，不得使用 `Lumi`、`Lumi Launcher`、`微光` 或 `com.lumilauncher.lumi`。
 2. 明确说明**不是官方 Lumi**，也未获得 Lumi 项目认可。
-3. **绝不沿用 Lumi 的凭据**（Microsoft Entra Client ID、更新密钥、各类 API Key）。
+3. **不得沿用 Lumi 的凭据**（Microsoft Entra Client ID、更新密钥、各类 API Key）。
 4. 以 `GPL-3.0-only` 继续开源，并保留原有的版权声明。
 
 转载未经修改的官方版本时，文件须与发布页完全一致。完整规则、官方渠道列表和举报冒名版本的方式见 **[TRADEMARK.md](TRADEMARK.md#简体中文)**。
