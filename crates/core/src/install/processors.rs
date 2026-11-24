@@ -4,7 +4,7 @@
 //! 和 `version.json`（装好后的版本描述）。我们不运行官方安装器的界面，而是自己做它做的事：
 //!
 //! 1. 下载安装器，用 Maven 仓库给的 `.sha1` 校验
-//! 2. 下载处理器要用的库（走自己的下载引擎：镜像、续传、校验）
+//! 2. 下载处理器要用的库（走自己的下载引擎：官方地址、续传、校验）
 //! 3. 依次运行客户端处理器（参数用数组传，不弹窗口，可取消）
 //! 4. 检查处理器产物，写版本描述和「安装回执」
 //!
@@ -91,7 +91,7 @@ pub struct InstallerSource {
     /// 允许接受并改写为 `expected_id`，避免和原版 Forge 目录冲突。
     pub accepted_installer_id: Option<String>,
     pub game_version: String,
-    /// 安装器的官方地址（会按设置换镜像）
+    /// 安装器在加载器官方 Maven 仓库的地址
     pub installer_url: String,
 }
 

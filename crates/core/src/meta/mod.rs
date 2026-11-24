@@ -1,6 +1,6 @@
 //! 版本元数据：版本清单、version json、rules 判定、Maven 坐标、继承合并。
 //!
-//! 只用 Mojang 和各加载器的官方数据（经下载源策略可换镜像），不依赖第三方元数据服务器。
+//! 只用 Mojang 和各加载器的官方数据，直连官方地址，不依赖第三方镜像或元数据服务器。
 
 pub mod manifest;
 pub mod maven;
