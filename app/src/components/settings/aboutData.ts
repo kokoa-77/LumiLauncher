@@ -113,11 +113,11 @@ export const THIRD_PARTY_ENTRIES: readonly ThirdPartyEntry[] = [
   },
   {
     category: "rust",
-    name: "sha1, sha2, md-5 & getrandom",
+    name: "sha1, sha2 & getrandom",
     license: "MIT / Apache-2.0",
     usage: {
-      zh: "下载完整性校验、OAuth PKCE 随机数与历史存档兼容",
-      en: "Download integrity hashing, OAuth PKCE randomness, and legacy save compatibility",
+      zh: "下载完整性校验与 OAuth PKCE 安全随机数生成",
+      en: "Download integrity hashing and OAuth PKCE cryptographic randomness",
     },
   },
   {

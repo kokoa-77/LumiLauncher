@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { LightSpinner } from "@/components/ui/LightSpinner";
+import { jobProgressLabel } from "@/lib/jobLabels";
 import { duration, ease, spring } from "@/lib/motion";
 import { isActive, useGameStore } from "@/stores/game";
 import { Button } from "./ui/Button";
@@ -104,7 +105,7 @@ export function LaunchCapsule() {
                 <p className="truncate font-medium text-sm">{title}</p>
                 {(session.error || progress?.message) && (
                   <p className="truncate text-fg-muted text-xs">
-                    {session.error ?? progress?.message}
+                    {session.error ?? jobProgressLabel(progress?.message ?? null, t)}
                   </p>
                 )}
               </div>

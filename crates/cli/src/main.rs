@@ -225,9 +225,9 @@ enum Command {
         /// 游戏目录（.minecraft）
         #[arg(long, default_value = ".mcl/game")]
         game_dir: PathBuf,
-        /// 玩家名：只用来在旧存档里找这个名字的游玩时长统计
-        #[arg(long, default_value = "Player")]
-        name: String,
+        /// 玩家官方 UUID（可选，仅用于匹配本地存档里的游玩时长统计）
+        #[arg(long)]
+        player_uuid: Option<String>,
     },
     /// 看一个别家的 .minecraft 里有哪些版本、各用哪个游戏目录（挂上）；不给路径时在电脑上找
     LinkScan { root: Option<PathBuf> },
@@ -691,12 +691,12 @@ async fn main() -> Result<()> {
         Command::Worlds {
             instance: id,
             game_dir,
-            name,
+            player_uuid,
         } => {
             let game = game_dir_from(&game_dir)?;
             let instance = instance::load(&game, &id)?.context("找不到这个实例")?;
             let dir = instance.game_dir(&game)?;
-            let uuid = launcher_core::auth::legacy_name_uuid(&name).to_string();
+            let uuid = player_uuid.unwrap_or_default();
             let worlds = launcher_core::saves::list(&dir, &uuid);
             println!(
                 "{} 个世界（Quick Play：{}）：",

@@ -240,8 +240,8 @@ pub struct DownloadSettings {
 impl Default for DownloadSettings {
     fn default() -> Self {
         Self {
-            source: DownloadSource::Auto,
-            meta_source: DownloadSource::Auto,
+            source: DownloadSource::Official,
+            meta_source: DownloadSource::Official,
             modrinth_source: DownloadSource::Auto,
             curseforge_source: DownloadSource::Auto,
             doh_enabled: true,
@@ -929,7 +929,7 @@ mod tests {
         assert_eq!(download.max_concurrency, 8);
         assert!(!download.move_claimed_files, "默认复制，不移走");
         // 后来加的几项和三个下载源也有默认值
-        assert_eq!(download.meta_source, DownloadSource::Auto);
+        assert_eq!(download.meta_source, DownloadSource::Official);
         assert_eq!(download.modrinth_source, DownloadSource::Auto);
         assert_eq!(download.curseforge_source, DownloadSource::Auto);
         assert_eq!(download.preferred_platform, Platform::Modrinth);

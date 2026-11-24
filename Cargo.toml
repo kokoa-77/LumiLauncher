@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/core", "crates/cli", "crates/winmem", "app/src-tauri"]
 
 [workspace.package]
-version = "0.6.2"
+version = "0.6.3"
 edition = "2024"
 rust-version = "1.99"
 license = "GPL-3.0-only"
@@ -19,7 +19,6 @@ encoding_rs = "0.8"
 # 解压 level.dat（gzip）。压缩包库已经在用它，这里只是直接引用，不多编译东西
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 futures-util = "0.3"
-md-5 = "0.11"
 regex = "1"
 # 默认功能：rustls + 系统证书校验 + HTTP/2 + 跟随 Windows 系统代理 + SOCKS5 代理支持
 reqwest = { version = "0.13", features = ["stream", "socks"] }

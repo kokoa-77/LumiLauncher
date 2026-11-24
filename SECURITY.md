@@ -14,7 +14,7 @@ Only the [latest release](https://github.com/kokoa-77/LumiLauncher/releases) rec
 
 Please **do not** open a public issue, discussion or chat message containing exploitable details or anyone's credentials.
 
-Report privately through **GitHub Private Vulnerability Reporting**: open the repository's **Security** tab and choose **Report a vulnerability**, or go directly to <https://github.com/kokoa-77/LumiLauncher/security/advisories/new>.
+Report privately through **GitHub Private Vulnerability Reporting**: open the repository's **Security** tab and choose **Report a vulnerability**, or go directly to <https://github.com/kokoa-77/LumiLauncher/security/advisories/new>. You may also contact the maintainer by email at **<lumilauncher@outlook.com>**.
 
 Please include:
 
@@ -55,7 +55,7 @@ Counterfeit "Lumi" builds that spread malware can be reported the same way. Othe
 
 请**不要**在公开的 Issue、讨论区或聊天群中发布可被利用的漏洞细节或任何人的账号凭据。
 
-请通过 **GitHub 私密漏洞报告**提交：打开仓库的 **Security** 页签，选择 **Report a vulnerability**，或直接访问 <https://github.com/kokoa-77/LumiLauncher/security/advisories/new>。
+请通过 **GitHub 私密漏洞报告**提交：打开仓库的 **Security** 页签，选择 **Report a vulnerability**，或直接访问 <https://github.com/kokoa-77/LumiLauncher/security/advisories/new>；也可以直接发邮件至 **<lumilauncher@outlook.com>** 联系维护者。
 
 请尽量写明：
 

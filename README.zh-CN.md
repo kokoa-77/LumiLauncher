@@ -81,7 +81,7 @@
 **提示「Windows 已保护你的电脑」**：Windows 安装包暂未进行代码签名，首次运行时 Microsoft Defender SmartScreen 可能弹出提醒，点击 **更多信息 → 仍要运行** 即可。如需确认文件未被篡改，可以先核对校验和：
 
 ```powershell
-Get-FileHash .\Lumi_0.6.2_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Lumi_0.6.3_x64-setup.exe -Algorithm SHA256
 ```
 
 输出的值应与同一发布页 `SHA256SUMS.txt` 中对应文件的那一行一致。
@@ -90,9 +90,9 @@ Get-FileHash .\Lumi_0.6.2_x64-setup.exe -Algorithm SHA256
 
 ## 账号认证与当前状态
 
-- **官方正版游玩权核验**：通过系统浏览器执行 **OAuth 2.0 授权码 + PKCE** 登录 Lumi 自有 Microsoft Entra 应用，并在启动前经由 Microsoft / Xbox Live / Minecraft 官方服务核验 Java 版游玩权限与官方档案。
+- **官方正版游玩权核验**：通过系统浏览器执行 **OAuth 2.0 授权码 + PKCE** 登录 Lumi 自有 Microsoft Entra 公共客户端应用（`732fc771-cf09-4ec5-b899-ee92fd012d57`），并在启动前经由 Microsoft / Xbox Live / Minecraft 官方服务核验 Java 版游玩权限与官方档案。
 - **不绕过正版验证**：不提供离线用户名游玩、第三方皮肤站登录、认证注入器或非官方披风。
-- **预审构建说明**：在未注入已获批的 `LUMI_MICROSOFT_CLIENT_ID` 的公开预审包中，Microsoft 登录入口默认关闭，你仍可浏览实例、存档、资源与设置；待 Mojang AppID 获准后发布正式可玩版本。
+- **预审构建说明**：官方预审包已注入 Lumi 的 Microsoft Entra 客户端 ID（`732fc771-cf09-4ec5-b899-ee92fd012d57`），点击登录会正常拉起系统浏览器的官方 Microsoft 授权流程；在 Mojang 将该 AppID 加入白名单前，登录会按预期止步于 Minecraft Services 的 `403` 校验门禁，期间仍可浏览实例、存档、资源与设置。（未配置 `LUMI_MICROSOFT_CLIENT_ID` 的自行编译版本则保持登录入口关闭。）
 
 ## 隐私与安全
 
@@ -108,7 +108,7 @@ Lumi **不收集遥测和行为统计，也没有广告**。
 <details>
 <summary><strong>为什么现在还不能登录？</strong></summary>
 
-新的启动器需要通过 Mojang 审核，才能使用 Microsoft 账号为玩家登录。Lumi 的申请正在审核中，获批之前公开版本的 Microsoft 登录入口保持关闭，你仍可以浏览实例、存档、模组与设置。登录开放时会在发布页和社区群中通知。
+新的启动器必须先通过 Mojang 的 AppID 白名单审核，`api.minecraftservices.com` 才会放行其 Microsoft Entra 应用（`732fc771-cf09-4ec5-b899-ee92fd012d57`）的登录请求。审核期间点击登录会正常打开系统浏览器的 Microsoft OAuth 2.0 + PKCE 官方授权页，并在最后一步按预期停在 `403` 门禁；你现在就可以正常浏览实例、存档、模组与设置，待 Mojang 放行后即可直接登录游玩。
 </details>
 
 <details>
@@ -162,6 +162,7 @@ Windows 安装包暂未进行代码签名，可能触发 SmartScreen 和部分�
 | [QQ 群](https://qm.qq.com/q/vSHOPvOKt2) · [QQ 频道](https://pd.qq.com/s/Nr15r3slq) | 中文玩家交流、版本公告与使用求助 |
 | [开发者 B 站](https://space.bilibili.com/25681030) | 开发进度与视频 |
 | [Discord](https://discord.gg/vrAQ7HwUCw) | 与其他玩家和开发者交流，中文、英文分区 |
+| `lumilauncher@outlook.com` | 联系维护者、合规与审核沟通 |
 
 遇到问题请尽量在 GitHub 上提交，只在群里反馈容易被后续消息淹没。安全漏洞请走[私密安全报告](https://github.com/kokoa-77/LumiLauncher/security/advisories/new)，不要公开发布。
 

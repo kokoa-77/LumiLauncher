@@ -18,7 +18,6 @@ pub trait TokenVault: Send + Sync {
     fn load(&self, account_id: &str) -> Result<Option<Secret<String>>, VaultError>;
     fn save(&self, account_id: &str, token: &Secret<String>) -> Result<(), VaultError>;
     fn remove(&self, account_id: &str) -> Result<(), VaultError>;
-    fn remove_legacy(&self, account_id: &str) -> Result<(), VaultError>;
 }
 
 pub struct SystemVault {
@@ -69,14 +68,6 @@ impl TokenVault for SystemVault {
     fn remove(&self, account_id: &str) -> Result<(), VaultError> {
         self.remove_entry("microsoft", account_id)
     }
-
-    fn remove_legacy(&self, account_id: &str) -> Result<(), VaultError> {
-        // 旧账户 ID 由 Lumi 生成，避免用导入的数据指向任意凭据。
-        if uuid::Uuid::parse_str(account_id).is_ok() {
-            self.remove_entry("skin-site", account_id)?;
-        }
-        Ok(())
-    }
 }
 
 /// 系统凭据库不可用时，令牌仅在这一进程的内存里存放。
@@ -109,10 +100,6 @@ impl TokenVault for MemoryVault {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         tokens.remove(account_id);
-        Ok(())
-    }
-
-    fn remove_legacy(&self, _account_id: &str) -> Result<(), VaultError> {
         Ok(())
     }
 }

@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use super::legacy_name_uuid;
 use super::microsoft::{self, AuthError, VerifiedSession};
 use super::skin::{Skin, SkinModel};
 use super::tokens::{TokenVault, VaultError};
@@ -15,18 +14,13 @@ use crate::fs::{AtomicWriteError, ReadJsonError, read_json, write_json_atomic};
 pub const ACCOUNTS_FILE: &str = "accounts.json";
 const SCHEMA: u32 = 3;
 
-/// 账户种类。只有 Microsoft 账户能启动游戏；另外两种是早期本地预览版留下的，
-/// 读到旧文件时直接移除（[`AccountsFile::remove_retired_accounts`]），从不写回。
+/// 账户种类。启动器只保存和接受官方 Microsoft 账户；文件里若有无法识别的未知条目，读取时直接忽略。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum AccountKind {
-    /// 早期预览版的用户名账户（旧文件里写作 `offline`）：读到即移除
-    #[serde(rename = "offline")]
-    RetiredUsername,
-    /// 早期预览版的皮肤站账户（旧文件里写作 `skinSite`）：读到即移除，并清掉 Lumi 自己存的旧凭据
-    #[serde(rename = "skinSite")]
-    RetiredSkinSite,
     Microsoft,
+    #[serde(other, skip_serializing)]
+    Unsupported,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -71,7 +65,7 @@ impl Account {
 
     /// 用于读取本地存档的统计。启动时单独核对官方档案。
     pub fn uuid(&self) -> Uuid {
-        Uuid::parse_str(&self.uuid).unwrap_or_else(|_| legacy_name_uuid(&self.name))
+        Uuid::parse_str(&self.uuid).unwrap_or_default()
     }
 
     fn verified_uuid(&self) -> Option<Uuid> {
@@ -105,23 +99,11 @@ impl AccountsFile {
         }
     }
 
-    fn remove_retired_accounts(&mut self, path: &Path, vault: &dyn TokenVault) {
-        let mut changed = false;
-        let mut credentials_cleaned = true;
-        self.accounts.retain(|account| {
-            if account.kind == AccountKind::Microsoft {
-                return true;
-            }
-            changed = true;
-            if account.kind == AccountKind::RetiredSkinSite
-                && let Err(error) = vault.remove_legacy(&account.id)
-            {
-                tracing::warn!(%error, "暂未清理旧皮肤站凭据");
-                credentials_cleaned = false;
-            }
-            false
-        });
-        if !changed {
+    fn retain_supported_accounts(&mut self, path: &Path) {
+        let before = self.accounts.len();
+        self.accounts
+            .retain(|account| account.kind == AccountKind::Microsoft);
+        if self.accounts.len() == before {
             return;
         }
         if !self
@@ -132,8 +114,8 @@ impl AccountsFile {
             self.selected = self.accounts.first().map(|account| account.id.clone());
         }
         self.schema_version = self.schema_version.max(SCHEMA);
-        if credentials_cleaned && let Err(error) = write_json_atomic(path, self) {
-            tracing::warn!(%error, "暂未保存升级后的账户文件");
+        if let Err(error) = write_json_atomic(path, self) {
+            tracing::warn!(%error, "暂未保存清理后的账户文件");
         }
     }
 
@@ -176,11 +158,11 @@ pub struct AccountStore {
 }
 
 impl AccountStore {
-    pub fn open(data_dir: &Path, settings_existed: bool, vault: &dyn TokenVault) -> Self {
+    pub fn open(data_dir: &Path, settings_existed: bool) -> Self {
         let path = data_dir.join(ACCOUNTS_FILE);
         let file = match read_json::<AccountsFile>(&path) {
             Ok(Some(mut file)) => {
-                file.remove_retired_accounts(&path, vault);
+                file.retain_supported_accounts(&path);
                 file
             }
             Ok(None) => AccountsFile::empty(settings_existed),
@@ -379,43 +361,37 @@ mod tests {
     #[test]
     fn reopening_old_settings_does_not_create_a_playable_profile() {
         let dir = tempfile::tempdir().unwrap();
-        let store = AccountStore::open(dir.path(), true, &MemoryVault::default());
+        let store = AccountStore::open(dir.path(), true);
         assert!(store.snapshot().onboarded);
-        assert!(store.current().is_none(), "旧玩家名不能形成可玩的账户");
+        assert!(store.current().is_none(), "没有官方账户时不能形成可玩档案");
         assert!(!dir.path().join(ACCOUNTS_FILE).exists());
     }
 
     #[test]
     fn fresh_install_can_finish_onboarding_without_an_account() {
         let dir = tempfile::tempdir().unwrap();
-        let store = AccountStore::open(dir.path(), false, &MemoryVault::default());
+        let store = AccountStore::open(dir.path(), false);
         assert!(!store.snapshot().onboarded);
         store.finish_onboarding().unwrap();
-        let again = AccountStore::open(dir.path(), false, &MemoryVault::default());
+        let again = AccountStore::open(dir.path(), false);
         assert!(again.snapshot().onboarded);
         assert!(again.current().is_none());
         again.restart_onboarding().unwrap();
-        assert!(
-            !AccountStore::open(dir.path(), false, &MemoryVault::default())
-                .snapshot()
-                .onboarded
-        );
+        assert!(!AccountStore::open(dir.path(), false).snapshot().onboarded);
     }
 
     #[test]
-    fn old_profiles_are_removed_without_losing_microsoft_on_upgrade() {
+    fn unsupported_entries_are_dropped_without_losing_microsoft() {
         let dir = tempfile::tempdir().unwrap();
         let account_file = dir.path().join(ACCOUNTS_FILE);
         std::fs::write(
             &account_file,
             br#"{
                 "schemaVersion":1,
-                "selected":"legacy",
+                "selected":"unknown",
                 "onboarded":true,
                 "accounts":[
-                    {"id":"legacy","kind":"offline","name":"Steve","uuid":"old","addedAt":1},
-                    {"id":"skin","kind":"skinSite","name":"Alex","uuid":"old-site","addedAt":2,
-                     "login":"private-example","server":{"root":"https://example.invalid","name":"Old"}},
+                    {"id":"unknown","kind":"legacyCustom","name":"Steve","uuid":"invalid","addedAt":1},
                     {"id":"official","kind":"microsoft","name":"Kokoa77","uuid":"54f2906a88dd444ebcb3c68132a30a57","addedAt":3}
                 ]
             }"#,
@@ -424,22 +400,19 @@ mod tests {
         let skin = dir.path().join("skins/player.png");
         std::fs::create_dir_all(skin.parent().unwrap()).unwrap();
         std::fs::write(&skin, b"skin data").unwrap();
-        let store = AccountStore::open(dir.path(), false, &MemoryVault::default());
+        let store = AccountStore::open(dir.path(), false);
         assert_eq!(store.snapshot().accounts.len(), 1);
         assert_eq!(store.snapshot().selected.as_deref(), Some("official"));
         assert!(store.snapshot().onboarded);
         assert_eq!(store.current().unwrap().name, "Kokoa77");
         assert!(matches!(
-            store.select("legacy"),
+            store.select("unknown"),
             Err(AccountError::NotFound)
         ));
-        assert!(matches!(store.select("skin"), Err(AccountError::NotFound)));
         let persisted = std::fs::read_to_string(&account_file).unwrap();
-        assert!(!persisted.contains("private-example"));
-        assert!(!persisted.contains("skinSite"));
-        assert!(!persisted.contains("offline"));
+        assert!(!persisted.contains("legacyCustom"));
         assert_eq!(std::fs::read(&skin).unwrap(), b"skin data");
-        let again = AccountStore::open(dir.path(), false, &MemoryVault::default());
+        let again = AccountStore::open(dir.path(), false);
         assert_eq!(again.snapshot(), store.snapshot());
     }
 
@@ -450,7 +423,7 @@ mod tests {
             dir.path().join(ACCOUNTS_FILE),
             br#"{"schemaVersion":2,"accounts":[{"id":"x","kind":"microsoft","name":"Player","uuid":"54f2906a88dd444ebcb3c68132a30a57","addedAt":1}]}"#,
         ).unwrap();
-        let store = AccountStore::open(dir.path(), false, &MemoryVault::default());
+        let store = AccountStore::open(dir.path(), false);
         assert!(matches!(
             verify_for_launch(
                 &store,
@@ -470,7 +443,7 @@ mod tests {
             dir.path().join(ACCOUNTS_FILE),
             br#"{"schemaVersion":2,"selected":"a","accounts":[{"id":"a","kind":"microsoft","name":"Before","uuid":"54f2906a88dd444ebcb3c68132a30a57","addedAt":1},{"id":"b","kind":"microsoft","name":"After","uuid":"6569e28bf07345f4963818946f5a789f","addedAt":2}]}"#,
         ).unwrap();
-        let store = AccountStore::open(dir.path(), false, &MemoryVault::default());
+        let store = AccountStore::open(dir.path(), false);
         let pending_account = store.current().unwrap().id;
         store.select("b").unwrap();
         assert_ne!(store.current().unwrap().id, pending_account);
@@ -489,7 +462,7 @@ mod tests {
     fn corrupt_file_is_backed_up() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join(ACCOUNTS_FILE), b"{oops").unwrap();
-        let store = AccountStore::open(dir.path(), true, &MemoryVault::default());
+        let store = AccountStore::open(dir.path(), true);
         assert!(store.current().is_none());
         let backups = std::fs::read_dir(dir.path())
             .unwrap()

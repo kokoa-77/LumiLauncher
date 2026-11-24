@@ -81,7 +81,7 @@ Download the latest version from the **[Official Website](https://lumilauncher.p
 **"Windows protected your PC":** the Windows installer is not code-signed yet, so Microsoft Defender SmartScreen may warn you the first time. Click **More info → Run anyway**. To make sure the file is genuine, verify its checksum first:
 
 ```powershell
-Get-FileHash .\Lumi_0.6.2_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Lumi_0.6.3_x64-setup.exe -Algorithm SHA256
 ```
 
 The output must match the line for that file in `SHA256SUMS.txt` on the same release page.
@@ -90,9 +90,9 @@ The output must match the line for that file in `SHA256SUMS.txt` on the same rel
 
 ## Account Authentication & Release Status
 
-- **Official Ownership Verification**: Lumi uses **OAuth 2.0 Authorization Code + PKCE** in the user's system browser via Lumi's own Microsoft Entra application registration. Before launching Minecraft, Lumi verifies current **Minecraft: Java Edition play entitlement** and the matching official Java profile through official Microsoft, Xbox Live, and Minecraft services.
+- **Official Ownership Verification**: Lumi uses **OAuth 2.0 Authorization Code + PKCE** in the user's system browser via Lumi's own Microsoft Entra public client registration (`732fc771-cf09-4ec5-b899-ee92fd012d57`). Before launching Minecraft, Lumi verifies current **Minecraft: Java Edition play entitlement** and the matching official Java profile through official Microsoft, Xbox Live, and Minecraft services.
 - **No Bypass / No Unofficial Auth**: Lumi does not provide offline username gameplay, external skin-site authentication, authentication injectors, or unofficial capes.
-- **Pre-review Build Notice**: Public builds created without an approved `LUMI_MICROSOFT_CLIENT_ID` configured keep Microsoft sign-in disabled while still allowing you to browse instances, saves, mods, and settings. Full gameplay launch becomes available once Mojang approves Lumi's AppID.
+- **Pre-review Build Notice**: Official pre-review builds include Lumi's Microsoft Entra Client ID (`732fc771-cf09-4ec5-b899-ee92fd012d57`) and open the official Microsoft sign-in flow in your system browser; until Mojang adds the AppID to the Minecraft Services allowlist, sign-in stops at the expected `403` verification gate while instances, saves, mods, and settings remain available to explore. (Custom source builds compiled without `LUMI_MICROSOFT_CLIENT_ID` keep Microsoft sign-in disabled.)
 
 ## Privacy & Security
 
@@ -108,7 +108,7 @@ Lumi has **no telemetry, no analytics and no ads**.
 <details>
 <summary><strong>Why can't I sign in yet?</strong></summary>
 
-New launchers must be approved by Mojang before they can sign players in with a Microsoft account. Lumi's application is under review; until it is approved, public builds keep Microsoft sign-in disabled. You can still explore instances, worlds, mods and settings. Watch the releases or join the community to hear when sign-in opens.
+New launchers must be approved on Mojang's AppID allowlist before `api.minecraftservices.com` accepts sign-in tokens from their Microsoft Entra application (`732fc771-cf09-4ec5-b899-ee92fd012d57`). While Lumi's request is under review, clicking Sign in opens the official Microsoft OAuth 2.0 + PKCE flow in your browser and stops at the expected `403` gate. You can already explore instances, worlds, mods and settings; gameplay launch unlocks automatically once Mojang approves the AppID.
 </details>
 
 <details>
@@ -162,6 +162,7 @@ Lumi currently supports Windows 10 and 11 only. Other platforms may come later.
 | [Discord](https://discord.gg/vrAQ7HwUCw) | Chatting with other players and the developer (separate English and Chinese channels) |
 | [QQ Group](https://qm.qq.com/q/vSHOPvOKt2) · [QQ Channel](https://pd.qq.com/s/Nr15r3slq) | Chinese-speaking community, announcements and help |
 | [Bilibili](https://space.bilibili.com/25681030) | Development updates and videos from the developer (Chinese) |
+| `lumilauncher@outlook.com` | Maintainer, compliance and review inquiries |
 
 Please report bugs on GitHub rather than only in chat, so they are not lost. Please report security issues through [private vulnerability reporting](https://github.com/kokoa-77/LumiLauncher/security/advisories/new) rather than in public.
 

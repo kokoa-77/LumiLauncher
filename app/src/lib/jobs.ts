@@ -190,7 +190,11 @@ export function jobDiagnostics(job: JobSnapshot, ctx: DiagnosticsContext, t: TFu
   }
   const amount = jobAmount(job.progress, t);
   if (amount) lines.push(d("progress", { amount }));
-  if (job.progress.message) lines.push(d("message", { message: job.progress.message }));
+  if (job.progress.message) {
+    lines.push(
+      d("message", { message: jobProgressLabel(job.progress.message, t) ?? job.progress.message }),
+    );
+  }
   if (job.steps.length > 0) {
     lines.push(d("steps"));
     for (const step of job.steps) {

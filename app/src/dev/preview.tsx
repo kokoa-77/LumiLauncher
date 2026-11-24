@@ -681,8 +681,8 @@ let settings = {
     effects: query.get("fx") ?? "auto",
   },
   download: {
-    source: "auto",
-    metaSource: "auto",
+    source: "official",
+    metaSource: "official",
     modrinthSource: "auto",
     curseforgeSource: "auto",
     dohEnabled: true,
