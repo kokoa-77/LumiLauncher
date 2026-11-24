@@ -225,12 +225,12 @@ pub(crate) mod tests {
     #[test]
     fn reads_textures_property() {
         let json = r#"{"timestamp":1,"profileId":"x","profileName":"Alex",
-            "textures":{"SKIN":{"url":"https://littleskin.cn/textures/abc","metadata":{"model":"slim"}}}}"#;
+            "textures":{"SKIN":{"url":"https://textures.minecraft.net/texture/abc","metadata":{"model":"slim"}}}}"#;
         let value = STANDARD.encode(json);
         assert_eq!(
             parse_textures(&value),
             Some((
-                "https://littleskin.cn/textures/abc".to_owned(),
+                "https://textures.minecraft.net/texture/abc".to_owned(),
                 SkinModel::Slim
             ))
         );

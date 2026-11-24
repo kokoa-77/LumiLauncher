@@ -429,10 +429,16 @@ const MODRINTH_LOADERS = new Set([
   "waterfall",
 ]);
 
+/** Modrinth 服务器上不显示的标签：不验证正版的服务器（Lumi 只用正版账户） */
+const HIDDEN_MODRINTH_TAGS = new Set(["offline-mode"]);
+
 /** 分类标签：两个平台的分类各有一份中文对照表，没收录的新分类原样显示 */
 export const tagsOf = (hit: ProjectHit, t: TFunction, max = MAX_TAGS) =>
   hit.displayCategories
-    .filter((c) => hit.source !== "modrinth" || !MODRINTH_LOADERS.has(c))
+    .filter(
+      (c) =>
+        hit.source !== "modrinth" || (!MODRINTH_LOADERS.has(c) && !HIDDEN_MODRINTH_TAGS.has(c)),
+    )
     .slice(0, max)
     .map((c) => t(`discover.tag.${hit.source}.${c}`, { defaultValue: c }));
 

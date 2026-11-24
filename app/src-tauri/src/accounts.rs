@@ -252,7 +252,7 @@ pub(crate) fn current_uuid(state: &AppState) -> uuid::Uuid {
         .store
         .current()
         .map(|account| account.uuid())
-        .unwrap_or_else(|| launcher_core::auth::offline_uuid("Player"))
+        .unwrap_or_else(|| launcher_core::auth::legacy_name_uuid("Player"))
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]

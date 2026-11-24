@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use super::legacy_name_uuid;
 use super::microsoft::{self, AuthError, VerifiedSession};
-use super::offline_uuid;
 use super::skin::{Skin, SkinModel};
 use super::tokens::{TokenVault, VaultError};
 use crate::fs::{AtomicWriteError, ReadJsonError, read_json, write_json_atomic};
@@ -15,11 +15,17 @@ use crate::fs::{AtomicWriteError, ReadJsonError, read_json, write_json_atomic};
 pub const ACCOUNTS_FILE: &str = "accounts.json";
 const SCHEMA: u32 = 3;
 
+/// 账户种类。只有 Microsoft 账户能启动游戏；另外两种是早期本地预览版留下的，
+/// 读到旧文件时直接移除（[`AccountsFile::remove_retired_accounts`]），从不写回。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum AccountKind {
-    Offline,
-    SkinSite,
+    /// 早期预览版的用户名账户（旧文件里写作 `offline`）：读到即移除
+    #[serde(rename = "offline")]
+    RetiredUsername,
+    /// 早期预览版的皮肤站账户（旧文件里写作 `skinSite`）：读到即移除，并清掉 Lumi 自己存的旧凭据
+    #[serde(rename = "skinSite")]
+    RetiredSkinSite,
     Microsoft,
 }
 
@@ -65,7 +71,7 @@ impl Account {
 
     /// 用于读取本地存档的统计。启动时单独核对官方档案。
     pub fn uuid(&self) -> Uuid {
-        Uuid::parse_str(&self.uuid).unwrap_or_else(|_| offline_uuid(&self.name))
+        Uuid::parse_str(&self.uuid).unwrap_or_else(|_| legacy_name_uuid(&self.name))
     }
 
     fn verified_uuid(&self) -> Option<Uuid> {
@@ -107,7 +113,7 @@ impl AccountsFile {
                 return true;
             }
             changed = true;
-            if account.kind == AccountKind::SkinSite
+            if account.kind == AccountKind::RetiredSkinSite
                 && let Err(error) = vault.remove_legacy(&account.id)
             {
                 tracing::warn!(%error, "暂未清理旧皮肤站凭据");

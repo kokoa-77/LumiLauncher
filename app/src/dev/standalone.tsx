@@ -58,7 +58,6 @@ const settings: Settings = {
     proxy: { mode: "system", scheme: "http", host: "", port: 7890 },
   },
   game: {
-    playerName: "Player",
     memoryAuto: true,
     maxMemoryMb: 4096,
     directory: null,

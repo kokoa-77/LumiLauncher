@@ -203,7 +203,8 @@ const SERVER: CategoryGroup[] = [
   },
   {
     group: "rule",
-    items: [mr("offline-mode"), mr("crossplay"), mr("whitelisted"), mr("hardcore-mode")],
+    // Modrinth 的 offline-mode（不验证正版的服务器）不列：Lumi 只用正版账户进服务器
+    items: [mr("crossplay"), mr("whitelisted"), mr("hardcore-mode")],
   },
 ];
 

@@ -1,8 +1,8 @@
 //! Microsoft 会话、账户与游戏启动授权。
 
 pub mod accounts;
+mod legacy_uuid;
 pub mod microsoft;
-mod offline;
 pub mod skin;
 pub mod tokens;
 
@@ -16,8 +16,8 @@ use uuid::Uuid;
 use crate::redact::Secret;
 use microsoft::VerifiedSession;
 
-// 旧存档仍可能用以往的离线 UUID 保存历史玩家数据。
-pub use offline::offline_uuid;
+// 旧存档里的统计可能按玩家名算出的 UUID 存放，只用来查本地统计。
+pub use legacy_uuid::legacy_name_uuid;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LaunchAuthorizationError {

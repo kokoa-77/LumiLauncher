@@ -282,7 +282,7 @@ fn millis(time: SystemTime) -> f64 {
         .map_or(0.0, |d| d.as_millis() as f64)
 }
 
-/// 游玩时长：先看这个玩家的统计文件，没有就取所有统计里最长的（换过名字的离线玩家）。
+/// 游玩时长：先看这个玩家的统计文件，没有就取所有统计里最长的（旧存档里的统计可能是按旧名字存的）。
 fn play_seconds(stats: &Path, player_uuid: &str) -> Option<f64> {
     let own = stats.join(format!("{player_uuid}.json"));
     if let Some(ticks) = read_play_ticks(&own) {

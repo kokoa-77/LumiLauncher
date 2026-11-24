@@ -1,7 +1,7 @@
 //! CurseForge 整合包（`.zip`，里面有 `manifest.json`）：读取、检查、查清每个文件。
 //!
 //! 两步走：
-//! 1. [`inspect`]（离线，后台线程）：读 `manifest.json`，检查覆盖文件（和 Modrinth 包同一套安全检查）
+//! 1. [`inspect`]（不联网，后台线程）：读 `manifest.json`，检查覆盖文件（和 Modrinth 包同一套安全检查）
 //! 2. [`resolve`]（联网，要 API Key）：清单里只有项目编号和文件编号，批量查出文件名、哈希、下载地址、
 //!    放哪个文件夹。作者禁止第三方下载的文件（没有下载地址）**不自己拼 CDN 地址**：
 //!    先按 SHA-1 找 Modrinth 上一模一样的文件（作者自己发在 Modrinth 上的），找到就从 Modrinth 下；
@@ -102,7 +102,7 @@ impl CfPack {
     }
 }
 
-/// 读取并检查 CurseForge 整合包（离线，会读压缩包，在后台线程里调用）。
+/// 读取并检查 CurseForge 整合包（不联网，会读压缩包，在后台线程里调用）。
 pub fn inspect(pack_path: &Path) -> Result<CfPack, ModpackError> {
     let mut archive = open_archive(pack_path)?;
     inspect_archive(&mut archive, pack_path)

@@ -18,7 +18,6 @@ const MIN_CONCURRENCY: u32 = 1;
 const MAX_CONCURRENCY: u32 = 256;
 const MIN_MEMORY_MB: u32 = 512;
 const MAX_MEMORY_MB: u32 = 65536;
-const DEFAULT_PLAYER: &str = "Player";
 /// 自定义参数最长多少个字符（防止误粘贴一大段东西进来）
 const MAX_ARGS_CHARS: usize = 4000;
 /// 游戏窗口宽高的范围（像素）
@@ -379,8 +378,6 @@ pub enum Platform {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
 pub struct GameSettings {
-    /// 离线账户名（微软账户接入前先用它）
-    pub player_name: String,
     /// 内存自动分配（按电脑内存和模组数量）；关掉就用下面手动指定的值
     pub memory_auto: bool,
     /// 手动指定的最大内存（MB）
@@ -552,7 +549,6 @@ pub fn clean_env_vars(vars: &[EnvVar]) -> Vec<EnvVar> {
 impl Default for GameSettings {
     fn default() -> Self {
         Self {
-            player_name: DEFAULT_PLAYER.to_owned(),
             memory_auto: true,
             max_memory_mb: 4096,
             directory: None,
@@ -653,12 +649,6 @@ impl Settings {
             .max_concurrency
             .clamp(MIN_CONCURRENCY, MAX_CONCURRENCY);
         self.game.max_memory_mb = clamp_memory_mb(self.game.max_memory_mb);
-        let name: String = self.game.player_name.trim().chars().take(16).collect();
-        self.game.player_name = if name.is_empty() {
-            DEFAULT_PLAYER.to_owned()
-        } else {
-            name
-        };
         self.game.directory = self
             .game
             .directory
@@ -977,7 +967,6 @@ mod tests {
         .unwrap();
 
         let game = SettingsStore::open(&path).get().game;
-        assert_eq!(game.player_name, "Alex");
         assert!(!game.memory_auto);
         assert_eq!(game.max_memory_mb, 6144);
         assert_eq!(game.gc_preset, GcPreset::Auto);

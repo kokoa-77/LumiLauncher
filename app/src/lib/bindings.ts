@@ -960,8 +960,6 @@ export type GameMode = "survival" | "creative" | "adventure" | "spectator";
 
 /**  游戏相关的默认设置（以后每个实例可以单独覆盖）。 */
 export type GameSettings = {
-	/**  离线账户名（微软账户接入前先用它） */
-	playerName: string,
 	/**  内存自动分配（按电脑内存和模组数量）；关掉就用下面手动指定的值 */
 	memoryAuto: boolean,
 	/**  手动指定的最大内存（MB） */

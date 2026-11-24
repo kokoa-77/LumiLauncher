@@ -2862,7 +2862,7 @@ fn cf_known_or_unknown_empty(modrinth_count: usize, checked: u32, cf_failed: boo
     modrinth_count > 0 && checked == 0 && !cf_failed
 }
 
-/// 将 CurseForge 查到的最新兼容文件合并进更新检查结果（单独提纯，便于离线单测）。
+/// 将 CurseForge 查到的最新兼容文件合并进更新检查结果（单独提纯，便于不联网的单元测试）。
 fn apply_curseforge_updates(
     kind: ContentKind,
     candidates: &[(&Scanned, &str, u32)],

@@ -694,7 +694,6 @@ let settings = {
     proxy: { mode: "system", scheme: "http", host: "", port: 7890 },
   },
   game: {
-    playerName: "LumiPlayer",
     memoryAuto: true,
     maxMemoryMb: 4096,
     directory: null,
