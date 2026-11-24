@@ -1,4 +1,4 @@
-//! 网络连通性诊断：并行探测 6 个核心服务端点的连通状态与响应耗时。
+//! 网络连通性诊断：并行探测核心官方服务端点的连通状态与响应耗时。
 //! 只做极轻的 HEAD/GET 探测，不携带任何账号凭据或用户标识。
 
 use std::time::{Duration, Instant};
@@ -55,12 +55,6 @@ const TARGETS: &[Target] = &[
         use_get: false,
     },
     Target {
-        id: "bmclapi",
-        host: "bmclapi2.bangbang93.com",
-        url: "https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json",
-        use_get: false,
-    },
-    Target {
         id: "modrinth",
         host: "api.modrinth.com",
         url: "https://api.modrinth.com/v2/tag/loader",
@@ -72,15 +66,9 @@ const TARGETS: &[Target] = &[
         url: "https://api.curseforge.com/v1/games",
         use_get: false,
     },
-    Target {
-        id: "mcim",
-        host: "mod.mcimirror.top",
-        url: "https://mod.mcimirror.top/",
-        use_get: true,
-    },
 ];
 
-/// 并行探测 6 个关键服务端点的连通性与延迟。
+/// 并行探测核心官方服务端点的连通性与延迟。
 pub async fn probe_endpoints(client: &Client) -> Vec<EndpointProbe> {
     let futures = TARGETS
         .iter()

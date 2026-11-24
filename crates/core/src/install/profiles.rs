@@ -7,7 +7,7 @@ use super::{InstallError, LoaderContext, loaders::meta_base, processors::fetch_m
 use crate::fs::write_json_atomic;
 use crate::instance::LoaderRef;
 use crate::meta::{Environment, Library, VersionJson};
-use crate::net::{DownloadError, candidate_urls, get_json};
+use crate::net::{DownloadError, get_json};
 use crate::paths::GameDir;
 
 fn bad_profile(reason: impl Into<String>) -> InstallError {
@@ -52,9 +52,7 @@ fn cached_profile(game: &GameDir, mc: &str, id: &str) -> Option<VersionJson> {
 
 pub(super) fn is_installed(game: &GameDir, mc: &str, id: &str) -> bool {
     cached_profile(game, mc, id)
-        .and_then(|v| {
-            super::plan_libraries(&v, game, &Environment::current(), Default::default()).ok()
-        })
+        .and_then(|v| super::plan_libraries(&v, game, &Environment::current()).ok())
         .is_some_and(|libs| {
             libs.into_iter().all(|lib| {
                 let Ok(info) = std::fs::metadata(&lib.path) else {
@@ -118,7 +116,7 @@ pub(super) async fn install(
     }
     let base = meta_base(loader.kind).ok_or_else(|| bad_profile("没有这个加载器的版本描述接口"))?;
     let url = format!("{base}/{mc}/{}/profile/json", loader.version);
-    let mut json: Value = get_json(ctx.client, &candidate_urls(&url, ctx.source)).await?;
+    let mut json: Value = get_json(ctx.client, std::slice::from_ref(&url)).await?;
     let raw = serde_json::to_vec(&json).map_err(|err| bad_profile(err.to_string()))?;
     let profile = checked_profile(&raw, mc, &id)?;
     let updates: Vec<(usize, String, Option<u64>, bool)> =
@@ -130,7 +128,7 @@ pub(super) async fn install(
                 let declared_size = artifact.map_or(library.size, |a| a.size);
                 let hash = match expected.filter(|s| is_sha1(Some(s))) {
                     Some(hash) => hash.to_ascii_lowercase(),
-                    None => fetch_maven_sha1(ctx.client, &url, ctx.source).await?,
+                    None => fetch_maven_sha1(ctx.client, &url).await?,
                 };
                 let size = if declared_size.is_some() {
                     declared_size

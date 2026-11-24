@@ -13,7 +13,7 @@ import { Truncated } from "../ui/HoverCard";
 import { Tag } from "../ui/Tag";
 
 /**
- * 实例设置里「用哪个 Java」的框（第三轮验收时改）：占满一行，显示这个实例现在会用的 Java——
+ * 实例设置里「用哪个 Java」的选择框：占满一行，显示这个实例现在会用的 Java——
  * 版本、厂商、路径；跟着全局时就是自动挑出来的那个。整个框点哪里都打开「选择 Java」。
  */
 export function JavaField({

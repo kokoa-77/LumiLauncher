@@ -30,7 +30,7 @@ function openExternal(url: string, label: string) {
 /**
  * 设置「关于」页（发布前收口）：
  * 展示正式品牌标识、版本与独立第三方声明、自动更新、账号数据与隐私摘要、
- * BMCLAPI / MCIM / Modrinth / CurseForge 致谢，以及第三方开源许可弹窗（清单在 aboutData.ts）。
+ * Modrinth / CurseForge 平台致谢，以及第三方开源许可弹窗（清单在 aboutData.ts）。
  */
 export function AboutSettings({
   info,
@@ -223,7 +223,7 @@ export function AboutSettings({
         )}
       </Group>
 
-      {/* 外部服务与社区致谢（BMCLAPI / MCIM / Modrinth / CurseForge） */}
+      {/* 外部服务与内容平台致谢（Modrinth / CurseForge） */}
       <Group title={t("settings.aboutPage.creditsGroup")}>
         <div className="grid grid-cols-2 gap-2.5 p-3">
           {SERVICE_CREDITS.map((credit) => (

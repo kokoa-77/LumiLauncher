@@ -56,7 +56,6 @@ function setJob(
         speed: null,
         eta: null,
         retryable: false,
-        downloadSource: null,
         fallbacks: 0,
       },
     },

@@ -12,13 +12,12 @@ use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use super::InstallError;
-use crate::config::DownloadSource;
 use crate::fs::{safe_join, write_atomic};
 use crate::meta::{
     Environment, Library, MetaError, VersionJson, fetch_manifest, fetch_version_json, resolve,
     rules_allow,
 };
-use crate::net::{DownloadItem, DownloadProgress, Downloader, candidate_urls};
+use crate::net::{DownloadItem, DownloadProgress, Downloader};
 use crate::paths::GameDir;
 
 const LIBRARIES_BASE: &str = "https://libraries.minecraft.net";
@@ -86,13 +85,12 @@ pub async fn load_or_fetch_version(
     game: &GameDir,
     id: &str,
     client: &Client,
-    source: DownloadSource,
 ) -> Result<VersionJson, InstallError> {
     for _ in 0..MAX_FETCH_ROUNDS {
         match resolve(id, |vid| read_local(game, vid)) {
             Ok(version) => return Ok(version),
             Err(MetaError::NotFound(missing)) => {
-                fetch_into(game, &missing, client, source).await?;
+                fetch_into(game, &missing, client).await?;
             }
             Err(error) => return Err(error.into()),
         }
@@ -115,13 +113,12 @@ pub(super) async fn fetch_into(
     game: &GameDir,
     id: &str,
     client: &Client,
-    source: DownloadSource,
 ) -> Result<(), InstallError> {
-    let manifest = fetch_manifest(client, source).await?;
+    let manifest = fetch_manifest(client).await?;
     let entry = manifest
         .find(id)
         .ok_or_else(|| MetaError::NotFound(id.to_owned()))?;
-    let (_, raw) = fetch_version_json(client, entry, source).await?;
+    let (_, raw) = fetch_version_json(client, entry).await?;
     write_atomic(&game.version_json(id)?, &raw)?;
     tracing::info!(version = id, "已从官方清单获取版本描述文件");
     Ok(())
@@ -132,7 +129,6 @@ pub fn plan_libraries(
     version: &VersionJson,
     game: &GameDir,
     env: &Environment,
-    source: DownloadSource,
 ) -> Result<Vec<LibraryFile>, InstallError> {
     let mut files = Vec::new();
     let mut main_libraries = HashSet::new();
@@ -146,7 +142,7 @@ pub fn plan_libraries(
         if let Some(template) = lib.natives.as_ref().and_then(|n| n.get(&env.os_name)) {
             let bits = if env.os_arch == "x86" { "32" } else { "64" };
             let classifier = template.replace("${arch}", bits);
-            if let Some(file) = natives_file(lib, &classifier, game, source)?
+            if let Some(file) = natives_file(lib, &classifier, game)?
                 && native_libraries.insert((lib.identity(), classifier))
             {
                 files.push(file);
@@ -157,7 +153,7 @@ pub fn plan_libraries(
             }
         }
         // 系统规则已经生效，主库使用第一个匹配项（子版本优先）。
-        if let Some(file) = main_file(lib, game, source)?
+        if let Some(file) = main_file(lib, game)?
             && main_libraries.insert(lib.identity())
         {
             files.push(file);
@@ -166,11 +162,7 @@ pub fn plan_libraries(
     Ok(files)
 }
 
-fn main_file(
-    lib: &Library,
-    game: &GameDir,
-    source: DownloadSource,
-) -> Result<Option<LibraryFile>, InstallError> {
+fn main_file(lib: &Library, game: &GameDir) -> Result<Option<LibraryFile>, InstallError> {
     if let Some(artifact) = lib.downloads.as_ref().and_then(|d| d.artifact.as_ref()) {
         let Some(relative) = artifact
             .path
@@ -182,7 +174,7 @@ fn main_file(
         };
         let path = game.library(&relative)?;
         let download = (!artifact.url.is_empty()).then(|| DownloadItem {
-            urls: candidate_urls(&artifact.url, source),
+            urls: vec![artifact.url.clone()],
             path: path.clone(),
             sha1: artifact.sha1.clone(),
             size: artifact.size,
@@ -209,7 +201,7 @@ fn main_file(
         name: lib.name.clone(),
         path: path.clone(),
         download: Some(DownloadItem {
-            urls: candidate_urls(&url, source),
+            urls: vec![url],
             path,
             sha1: lib.sha1.clone(),
             size: lib.size,
@@ -223,7 +215,6 @@ fn natives_file(
     lib: &Library,
     classifier: &str,
     game: &GameDir,
-    source: DownloadSource,
 ) -> Result<Option<LibraryFile>, InstallError> {
     let exclude = lib
         .extract
@@ -271,7 +262,7 @@ fn natives_file(
         name: format!("{}:{classifier}", lib.name),
         path: path.clone(),
         download: (!url.is_empty()).then(|| DownloadItem {
-            urls: candidate_urls(&url, source),
+            urls: vec![url],
             path,
             sha1,
             size,
@@ -287,14 +278,13 @@ pub async fn install_files<F>(
     game: &GameDir,
     env: &Environment,
     downloader: &Downloader,
-    source: DownloadSource,
     cancel: &CancellationToken,
     on_progress: F,
 ) -> Result<InstalledVersion, InstallError>
 where
     F: Fn(InstallPhase, DownloadProgress) + Send + Sync,
 {
-    let libraries = plan_libraries(&version, game, env, source)?;
+    let libraries = plan_libraries(&version, game, env)?;
     let jar_id = version.jar.clone().unwrap_or_else(|| version.id.clone());
     let client_jar = game.version_jar(&jar_id)?;
 
@@ -305,7 +295,7 @@ where
 
     match version.downloads.as_ref().and_then(|d| d.client.as_ref()) {
         Some(client) => items.push(DownloadItem {
-            urls: candidate_urls(&client.url, source),
+            urls: vec![client.url.clone()],
             path: client_jar.clone(),
             sha1: client.sha1.clone(),
             size: client.size,
@@ -318,7 +308,7 @@ where
         Some(logging) => {
             let path = game.log_config(&logging.file.id)?;
             items.push(DownloadItem {
-                urls: candidate_urls(&logging.file.url, source),
+                urls: vec![logging.file.url.clone()],
                 path: path.clone(),
                 sha1: logging.file.sha1.clone(),
                 size: logging.file.size,
@@ -332,7 +322,7 @@ where
     if let Some(index_ref) = &version.asset_index {
         let index_path = game.asset_index(&index_ref.id)?;
         let index_item = DownloadItem {
-            urls: candidate_urls(&index_ref.url, source),
+            urls: vec![index_ref.url.clone()],
             path: index_path.clone(),
             sha1: index_ref.sha1.clone(),
             size: index_ref.size,
@@ -363,7 +353,7 @@ where
             let path = game.asset_object(&object.hash)?;
             let url = format!("{RESOURCES_BASE}/{}/{}", &object.hash[..2], object.hash);
             items.push(DownloadItem {
-                urls: candidate_urls(&url, source),
+                urls: vec![url],
                 path,
                 sha1: Some(object.hash.clone()),
                 size: Some(object.size),
@@ -554,13 +544,7 @@ mod tests {
             libraries: vec![lwjgl_platform],
             ..VersionJson::default()
         };
-        let files = plan_libraries(
-            &version,
-            &GameDir::new("D:/mc"),
-            &windows(),
-            DownloadSource::Official,
-        )
-        .unwrap();
+        let files = plan_libraries(&version, &GameDir::new("D:/mc"), &windows()).unwrap();
 
         assert_eq!(files.len(), 1, "只有本地库、没有主 jar");
         assert!(!files[0].on_classpath);
@@ -582,13 +566,7 @@ mod tests {
             libraries: vec![fabric],
             ..VersionJson::default()
         };
-        let files = plan_libraries(
-            &version,
-            &GameDir::new("D:/mc"),
-            &windows(),
-            DownloadSource::Official,
-        )
-        .unwrap();
+        let files = plan_libraries(&version, &GameDir::new("D:/mc"), &windows()).unwrap();
 
         let item = files[0].download.as_ref().unwrap();
         assert_eq!(
@@ -617,13 +595,7 @@ mod tests {
             libraries: vec![generated],
             ..VersionJson::default()
         };
-        let files = plan_libraries(
-            &version,
-            &GameDir::new("D:/mc"),
-            &windows(),
-            DownloadSource::Official,
-        )
-        .unwrap();
+        let files = plan_libraries(&version, &GameDir::new("D:/mc"), &windows()).unwrap();
         assert!(
             files[0].download.is_none(),
             "没有地址就不下载，由安装器生成"
@@ -649,12 +621,7 @@ mod tests {
             libraries: vec![evil],
             ..VersionJson::default()
         };
-        let result = plan_libraries(
-            &version,
-            &GameDir::new("D:/mc"),
-            &windows(),
-            DownloadSource::Official,
-        );
+        let result = plan_libraries(&version, &GameDir::new("D:/mc"), &windows());
         assert!(matches!(result, Err(InstallError::UnsafePath(_))));
     }
 
@@ -663,13 +630,7 @@ mod tests {
         let version =
             VersionJson::parse("1.21.1", include_bytes!("../../tests/fixtures/1.21.1.json"))
                 .unwrap();
-        let files = plan_libraries(
-            &version,
-            &GameDir::new("D:/mc"),
-            &windows(),
-            DownloadSource::Official,
-        )
-        .unwrap();
+        let files = plan_libraries(&version, &GameDir::new("D:/mc"), &windows()).unwrap();
         assert_eq!(files.len(), 70, "和实测的「当前系统需要 70 个」一致");
         assert!(
             files

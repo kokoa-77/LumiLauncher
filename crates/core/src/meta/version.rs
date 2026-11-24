@@ -355,13 +355,9 @@ mod tests {
             os_version: "10.0".to_owned(),
             features: BTreeMap::new(),
         };
-        let files = crate::install::plan_libraries(
-            &merged,
-            &crate::paths::GameDir::new("D:/mc"),
-            &env,
-            crate::config::DownloadSource::Official,
-        )
-        .unwrap();
+        let files =
+            crate::install::plan_libraries(&merged, &crate::paths::GameDir::new("D:/mc"), &env)
+                .unwrap();
         let main: Vec<_> = files.iter().filter(|file| file.on_classpath).collect();
         assert_eq!(main.len(), 1);
         assert_eq!(main[0].name, "org.lwjgl:lwjgl:3.3.3");

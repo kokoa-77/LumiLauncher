@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
-use launcher_core::config::{DownloadSource, ProxySettings, SettingsStore};
+use launcher_core::config::{ProxySettings, SettingsStore};
 use launcher_core::content::cache::TtlCache;
 use launcher_core::content::claim::ClaimSession;
 use launcher_core::content::curseforge::CurseForge;
@@ -78,8 +78,6 @@ pub struct AppState {
     pub recovery: crate::recovery::RecoveryNotes,
     /// 装过的文件教会的中文名、两个平台的关联（按游戏目录缓存，识别缓存变了才重读）
     pub names: launcher_core::content::names::NameBook,
-    /// 下载源「自动」时测官方和 BMCLAPI 谁快
-    pub sources: launcher_core::net::SourcePicker,
     /// 挂上的别家目录、导入候选
     pub linked: crate::linked::Linked,
     /// 账户与皮肤
@@ -95,33 +93,6 @@ impl AppState {
             .root()
             .join(launcher_core::content::store::STORE_DIR);
         self.names.learned(&store)
-    }
-
-    /// 这次下载用哪个源：「自动」先测速（半小时内测过就直接用），别的照设置。
-    /// 安装、新建实例、下载 Java 这类真要下很多东西的用它
-    pub async fn source(&self) -> DownloadSource {
-        self.sources
-            .resolve(self.settings.get().download.source)
-            .await
-    }
-
-    /// 不等测速的下载源：「自动」测过用测的，没测过先官方（失败还会换镜像）。
-    /// 启动前的检查、打开版本列表这类要快的用它
-    pub fn source_now(&self) -> DownloadSource {
-        self.sources.cached(self.settings.get().download.source)
-    }
-
-    /// 「Minecraft 元数据」那行（版本清单、版本描述、加载器版本列表）：「自动」和文件那行共用一次测速
-    pub async fn meta_source(&self) -> DownloadSource {
-        self.sources
-            .resolve(self.settings.get().download.meta_source)
-            .await
-    }
-
-    /// 同上，不等测速
-    pub fn meta_source_now(&self) -> DownloadSource {
-        self.sources
-            .cached(self.settings.get().download.meta_source)
     }
 
     pub fn game(&self) -> GameDir {
@@ -153,11 +124,10 @@ impl AppState {
             .clone()
     }
 
-    /// 代理设置变更后立即重建并热替换 HTTP 客户端（同步更新测速器与 CurseForge）。
+    /// 代理设置变更后立即重建并热替换 HTTP 客户端（同步更新 CurseForge 客户端）。
     pub fn apply_proxy(&self, proxy: &ProxySettings) -> Result<(), HttpError> {
         let next = build_client_with_proxy(self.doh.clone(), proxy)?;
         *self.client.write().unwrap_or_else(|e| e.into_inner()) = next.clone();
-        self.sources.set_client(next.clone());
         self.curseforge.set_client(next);
         Ok(())
     }

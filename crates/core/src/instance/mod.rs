@@ -1,4 +1,4 @@
-//! 实例：游戏目录 `instances/` 里的一个文件夹（改成国际主流方案，和 Prism、Modrinth App、CurseForge 一样）。
+//! 实例：游戏目录 `instances/` 下的独立文件夹。
 //!
 //! ```text
 //! <游戏目录>/

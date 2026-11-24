@@ -975,7 +975,7 @@ mod tests {
             table.search("钠", 1).first().map(|m| m.en.as_str()),
             Some("Sodium")
         );
-        // 验收时补的：玩家习惯叫 Jade「玉」
+        // 常见中文简称别名：Jade →「玉」
         assert_eq!(
             table.search("玉", 1).first().map(|m| m.en.as_str()),
             Some("Jade 🔍")

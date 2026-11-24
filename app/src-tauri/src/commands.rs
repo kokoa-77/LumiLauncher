@@ -109,11 +109,6 @@ pub fn settings_set(state: State<'_, AppState>, settings: Settings) -> Result<Se
     }
     let saved = state.settings.set(normalized)?;
     state.doh.set_enabled(saved.download.doh_enabled);
-    // Modrinth、CurseForge 两行下载源立刻生效
-    launcher_core::content::mirror::set_policies(
-        saved.download.modrinth_source,
-        saved.download.curseforge_source,
-    );
     // 关掉「高性能显卡」：撤回我们写过的 Windows 显卡设置
     if gpu_was_on && !saved.game.high_performance_gpu {
         crate::system::undo_gpu(&state);
@@ -201,10 +196,6 @@ pub async fn settings_import(
     }
     let saved = state.settings.set(imported)?;
     state.doh.set_enabled(saved.download.doh_enabled);
-    launcher_core::content::mirror::set_policies(
-        saved.download.modrinth_source,
-        saved.download.curseforge_source,
-    );
     Ok(Some(saved))
 }
 

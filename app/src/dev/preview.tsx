@@ -681,10 +681,6 @@ let settings = {
     effects: query.get("fx") ?? "auto",
   },
   download: {
-    source: "official",
-    metaSource: "official",
-    modrinthSource: "auto",
-    curseforgeSource: "auto",
     dohEnabled: true,
     maxConcurrency: 32,
     moveClaimedFiles: false,
@@ -817,7 +813,6 @@ function fakeJob(key: string, title: string, onDone?: () => void): string {
     speed: running(state) && done > 0 ? 18_000_000 : null,
     eta: running(state) && done > 0 ? (total - done) / 18_000_000 : null,
     retryable: key.startsWith("content:"),
-    downloadSource: null,
     fallbacks: 0,
   });
   for (let i = 0; i < 10; i += 1) {
@@ -858,7 +853,6 @@ function fakeLaunch(instanceId: string) {
     speed: null,
     eta: null,
     retryable: false,
-    downloadSource: "official",
     fallbacks: 0,
   });
   emitPreview("job-updated", job("running"));
@@ -1203,7 +1197,6 @@ const pastJob = (
   speed: null,
   eta: null,
   retryable: false,
-  downloadSource: null,
   fallbacks: 0,
   ...over,
 });
@@ -1262,7 +1255,6 @@ let previewHistory = (() => {
       finishedAt: now - 26 * hour + 2 * minute,
       steps: [{ label: "补全游戏文件", at: now - 26 * hour + 5000 }],
       retryable: true,
-      downloadSource: "mirror",
       fallbacks: 3,
     }),
     pastJob("past-interrupted", {
@@ -1280,7 +1272,6 @@ let previewHistory = (() => {
       finishedAt: now - 30 * hour + 3 * minute,
       steps: [{ label: "下载整合包文件", at: now - 30 * hour + 3 * minute }],
       retryable: true,
-      downloadSource: "official",
     }),
     pastJob("past-java", {
       key: "java:21",
@@ -1291,7 +1282,6 @@ let previewHistory = (() => {
       finishedAt: now - 48 * hour + 40_000,
       steps: [{ label: "下载 Java 21", at: now - 48 * hour }],
       retryable: true,
-      downloadSource: "official",
     }),
     pastJob("past-gone", {
       key: "content:旧实例:abc",
@@ -1462,14 +1452,6 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     previewHistory = previewHistory.filter((j) => j.id !== args.id);
     return fakeJob(old?.key ?? `content:${DEMO_INSTANCE_ID}:retry`, old?.title ?? "重试");
   },
-  net_speed_last: () => null,
-  net_speed_test: () =>
-    new Promise((resolve) =>
-      setTimeout(
-        () => resolve({ officialMs: 1180, mirrorMs: 2340, pick: "official", at: Date.now() }),
-        1200,
-      ),
-    ),
   net_doh_test: () =>
     new Promise((resolve) =>
       setTimeout(
@@ -1509,14 +1491,6 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
               error: null,
             },
             {
-              id: "bmclapi",
-              host: "bmclapi2.bangbang93.com",
-              status: "ok",
-              httpStatus: 200,
-              latencyMs: 62,
-              error: null,
-            },
-            {
               id: "modrinth",
               host: "api.modrinth.com",
               status: "ok",
@@ -1531,14 +1505,6 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
               httpStatus: 403,
               latencyMs: 295,
               error: "HTTP 403",
-            },
-            {
-              id: "mcim",
-              host: "mod.mcimirror.top",
-              status: "ok",
-              httpStatus: 200,
-              latencyMs: 54,
-              error: null,
             },
           ]),
         700,

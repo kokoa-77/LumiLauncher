@@ -1,16 +1,12 @@
-//! 网络层：统一的 HTTP 客户端、下载源改写、下载引擎，还有问我的世界服务器状态（`status`、`srv`）。
+//! 网络层：统一的 HTTP 客户端、并发校验下载引擎、DoH 与连通性诊断，以及查询 Minecraft 服务器状态（`status`、`srv`）。
 //!
-//! 下载源策略：默认「自动」，先测官方和 BMCLAPI 谁快（[`speed`]），
-//! 先用快的、失败换另一个；也可以固定官方优先、镜像优先，或者只用官方。
-//! 所有地址都由 [`mirrors::candidate_urls`] 生成。
+//! 所有元数据与文件下载均直连官方源（Mojang、各加载器官方仓库、Modrinth、CurseForge）。
 
 pub mod diagnostics;
 pub mod doh;
 pub mod download;
 pub mod http;
 pub mod mclogs;
-pub mod mirrors;
-pub mod speed;
 pub mod srv;
 pub mod status;
 
@@ -18,12 +14,10 @@ pub use diagnostics::{EndpointProbe, EndpointStatus, probe_endpoints};
 pub use doh::{DnsProbe, Doh, build_client_with_doh, build_client_with_proxy};
 pub use download::{
     DENIED_PREFIX, DownloadError, DownloadItem, DownloadProgress, DownloadReport, Downloader,
-    FileFailure, HostHeader, ModMirrors, sha1_file,
+    FileFailure, HostHeader, sha1_file,
 };
 pub use http::{HttpError, build_client, get_bytes, get_json};
 pub use mclogs::{MclogsError, MclogsUpload, sanitize_for_upload, upload_log};
-pub use mirrors::{ModPlatform, candidate_urls, mod_file_mirror, to_mirror};
-pub use speed::{SourcePicker, SpeedTest};
 
 /// `https://` 地址的主机名（小写，去掉用户名和端口）。不是 https 的返回 `None`。
 pub fn url_host(url: &str) -> Option<String> {

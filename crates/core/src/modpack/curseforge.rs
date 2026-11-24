@@ -585,9 +585,6 @@ mod tests {
         );
         let cf_pack = inspect(p.path()).unwrap();
         let client = reqwest::Client::new();
-        // 没 Key 会改问 MCIM；「仅官方源」时才直接拒绝（这样测不用联网）
-        crate::content::mirror::curseforge()
-            .set_policy(crate::config::DownloadSource::OfficialOnly);
         let cf = CurseForge::new(client.clone(), None);
         let error = resolve(&client, &cf, cf_pack).await.unwrap_err();
         assert!(error.to_string().contains("API Key"), "{error}");

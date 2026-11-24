@@ -17,7 +17,7 @@ export const APP_LICENSE = {
   copyright: "Copyright (C) 2026 kokoa-77 and Lumi Contributors",
 } as const;
 
-export type CreditId = "bmclapi" | "mcim" | "modrinth" | "curseforge";
+export type CreditId = "modrinth" | "curseforge";
 
 export interface ServiceCredit {
   id: CreditId;
@@ -25,10 +25,8 @@ export interface ServiceCredit {
   url: string;
 }
 
-/** 关于页外部服务与社区致谢 */
+/** 关于页外部服务与内容平台致谢 */
 export const SERVICE_CREDITS: readonly ServiceCredit[] = [
-  { id: "bmclapi", name: "BMCLAPI", url: "https://bmclapidoc.bangbang93.com/" },
-  { id: "mcim", name: "MCIM", url: "https://www.mcimirror.top/" },
   { id: "modrinth", name: "Modrinth", url: "https://modrinth.com/" },
   { id: "curseforge", name: "CurseForge", url: "https://www.curseforge.com/minecraft" },
 ];

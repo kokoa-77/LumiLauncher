@@ -22,7 +22,6 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
-use crate::config::DownloadSource;
 use crate::fs::{read_json, write_json_atomic};
 use crate::now_millis;
 
@@ -130,9 +129,7 @@ pub struct JobSnapshot {
     pub eta: Option<f64>,
     /// 失败或取消后能不能「重试」
     pub retryable: bool,
-    /// 游戏文件这次用的下载源（「自动」测速后选的那个）；只下模组、整合包这类平台文件的任务为空
-    pub download_source: Option<DownloadSource>,
-    /// 有几个文件第一个地址下不下来、换了地址才下好（换源次数）
+    /// 有几个文件第一个候选地址下不下来、换了备用地址才下好
     pub fallbacks: u32,
 }
 
@@ -438,7 +435,6 @@ impl JobRegistry {
             speed: None,
             eta: None,
             retryable: meta.retry.is_some(),
-            download_source: None,
             fallbacks: 0,
         };
 
@@ -871,14 +867,6 @@ impl JobHandle {
         });
     }
 
-    /// 记下这次游戏文件用的下载源（「自动」测速后选的那个，下载历史里显示）
-    pub fn set_download_source(&self, source: DownloadSource) {
-        self.registry.modify(&self.id, |record| {
-            record.snapshot.download_source = Some(source);
-            Change::Saved
-        });
-    }
-
     /// 切换到新的步骤说明（立即推送，不节流）。只在步骤真的变了时用。也会记成一步。
     pub fn set_message(&self, message: impl Into<String>) {
         let message = message.into();
@@ -1156,12 +1144,11 @@ mod tests {
         job.succeed();
     }
 
-    /// 换源次数：每一步的下载各自从 0 数，任务上记的是加起来的
+    /// 备用地址重试次数：每一步的下载各自从 0 数，任务上记的是加起来的
     #[test]
     fn fallbacks_add_up_across_steps() {
         let jobs = registry();
         let job = jobs.start("k", "t", ProgressUnit::Bytes).unwrap();
-        job.set_download_source(DownloadSource::Mirror);
         job.set_step("下载加载器依赖");
         job.set_download_progress(1.0, Some(9.0), 1.0, 2, "1/9");
         job.set_download_progress(2.0, Some(9.0), 2.0, 3, "2/9");
@@ -1169,7 +1156,6 @@ mod tests {
         job.set_download_progress(1.0, Some(9.0), 1.0, 4, "1/9");
         let snapshot = &jobs.list()[0];
         assert_eq!(snapshot.fallbacks, 7);
-        assert_eq!(snapshot.download_source, Some(DownloadSource::Mirror));
         job.succeed();
     }
 

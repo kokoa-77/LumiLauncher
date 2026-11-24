@@ -63,7 +63,7 @@
 - **内置 Modrinth 与 CurseForge**：在同一个界面里搜索、安装和更新模组、整合包（`.mrpack` / CurseForge）、光影、材质包、地图和服务器，前置自动补齐；作者不允许第三方下载的 CurseForge 文件会打开官方页面，下载后按哈希认领。
 - **本机跨实例同步**：在本机的实例之间同步 6 类内容（`options.txt` 分 9 类可视化编辑、按键可直接录入；`servers.dat` 按 NBT 合并去重；共享材质包；共享光影；命令记录；创造模式物品栏），不经过云端，也不需要账号；第一次开启会先自动备份，单个实例可以按项排除。
 - **主流目录布局与迁移**：采用 `instances/<实例名>/` 隔离布局并共享游戏本体；支持在「设置 → 游戏」直接关联官方 / PCL / HMCL 目录（不复制文件），或在「新建实例 → 从其他启动器导入」从 Prism / MultiMC、Modrinth App、CurseForge、ATLauncher 导入实例。
-- **下载**：并发下载、断点续传、哈希校验、可选 DoH 与网络代理（跟随系统 / 直连 / 自定义 HTTP·SOCKS5），可选 BMCLAPI / MCIM 社区加速镜像（账号认证始终直连 Microsoft / Mojang 官方接口）。
+- **下载**：直连 Mojang、各加载器、Modrinth 与 CurseForge 官方源，支持并发下载、断点续传、哈希校验、可选 DoH 与网络代理（跟随系统 / 直连 / 自定义 HTTP·SOCKS5）。
 - **其他功能**：自动识别电脑上的 Java 或一键安装官方 Java、内存分配建议、存储空间分析和闲置版本清理、启动前后运行的命令（钩子）、自定义游戏窗口标题、可选的 Discord 活动状态，以及确认后脱敏上传日志到 `mclo.gs`。
 
 ## 下载与安装
@@ -72,8 +72,8 @@
 
 | 文件 | 说明 |
 |---|---|
-| `Lumi_<版本号>_x64-setup.exe` | **安装版（推荐）**。为当前用户安装，添加开始菜单快捷方式，并接收经过签名的自动更新（预审构建不含自动更新）。 |
-| `Lumi_<版本号>_x64-portable.zip` | **便携版**。解压到任意可写的文件夹后运行 `Lumi.exe`；设置和默认游戏目录保存在旁边的 `LumiData` 文件夹中，需要手动更新。 |
+| `LumiLauncher_<版本号>_x64-setup.exe` | **安装版（推荐）**。为当前用户安装，添加开始菜单快捷方式，并接收经过签名的自动更新（预审构建不含自动更新）。 |
+| `LumiLauncher_<版本号>_x64-portable.zip` | **便携版**。解压到任意可写的文件夹后运行 `Lumi.exe`；设置和默认游戏目录保存在旁边的 `LumiData` 文件夹中，需要手动更新。 |
 | `SHA256SUMS.txt` | 用于核对以上文件的校验和。 |
 
 **系统要求**：Windows 10 或 11（64 位），以及 Microsoft Edge WebView2 运行时（Windows 11 和保持更新的 Windows 10 已自带）。无需另外安装 Java：Lumi 会识别电脑上已有的 Java，也可以从 Mojang 官方下载 Java 运行时。
@@ -81,7 +81,7 @@
 **提示「Windows 已保护你的电脑」**：Windows 安装包暂未进行代码签名，首次运行时 Microsoft Defender SmartScreen 可能弹出提醒，点击 **更多信息 → 仍要运行** 即可。如需确认文件未被篡改，可以先核对校验和：
 
 ```powershell
-Get-FileHash .\Lumi_0.6.3_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\LumiLauncher_0.6.4_x64-setup.exe -Algorithm SHA256
 ```
 
 输出的值应与同一发布页 `SHA256SUMS.txt` 中对应文件的那一行一致。
@@ -226,7 +226,7 @@ pnpm --dir app tauri build --bundles nsis
 
 ## 致谢与开源许可
 
-- Lumi 接入 **Mojang / Microsoft**、**[Modrinth](https://modrinth.com/)** 与 **[CurseForge](https://www.curseforge.com/minecraft)** 官方服务，并可选使用 **[BMCLAPI](https://bmclapidoc.bangbang93.com/)**（bangbang93 维护）和 **[MCIM](https://www.mcimirror.top/)** 社区镜像加速国内下载（账号认证始终直连官方，不经任何镜像）。感谢维护这些服务的每一个人。
+- Lumi 直连 **Mojang / Microsoft**、**[Modrinth](https://modrinth.com/)** 与 **[CurseForge](https://www.curseforge.com/minecraft)** 官方服务。感谢维护这些服务的每一个人。
 - Lumi 使用的开源库及其许可，可在应用的 **设置 → 关于 → 第三方开源组件与许可** 中查看。
 - **源代码**：采用 **GNU General Public License v3.0 only（`GPL-3.0-only`）** 开源（附第 7 条品牌与名称保护附加条款），详见 [LICENSE](LICENSE)。
 - **品牌与原创美术资产**：Copyright © 2026 `kokoa-77`，随代码以 `GPL-3.0-only` 发布；修改版如何使用 Lumi 名称、图标与插画受第 7 条附加条款限制。

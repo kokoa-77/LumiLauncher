@@ -691,7 +691,7 @@ async function runSuite() {
       await sleep(150);
       await wd.clickButtonByText("关于");
 
-      await wd.waitFor("进入设置「关于」页并展示 Kokoa77 开发者行、四大致谢与 GPL-3.0-only", async () => {
+      await wd.waitFor("进入设置「关于」页并展示 Kokoa77 开发者行、平台致谢与 GPL-3.0-only", async () => {
         const dialogText = await wd.execute(
           "return document.querySelector('[role=\"dialog\"]')?.innerText ?? '';",
         );
@@ -699,8 +699,6 @@ async function runSuite() {
           dialogText.includes("Kokoa77") &&
           dialogText.includes("Lumi 的开发者") &&
           dialogText.includes("GPL-3.0-only") &&
-          dialogText.includes("BMCLAPI") &&
-          dialogText.includes("MCIM") &&
           dialogText.includes("Modrinth") &&
           dialogText.includes("CurseForge")
         );

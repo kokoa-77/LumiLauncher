@@ -90,7 +90,6 @@ describe("下载中心", () => {
     speed: null,
     eta: null,
     retryable: false,
-    downloadSource: null,
     fallbacks: 0,
     ...over,
   });
@@ -171,7 +170,7 @@ describe("下载中心", () => {
           { label: "下载整合包文件", at: 3_000 },
         ],
       }),
-      { appVersion: "0.3.0", instanceName: "我的验收实例", settings: null, speed: null },
+      { appVersion: "0.3.0", instanceName: "我的验收实例", settings: null },
       echo,
     );
     const lines = text.split("\n");
@@ -180,11 +179,11 @@ describe("下载中心", () => {
     expect(text).toContain("我的验收实例");
     expect(text).toContain("下载整合包文件");
     expect(text).toContain('downloads.diag.version{"version":"0.3.0"}');
-    const mirrored = jobDiagnostics(
-      job({ downloadSource: "mirror", fallbacks: 3 }),
-      { appVersion: null, instanceName: null, settings: null, speed: null },
+    const retried = jobDiagnostics(
+      job({ fallbacks: 3 }),
+      { appVersion: null, instanceName: null, settings: null },
       echo,
     );
-    expect(mirrored).toContain('downloads.diag.via{"source":"downloads.viaSource.mirror","n":3}');
+    expect(retried).toContain('downloads.diag.via{"n":3}');
   });
 });

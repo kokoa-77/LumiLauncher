@@ -551,8 +551,6 @@ pub fn foreign_import(
         // 游戏本体和加载器：现在就装好，导完直接能玩（装失败也不要紧，启动时还会补）
         let installed = async {
             let downloader = downloader(&state);
-            let source = state.source().await;
-            job.set_download_source(source);
             let java =
                 pick_java_for(&state, &job, &downloader, &imported.config.game_version).await?;
             let work_dir = game.root().join(".mcl-tmp").join("create");
@@ -561,8 +559,6 @@ pub fn foreign_import(
                 game: &game,
                 client: &state.http_client(),
                 downloader: &downloader,
-                source,
-                meta_source: state.meta_source().await,
                 java: &java,
                 work_dir: &work_dir,
                 cancel: &cancel,

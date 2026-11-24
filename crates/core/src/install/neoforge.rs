@@ -11,8 +11,7 @@ use serde::Serialize;
 
 use super::InstallError;
 use super::processors::{self, InstallerSource, LoaderContext, LoaderProgress};
-use crate::config::DownloadSource;
-use crate::net::{candidate_urls, get_bytes};
+use crate::net::get_bytes;
 
 const MAVEN: &str = "https://maven.neoforged.net/releases";
 const ARTIFACT_PATH: &str = "net/neoforged/neoforge";
@@ -92,17 +91,12 @@ pub fn game_version_of(loader_version: &str) -> Option<String> {
 }
 
 /// 拉取全部 NeoForge 版本（新的在前），并合并 1.20.1 旧坐标 `net/neoforged/forge` 的 47.1.x 版本。
-pub async fn fetch_versions(
-    client: &Client,
-    source: DownloadSource,
-) -> Result<Vec<NeoForgeVersion>, InstallError> {
+pub async fn fetch_versions(client: &Client) -> Result<Vec<NeoForgeVersion>, InstallError> {
     let main_url = format!("{MAVEN}/{ARTIFACT_PATH}/maven-metadata.xml");
     let legacy_url = format!("{MAVEN}/{LEGACY_ARTIFACT_PATH}/maven-metadata.xml");
-    let main_urls = candidate_urls(&main_url, source);
-    let legacy_urls = candidate_urls(&legacy_url, source);
     let (main, legacy) = tokio::join!(
-        get_bytes(client, &main_urls),
-        get_bytes(client, &legacy_urls),
+        get_bytes(client, std::slice::from_ref(&main_url)),
+        get_bytes(client, std::slice::from_ref(&legacy_url)),
     );
     let mut versions = parse_metadata(&String::from_utf8_lossy(&main?));
     match legacy {

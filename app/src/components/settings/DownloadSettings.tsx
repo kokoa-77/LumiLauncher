@@ -1,4 +1,3 @@
-import type { TFunction } from "i18next";
 import { Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,13 +8,11 @@ import {
   type ClaimFolderInfo,
   commands,
   type DnsProbe,
-  type DownloadSource,
   type EndpointProbe,
   type Platform,
   type ProxyMode,
   type ProxyScheme,
   type Settings,
-  type SpeedTest,
 } from "@/lib/bindings";
 import { logError, reportError } from "@/lib/report";
 import { Button } from "../ui/Button";
@@ -26,32 +23,7 @@ import { Select } from "../ui/Select";
 import { Switch } from "../ui/Switch";
 import { Group, Row, type UpdateSettings } from "./parts";
 
-const SOURCES: DownloadSource[] = ["auto", "official", "mirror", "officialOnly"];
 const CONCURRENCY_CHOICES = ["8", "16", "32", "64"] as const;
-
-/** 四行下载源（文字参考了你发的别家设置）：前两行的镜像是 BMCLAPI，后两行是 MCIM */
-const SOURCE_ROWS = [
-  { field: "metaSource", label: "sourceMeta", hint: "sourceMetaHint", options: "sourceOption" },
-  { field: "source", label: "source", hint: "sourceHint", options: "sourceOption" },
-  {
-    field: "modrinthSource",
-    label: "sourceModrinth",
-    hint: "sourceModrinthHint",
-    options: "modSourceOption",
-  },
-  {
-    field: "curseforgeSource",
-    label: "sourceCurseForge",
-    hint: "sourceCurseForgeHint",
-    options: "modSourceOption",
-  },
-] as const;
-
-/** 「1.2 秒」；没测到时「超时」 */
-function seconds(ms: number | null, t: TFunction) {
-  if (ms == null) return t("settings.speedTimeout");
-  return t("settings.speedSeconds", { n: (ms / 1000).toFixed(1) });
-}
 
 function parsePort(text: string, fallback: number): number {
   const parsed = Number.parseInt(text.trim(), 10);
@@ -62,8 +34,8 @@ function parsePort(text: string, fallback: number): number {
 /**
  * 设置 →「内容与下载」：
  * - 内容：首选平台、自动装前置
- * - 下载：游戏与模组下载源、最大并发数、网络代理（跟随系统 / 直连 / 自定义 HTTP·SOCKS5）
- * - 网络诊断：下载源测速、DoH 解析与测试、6 端点一键连通性检测与复制报告
+ * - 下载：最大并发数、网络代理（跟随系统 / 直连 / 自定义 HTTP·SOCKS5）
+ * - 网络诊断：DoH 解析与测试、核心官方端点一键连通性检测与复制报告
  * - 补件：盯着哪个文件夹、认领后移走原文件
  */
 export function DownloadSettings({
@@ -76,8 +48,6 @@ export function DownloadSettings({
   const { t, i18n } = useTranslation();
   const isZh = i18n.language.toLowerCase().startsWith("zh");
   const download = settings.download;
-  const [speed, setSpeed] = useState<SpeedTest | null>(null);
-  const [speedBusy, setSpeedBusy] = useState(false);
   const [dns, setDns] = useState<DnsProbe[] | null>(null);
   const [dnsBusy, setDnsBusy] = useState(false);
   const [probes, setProbes] = useState<EndpointProbe[] | null>(null);
@@ -98,10 +68,6 @@ export function DownloadSettings({
   }, [download.proxy.mode, download.proxy.scheme, download.proxy.host, download.proxy.port]);
 
   useEffect(() => {
-    commands
-      .netSpeedLast()
-      .then(setSpeed)
-      .catch((error: unknown) => logError(error, "读取最近一次测速"));
     commands
       .claimFolderInfo()
       .then(setFolder)
@@ -136,17 +102,6 @@ export function DownloadSettings({
       },
     });
     toast.success(t("settings.proxySaved"));
-  };
-
-  const testSpeed = async () => {
-    setSpeedBusy(true);
-    try {
-      setSpeed(unwrap(await commands.netSpeedTest()));
-    } catch (error) {
-      reportError(error, "测速");
-    } finally {
-      setSpeedBusy(false);
-    }
   };
 
   const testDns = async () => {
@@ -214,19 +169,6 @@ export function DownloadSettings({
     ? CONCURRENCY_CHOICES
     : ([...CONCURRENCY_CHOICES, concurrency] as string[]);
 
-  const speedText = speed
-    ? speed.officialMs == null && speed.mirrorMs == null
-      ? t("settings.speedFailed")
-      : `${t("settings.speedResult", {
-          official: seconds(speed.officialMs, t),
-          mirror: seconds(speed.mirrorMs, t),
-        })}${isZh ? "；" : "; "}${t("settings.speedPick", {
-          pick: t(
-            speed.pick === "mirror" ? "settings.speedPickMirror" : "settings.speedPickOfficial",
-          ),
-        })}`
-    : undefined;
-
   return (
     <>
       <Group title={t("settings.contentGroup")}>
@@ -258,26 +200,6 @@ export function DownloadSettings({
         />
       </Group>
       <Group title={t("settings.downloadGroup")}>
-        {SOURCE_ROWS.map((row) => (
-          <Row
-            key={row.field}
-            label={t(`settings.${row.label}`)}
-            hint={t(`settings.${row.hint}`)}
-            control={
-              <div className="w-52">
-                <Select
-                  label={t(`settings.${row.label}`)}
-                  value={download[row.field]}
-                  onChange={(value) => set({ [row.field]: value as DownloadSource })}
-                  options={SOURCES.map((value) => ({
-                    value,
-                    label: t(`settings.${row.options}.${value}`),
-                  }))}
-                />
-              </div>
-            }
-          />
-        ))}
         <Row
           label={t("settings.maxConcurrency")}
           hint={t("settings.maxConcurrencyHint")}
@@ -349,16 +271,6 @@ export function DownloadSettings({
         )}
       </Group>
       <Group title={t("settings.netDiagGroup")}>
-        <Row
-          label={t("settings.speedTestLabel")}
-          hint={speedText}
-          control={
-            <Button variant="secondary" disabled={speedBusy} onClick={() => void testSpeed()}>
-              {speedBusy && <LightSpinner className="size-4" />}
-              {speedBusy ? t("settings.speedTesting") : t("settings.speedTest")}
-            </Button>
-          }
-        />
         <Row
           label={t("settings.doh")}
           hint={t("settings.dohHint")}

@@ -19,7 +19,7 @@ use super::policy::{
 };
 use super::session_pipe;
 use crate::auth::{LaunchAccount, LaunchAuthorizationError};
-use crate::config::{DownloadSource, EnvVar, GcPreset, WindowMode, WindowSettings};
+use crate::config::{EnvVar, GcPreset, WindowMode, WindowSettings};
 use crate::fs::UnsafePath;
 use crate::install::processors::LoaderContext;
 use crate::install::{
@@ -59,10 +59,6 @@ pub struct PrepareContext<'a> {
     pub game: &'a GameDir,
     pub client: &'a Client,
     pub downloader: &'a Downloader,
-    /// 文件从哪下（设置「Minecraft 文件、加载器与 Java」）
-    pub source: DownloadSource,
-    /// 版本描述从哪拿（设置「Minecraft 元数据」）
-    pub meta_source: DownloadSource,
     /// 放临时文件的地方（加载器重装时用），要和游戏目录在同一个盘
     pub temp_root: &'a Path,
     pub cancel: &'a CancellationToken,
@@ -339,7 +335,7 @@ where
         && (!loader.kind.uses_processor() || !loaders::is_installed(ctx.game, mc, loader))
     {
         let java = if loader.kind.uses_processor() {
-            let vanilla = load_or_fetch_version(ctx.game, mc, ctx.client, ctx.meta_source).await?;
+            let vanilla = load_or_fetch_version(ctx.game, mc, ctx.client).await?;
             Some(pick_java(ctx, &JavaRequest::of(&vanilla), &on_progress).await?)
         } else {
             None
@@ -348,8 +344,6 @@ where
             game: ctx.game,
             client: ctx.client,
             downloader: ctx.downloader,
-            source: ctx.source,
-            meta_source: ctx.meta_source,
             java: java
                 .as_ref()
                 .map_or_else(|| Path::new(""), |java| java.executable.as_path()),
@@ -362,7 +356,7 @@ where
         .await?;
     }
 
-    let version = load_or_fetch_version(ctx.game, &version_id, ctx.client, ctx.meta_source).await?;
+    let version = load_or_fetch_version(ctx.game, &version_id, ctx.client).await?;
     let env = Environment::current();
     ctx.account.ensure_selected(ctx.cancel)?;
     validate_version(&version, &env, resolution, quick_play.as_ref())?;
@@ -371,7 +365,6 @@ where
         ctx.game,
         &env,
         ctx.downloader,
-        ctx.source,
         ctx.cancel,
         |phase, p| on_progress(PrepareProgress::Files(phase, p)),
     )
@@ -474,7 +467,6 @@ where
         locator: ctx.java,
         client: ctx.client,
         downloader: ctx.downloader,
-        source: ctx.source,
         cancel: ctx.cancel,
     };
     Ok(java::find_or_install(&java_ctx, request, |p| {

@@ -15,7 +15,7 @@ describe("about page compliance data", () => {
 
   it("includes required community service credits", () => {
     const ids = SERVICE_CREDITS.map((c) => c.id);
-    expect(ids).toEqual(["bmclapi", "mcim", "modrinth", "curseforge"]);
+    expect(ids).toEqual(["modrinth", "curseforge"]);
     expect(APP_LICENSE.spdx).toBe("GPL-3.0-only");
   });
 

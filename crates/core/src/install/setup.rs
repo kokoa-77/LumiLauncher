@@ -5,7 +5,6 @@ use reqwest::Client;
 use super::processors::{LoaderContext, LoaderProgress};
 use super::vanilla::{fetch_into, read_local};
 use super::{InstallError, InstallPhase, install_files, load_or_fetch_version, loaders};
-use crate::config::DownloadSource;
 use crate::instance::{self, Instance, InstanceConfig, InstanceError, LoaderRef};
 use crate::meta::{Environment, MetaError};
 use crate::net::{DownloadError, DownloadProgress};
@@ -54,8 +53,7 @@ pub async fn install_version<F>(
 where
     F: Fn(SetupProgress) + Send + Sync,
 {
-    let vanilla =
-        load_or_fetch_version(ctx.game, game_version, ctx.client, ctx.meta_source).await?;
+    let vanilla = load_or_fetch_version(ctx.game, game_version, ctx.client).await?;
     // 实例指向 versions/ 里共用的版本。
     let base_id = match loader {
         Some(loader) => {
@@ -66,13 +64,12 @@ where
         }
         None => vanilla.id.clone(),
     };
-    let version = load_or_fetch_version(ctx.game, &base_id, ctx.client, ctx.meta_source).await?;
+    let version = load_or_fetch_version(ctx.game, &base_id, ctx.client).await?;
     install_files(
         version,
         ctx.game,
         &Environment::current(),
         ctx.downloader,
-        ctx.source,
         ctx.cancel,
         |phase, p| on_progress(SetupProgress::Files(phase, p)),
     )
@@ -85,12 +82,11 @@ pub async fn repair_base_metadata(
     game: &GameDir,
     version: &str,
     client: &Client,
-    source: DownloadSource,
 ) -> Result<(), InstallError> {
     match read_local(game, version) {
         Ok(desc) if desc.id == version && desc.inherits_from.is_none() => Ok(()),
         Ok(_) | Err(MetaError::NotFound(_) | MetaError::Parse { .. }) => {
-            fetch_into(game, version, client, source).await
+            fetch_into(game, version, client).await
         }
         Err(error) => Err(error.into()),
     }
@@ -110,20 +106,19 @@ where
     if ctx.cancel.is_cancelled() {
         return Err(DownloadError::Cancelled.into());
     }
-    repair_base_metadata(ctx.game, game_version, ctx.client, ctx.meta_source).await?;
+    repair_base_metadata(ctx.game, game_version, ctx.client).await?;
     if let Some(loader) = loader.filter(|l| l.version_id(game_version) == version_id) {
         loaders::install_checked(ctx, game_version, loader, |p| {
             on_progress(SetupProgress::Loader(p))
         })
         .await?;
     }
-    let version = load_or_fetch_version(ctx.game, version_id, ctx.client, ctx.meta_source).await?;
+    let version = load_or_fetch_version(ctx.game, version_id, ctx.client).await?;
     install_files(
         version,
         ctx.game,
         &Environment::current(),
         ctx.downloader,
-        ctx.source,
         ctx.cancel,
         |phase, p| on_progress(SetupProgress::Files(phase, p)),
     )

@@ -108,8 +108,6 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             downloads::jobs_retry,
             downloads::jobs_remove,
             downloads::jobs_clear_history,
-            downloads::net_speed_test,
-            downloads::net_speed_last,
             downloads::net_doh_test,
             downloads::net_diagnostics,
             downloads::claim_folder_info,
@@ -426,14 +424,10 @@ pub fn run() {
             };
             let curseforge = CurseForge::from_env(client.clone());
             if !curseforge.has_key() {
-                tracing::warn!("没有 CurseForge 的 API Key：CurseForge 的接口只能走 MCIM 镜像");
+                tracing::info!(
+                    "未配置 CurseForge API Key：CurseForge 在线服务暂不启用（Modrinth 正常可用）"
+                );
             }
-            let sources = launcher_core::net::SourcePicker::new(client.clone());
-            // Modrinth、CurseForge 的接口按设置换 MCIM 镜像
-            launcher_core::content::mirror::set_policies(
-                current_download.modrinth_source,
-                current_download.curseforge_source,
-            );
             let accounts = accounts::Accounts::open(
                 &data_dir,
                 settings_existed,
@@ -469,7 +463,6 @@ pub fn run() {
                 turns: turns::InstanceTurns::default(),
                 recovery: recovery::RecoveryNotes::default(),
                 names: launcher_core::content::names::NameBook::default(),
-                sources,
                 linked: linked::Linked::open(data_dir.join("linked-roots.json")),
                 accounts,
             });

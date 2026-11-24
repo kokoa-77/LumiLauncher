@@ -1,14 +1,7 @@
 // 下载中心用的小工具：任务属于哪个实例、做完能不能直接开始游戏、进度、速度、剩余时间怎么写，
 // 下载历史怎么筛，诊断信息怎么拼。
 import type { TFunction } from "i18next";
-import type {
-  JobProgress,
-  JobSnapshot,
-  JobSource,
-  JobState,
-  Settings,
-  SpeedTest,
-} from "./bindings";
+import type { JobProgress, JobSnapshot, JobSource, JobState, Settings } from "./bindings";
 import { formatDateTime, formatSize } from "./format";
 import { getUiLanguage } from "./i18n";
 import { jobProgressLabel, jobTitle } from "./jobLabels";
@@ -148,7 +141,6 @@ export interface DiagnosticsContext {
   appVersion: string | null;
   instanceName: string | null;
   settings: Settings | null;
-  speed: SpeedTest | null;
 }
 
 /**
@@ -180,13 +172,8 @@ export function jobDiagnostics(job: JobSnapshot, ctx: DiagnosticsContext, t: TFu
       }),
     );
   }
-  if (job.downloadSource) {
-    lines.push(
-      d("via", {
-        source: t(`downloads.viaSource.${job.downloadSource}`),
-        n: job.fallbacks,
-      }),
-    );
+  if (job.fallbacks > 0) {
+    lines.push(d("via", { n: job.fallbacks }));
   }
   const amount = jobAmount(job.progress, t);
   if (amount) lines.push(d("progress", { amount }));
@@ -207,21 +194,9 @@ export function jobDiagnostics(job: JobSnapshot, ctx: DiagnosticsContext, t: TFu
     const download = ctx.settings.download;
     lines.push(
       d("downloadSettings", {
-        meta: t(`settings.sourceOption.${download.metaSource}`),
-        source: t(`settings.sourceOption.${download.source}`),
-        modrinth: t(`settings.modSourceOption.${download.modrinthSource}`),
-        curseforge: t(`settings.modSourceOption.${download.curseforgeSource}`),
+        proxy: t(`settings.proxyMode.${download.proxy.mode}`),
+        concurrency: download.maxConcurrency,
         doh: download.dohEnabled ? t("downloads.diag.on") : t("downloads.diag.off"),
-      }),
-    );
-  }
-  if (ctx.speed) {
-    const ms = (value: number | null) =>
-      value == null ? t("downloads.diag.noTime") : t("downloads.diag.ms", { n: Math.round(value) });
-    lines.push(
-      d("speedTest", {
-        official: ms(ctx.speed.officialMs),
-        mirror: ms(ctx.speed.mirrorMs),
       }),
     );
   }

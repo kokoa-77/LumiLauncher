@@ -1150,8 +1150,6 @@
     "soundEffects": "Subtle interface sounds",
     "soundEffectsHint": "Play soft chimes when launching, finishing tasks, or restoring a snapshot.",
     "download": "Content and downloads",
-    "source": "Minecraft files, mod loaders, and Java",
-    "sourceHint": "Game files, assets, libraries, mod loaders, and Java runtimes.",
     "doh": "Use DoH for download domains",
     "dohHint": "Use DNS over HTTPS to resolve download domains. Turn this off if your network has trouble with it.",
     "moveClaimed": "Move files after matching",
@@ -1319,13 +1317,11 @@
       "privacyHint": "Sign-in goes directly to official services; refresh tokens stay isolated in Windows Credential Manager.",
       "expand": "Details",
       "collapse": "Hide",
-      "privacyAuth": "Microsoft sign-in opens in your system browser. Before launching, Lumi verifies Java Edition play rights and the official Java profile directly through official services—authentication never uses content mirrors.",
+      "privacyAuth": "Microsoft sign-in opens in your system browser. Before launching, Lumi verifies Java Edition play rights and the official Java profile directly through official Microsoft and Minecraft services.",
       "privacyCredentials": "Refresh tokens are stored per account in Windows Credential Manager (or memory only if unavailable). The game session credential is delivered to Java over its standard input pipe and excluded from command lines, temporary files, UI events, and exported diagnostics.",
       "privacyRemoval": "Removing an account revokes its launch authorization and clears local credentials while keeping all instances, mods, and worlds intact.",
       "securityDoc": "Security notes",
       "creditsGroup": "External services & acknowledgments",
-      "credit_bmclapi": "Community mirror by bangbang93 providing optional fallback acceleration for Minecraft files, loaders, and Java.",
-      "credit_mcim": "Optional community mirror providing fallback acceleration for Modrinth and CurseForge metadata and downloads.",
       "credit_modrinth": "Open platform for mods, modpacks, resource packs, and shaders powering search, dependencies, and updates.",
       "credit_curseforge": "Mod and modpack ecosystem; Lumi strictly respects authors’ third-party download settings via manual claim.",
       "creditsFootnote": "Official sources always remain the authority for game files and authentication. Lumi is not affiliated with any listed service.",
@@ -1417,7 +1413,7 @@
     "proxyHostRequired": "Enter a proxy host address",
     "netDiagGroup": "Network diagnostics",
     "netDiagLabel": "Connectivity check",
-    "netDiagHint": "Test connectivity and latency to authentication, Minecraft, mod platforms, and mirrors.",
+    "netDiagHint": "Test connectivity and latency to Microsoft sign-in, official Minecraft endpoints, and mod platforms.",
     "netDiagRun": "Run check",
     "netDiagRunning": "Checking…",
     "netDiagCopy": "Copy report",
@@ -1430,10 +1426,8 @@
     "netDiagEndpoint": {
       "microsoftAuth": "Microsoft sign-in",
       "mojang": "Minecraft official",
-      "bmclapi": "BMCLAPI mirror",
       "modrinth": "Modrinth",
-      "curseforge": "CurseForge",
-      "mcim": "MCIM mirror"
+      "curseforge": "CurseForge"
     },
     "storage": {
       "dirGroup": "Game directory",
@@ -1491,22 +1485,6 @@
     "backupClearTitle": "Delete all world backups?",
     "backupClearBody": "This permanently deletes {{size}} of backups. Your worlds are kept.",
     "backupCleared": "Backups deleted. Freed {{size}}.",
-    "sourceOption": {
-      "auto": "Automatic (recommended)",
-      "official": "Prefer official sources",
-      "mirror": "Prefer BMCLAPI",
-      "officialOnly": "Official sources only"
-    },
-    "speedTest": "Test speed",
-    "speedTesting": "Testing…",
-    "speedTestLabel": "Download source speed test",
-    "speedResult": "Official {{official}} · BMCLAPI {{mirror}}",
-    "speedPick": "Automatic mode will prefer {{pick}}",
-    "speedPickOfficial": "the official source",
-    "speedPickMirror": "the China mirror",
-    "speedFailed": "Couldn't reach the official source or the mirror. Check your network or proxy settings.",
-    "speedTimeout": "Timed out",
-    "speedSeconds": "{{n}} s",
     "dohTest": "Test",
     "dohTesting": "Testing…",
     "dohOk": "{{ms}} ms · {{address}}",
@@ -1521,19 +1499,7 @@
     "claimFolderHint": "Choose where your browser saves files Lumi asks you to download.",
     "claimFolderSystem": "System Downloads folder",
     "claimFolderChange": "Change",
-    "claimFolderReset": "Reset to default folder",
-    "sourceMeta": "Minecraft metadata",
-    "sourceMetaHint": "Version lists and metadata for Minecraft and supported mod loaders.",
-    "sourceModrinth": "Modrinth",
-    "sourceModrinthHint": "Modrinth search, project and version details, and downloads. Lumi uses the MCIM mirror if Modrinth is unavailable or slow. File downloads always try the official CDN first.",
-    "sourceCurseForge": "CurseForge service",
-    "sourceCurseForgeHint": "CurseForge search, project and file details, and downloads. Lumi uses the MCIM mirror if CurseForge fails or no API Key is set. File downloads always try the official CDN first.",
-    "modSourceOption": {
-      "auto": "Automatic (recommended)",
-      "official": "Prefer official sources",
-      "mirror": "Prefer MCIM",
-      "officialOnly": "Official sources only"
-    }
+    "claimFolderReset": "Reset to default folder"
   },
   "error": {
     "unexpected": "Something went wrong. The error was logged.",
@@ -2374,26 +2340,16 @@
       "steps": "Steps:",
       "id": "ID: {{id}} ({{key}})",
       "version": "Launcher: {{version}}",
-      "downloadSettings": "Settings: Minecraft metadata {{meta}}, Minecraft files {{source}}, Modrinth {{modrinth}}, CurseForge {{curseforge}}, DoH {{doh}}",
-      "speedTest": "Last speed test: Official {{official}}, BMCLAPI {{mirror}}",
+      "downloadSettings": "Settings: Proxy {{proxy}}, Max concurrency {{concurrency}}, DoH {{doh}}",
       "on": "On",
       "off": "Off",
-      "ms": "{{n}} ms",
-      "noTime": "No result",
-      "via": "Download source: {{source}}, source switches: {{n}}"
+      "via": "Fallback URL retries: {{n}}"
     },
     "minutes": "{{n}} min",
     "target": "Target instance: {{name}}",
     "instanceGone": "Instance deleted",
-    "via": "Download source: {{source}}",
-    "fallbacks": "Source switches: {{n}}",
-    "remove": "Remove entry",
-    "viaSource": {
-      "auto": "Automatic",
-      "official": "Official",
-      "mirror": "China mirror (BMCLAPI)",
-      "officialOnly": "Official only"
-    }
+    "fallbacks": "Fallback URL retries: {{n}}",
+    "remove": "Remove entry"
   },
   "launchers": {
     "official": "Official launcher",

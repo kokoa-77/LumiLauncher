@@ -1238,8 +1238,7 @@ pub fn loaders_for(kind: ContentKind, mod_loader: Option<&str>) -> Vec<&str> {
     }
 }
 
-/// 问 Modrinth 的接口：按「Modrinth」那行下载源设置，官方不行时改问 MCIM 镜像（见 [`super::mirror`]）。
-/// `urls` 只用第一个（官方地址）；镜像地址由它换出来
+/// 请求 Modrinth 官方接口（`api.modrinth.com`）。
 async fn get_json<T: serde::de::DeserializeOwned>(
     client: &Client,
     urls: &[String],
@@ -1247,11 +1246,19 @@ async fn get_json<T: serde::de::DeserializeOwned>(
     let url = urls
         .first()
         .ok_or_else(|| ContentError::Api("没有要问的地址".to_owned()))?;
-    let fetched = super::mirror::modrinth()
-        .fetch(client, reqwest::Method::GET, url, None, None, true)
+    let bytes = fetch_official(client, reqwest::Method::GET, url, None)
         .await
-        .map_err(|error| unreachable_api(url, &error))?;
-    serde_json::from_slice(&fetched.bytes)
+        .map_err(|error| match error {
+            ModrinthHttpError::Rejected(status) => {
+                ContentError::Api(format!("Modrinth 返回 HTTP {status}"))
+            }
+            ModrinthHttpError::Unavailable(reason) => {
+                ContentError::Http(HttpError::AllSourcesFailed {
+                    last: format!("{url}：{reason}"),
+                })
+            }
+        })?;
+    serde_json::from_slice(&bytes)
         .map_err(|e| ContentError::Api(format!("Modrinth 返回的数据格式不对：{e}")))
 }
 
@@ -1263,24 +1270,63 @@ async fn post_json<T: serde::de::DeserializeOwned>(
 ) -> Result<T, ContentError> {
     let body = serde_json::to_vec(body).map_err(|e| ContentError::Api(e.to_string()))?;
     let url = format!("{API}/{path}");
-    let fetched = super::mirror::modrinth()
-        .fetch(client, reqwest::Method::POST, &url, Some(&body), None, true)
+    let bytes = fetch_official(client, reqwest::Method::POST, &url, Some(&body))
         .await
-        .map_err(|e| ContentError::Api(format!("{what}失败：{e}")))?;
-    serde_json::from_slice(&fetched.bytes)
+        .map_err(|error| match error {
+            ModrinthHttpError::Rejected(status) => {
+                ContentError::Api(format!("{what}失败：Modrinth 返回 HTTP {status}"))
+            }
+            ModrinthHttpError::Unavailable(reason) => {
+                ContentError::Api(format!("{what}失败：{reason}"))
+            }
+        })?;
+    serde_json::from_slice(&bytes)
         .map_err(|e| ContentError::Api(format!("{what}结果格式不对：{e}")))
 }
 
-/// 官方和镜像都没问到：说成「网络请求失败」（界面按网络问题提示）；官方明确拒绝的照实说
-fn unreachable_api(url: &str, error: &super::mirror::FetchError) -> ContentError {
-    match error {
-        super::mirror::FetchError::Unavailable { reason, .. } => {
-            ContentError::Http(HttpError::AllSourcesFailed {
-                last: format!("{url}：{reason}"),
-            })
-        }
-        other => ContentError::Api(other.to_string()),
+enum ModrinthHttpError {
+    Rejected(u16),
+    Unavailable(String),
+}
+
+async fn fetch_official(
+    client: &Client,
+    method: reqwest::Method,
+    url: &str,
+    body: Option<&[u8]>,
+) -> Result<Vec<u8>, ModrinthHttpError> {
+    let mut request = client
+        .request(method, url)
+        .header(reqwest::header::ACCEPT, "application/json");
+    if let Some(body) = body {
+        request = request
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body.to_vec());
     }
+    let response = request
+        .send()
+        .await
+        .map_err(|e| ModrinthHttpError::Unavailable(format!("连不上：{e}")))?;
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| ModrinthHttpError::Unavailable(format!("读取响应失败：{e}")))?;
+    if status.is_success() {
+        return Ok(bytes.to_vec());
+    }
+    if matches!(
+        status,
+        reqwest::StatusCode::BAD_REQUEST
+            | reqwest::StatusCode::NOT_FOUND
+            | reqwest::StatusCode::GONE
+    ) {
+        return Err(ModrinthHttpError::Rejected(status.as_u16()));
+    }
+    Err(ModrinthHttpError::Unavailable(format!(
+        "HTTP {}",
+        status.as_u16()
+    )))
 }
 
 #[cfg(test)]

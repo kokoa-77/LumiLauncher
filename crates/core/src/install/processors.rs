@@ -26,12 +26,9 @@ use tokio_util::sync::CancellationToken;
 
 use super::InstallError;
 use super::vanilla::{load_or_fetch_version, run_blocking};
-use crate::config::DownloadSource;
 use crate::fs::{read_json, safe_join, write_atomic, write_json_atomic};
 use crate::meta::{Library, MavenCoord, VersionJson};
-use crate::net::{
-    DownloadError, DownloadItem, DownloadProgress, Downloader, candidate_urls, get_bytes, sha1_file,
-};
+use crate::net::{DownloadError, DownloadItem, DownloadProgress, Downloader, get_bytes, sha1_file};
 use crate::paths::GameDir;
 use crate::process::hidden_command;
 
@@ -62,10 +59,6 @@ pub struct LoaderContext<'a> {
     pub game: &'a GameDir,
     pub client: &'a Client,
     pub downloader: &'a Downloader,
-    /// 文件（依赖库、安装器、客户端）从哪下（设置「Minecraft 文件、加载器与 Java」）
-    pub source: DownloadSource,
-    /// 版本清单、版本描述从哪拿（设置「Minecraft 元数据」）
-    pub meta_source: DownloadSource,
     /// 运行处理器用的 Java
     pub java: &'a Path,
     /// 临时工作目录，装完删除。要放在空间够的盘上，不要用系统临时目录
@@ -244,15 +237,14 @@ where
         .map_err(|source| io_error(ctx.work_dir, source))?;
 
     // 1. 原版：版本描述 + 客户端 jar（处理器要拿它打补丁）
-    let vanilla =
-        load_or_fetch_version(ctx.game, &src.game_version, ctx.client, ctx.meta_source).await?;
+    let vanilla = load_or_fetch_version(ctx.game, &src.game_version, ctx.client).await?;
     let client_jar = ensure_client_jar(ctx, &vanilla, &on_progress).await?;
 
     // 2. 安装器
     let installer = ctx.work_dir.join("installer.jar");
-    let installer_sha1 = fetch_maven_sha1(ctx.client, &src.installer_url, ctx.source).await?;
+    let installer_sha1 = fetch_maven_sha1(ctx.client, &src.installer_url).await?;
     let item = DownloadItem {
-        urls: candidate_urls(&src.installer_url, ctx.source),
+        urls: vec![src.installer_url.clone()],
         path: installer.clone(),
         sha1: Some(installer_sha1.clone()),
         size: None,
@@ -294,7 +286,7 @@ where
         receipt_files.push(path.clone());
         match artifact.filter(|a| !a.url.is_empty()) {
             Some(a) => downloads.push(DownloadItem {
-                urls: candidate_urls(&a.url, ctx.source),
+                urls: vec![a.url.clone()],
                 path,
                 sha1: a.sha1.clone(),
                 size: a.size,
@@ -475,7 +467,7 @@ where
     match vanilla.downloads.as_ref().and_then(|d| d.client.as_ref()) {
         Some(client) => {
             let item = DownloadItem {
-                urls: candidate_urls(&client.url, ctx.source),
+                urls: vec![client.url.clone()],
                 path: path.clone(),
                 sha1: client.sha1.clone(),
                 size: client.size,
@@ -493,12 +485,8 @@ where
 }
 
 /// Maven 仓库每个文件旁边都有 `.sha1`，用它校验安装器。
-pub(super) async fn fetch_maven_sha1(
-    client: &Client,
-    url: &str,
-    source: DownloadSource,
-) -> Result<String, InstallError> {
-    let bytes = get_bytes(client, &candidate_urls(&format!("{url}.sha1"), source)).await?;
+pub(super) async fn fetch_maven_sha1(client: &Client, url: &str) -> Result<String, InstallError> {
+    let bytes = get_bytes(client, &[format!("{url}.sha1")]).await?;
     let text = String::from_utf8_lossy(&bytes);
     let hash = text
         .split_whitespace()
@@ -685,7 +673,7 @@ async fn download_mojmaps(
         .and_then(|d| d.client_mappings.as_ref())
         .ok_or_else(|| InstallError::Installer(format!("{} 没有提供映射表下载信息", vanilla.id)))?;
     let item = DownloadItem {
-        urls: candidate_urls(&mappings.url, ctx.source),
+        urls: vec![mappings.url.clone()],
         path,
         sha1: mappings.sha1.clone(),
         size: mappings.size,

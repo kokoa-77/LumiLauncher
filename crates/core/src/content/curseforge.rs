@@ -2,7 +2,6 @@
 //!
 //! 文档：<https://docs.curseforge.com/rest-api/>。每个请求都要带启动器自己的 API Key（请求头 `x-api-key`）；
 //! 7 月 16 日起 CDN 下载也要带。**Key 只发给 CurseForge 自己的域名**（[`KEY_HOSTS`]）。
-//! 官方不行或没有 Key 时按「CurseForge」那行下载源设置改问 MCIM 镜像（见 [`super::mirror`]），镜像不带 Key。
 //!
 //! 作者禁止第三方下载的文件，接口返回的 `downloadUrl` 是空的：**不自己拼 CDN 地址**，
 //! 交给补件流程（[`super::claim`]）让用户在浏览器里下载。
@@ -134,10 +133,9 @@ impl CurseForge {
         self.key.is_some()
     }
 
-    /// 能不能问 CurseForge：有 Key，或者没 Key 但允许用 MCIM 镜像
+    /// 能不能问 CurseForge：已配置官方 API Key 时可用
     pub fn usable(&self) -> bool {
         self.has_key()
-            || super::mirror::curseforge().policy() != crate::config::DownloadSource::OfficialOnly
     }
 
     /// 底下用的 HTTP 客户端（同一个连接池，问 Modrinth 时也用它）
@@ -162,7 +160,7 @@ impl CurseForge {
         })
     }
 
-    /// 问一次接口：有 Key 先按设置问官方（带 Key），官方不行或没 Key 时问 MCIM（不带 Key）
+    /// 请求一次 CurseForge 官方接口（始终校验并仅向官方域名携带 Key）
     async fn send<T: DeserializeOwned>(
         &self,
         method: reqwest::Method,
@@ -170,35 +168,57 @@ impl CurseForge {
         body: Option<&[u8]>,
         what: &str,
     ) -> Result<T, ContentError> {
-        if !self.usable() {
+        let Some(key) = &self.key else {
             return Err(ContentError::NoCurseForgeKey);
-        }
-        let key = self
-            .key
-            .as_ref()
-            .map(|key| (KEY_HEADER, key.expose().as_str()));
+        };
         let client = self.http();
-        let fetched = super::mirror::curseforge()
-            .fetch(&client, method, url, body, key, self.has_key())
-            .await
-            .map_err(|error| match error {
-                super::mirror::FetchError::Denied { status, .. } => {
-                    tracing::warn!(what, status, "CurseForge 拒绝了请求");
-                    ContentError::CurseForgeDenied {
-                        what: what.to_owned(),
-                    }
-                }
-                super::mirror::FetchError::Unavailable { reason, .. } => {
-                    ContentError::Http(HttpError::AllSourcesFailed {
-                        last: format!("{url}：{reason}"),
-                    })
-                }
-                rejected @ super::mirror::FetchError::Rejected { .. } => {
-                    ContentError::CurseForge(format!("{what}失败：{rejected}"))
-                }
-            })?;
-        serde_json::from_slice(&fetched.bytes)
-            .map_err(|e| ContentError::CurseForge(format!("{what}的结果格式不对：{e}")))
+        let mut request = client
+            .request(method, url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .header(KEY_HEADER, key.expose().as_str());
+        if let Some(body) = body {
+            request = request
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(body.to_vec());
+        }
+        let response = request.send().await.map_err(|e| {
+            ContentError::Http(HttpError::AllSourcesFailed {
+                last: format!("{url}：连不上：{e}"),
+            })
+        })?;
+        let status = response.status();
+        let bytes = response.bytes().await.map_err(|e| {
+            ContentError::Http(HttpError::AllSourcesFailed {
+                last: format!("{url}：读取响应失败：{e}"),
+            })
+        })?;
+        if status.is_success() {
+            return serde_json::from_slice(&bytes)
+                .map_err(|e| ContentError::CurseForge(format!("{what}的结果格式不对：{e}")));
+        }
+        let code = status.as_u16();
+        if matches!(
+            status,
+            reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
+        ) {
+            tracing::warn!(what, status = code, "CurseForge 拒绝了请求");
+            return Err(ContentError::CurseForgeDenied {
+                what: what.to_owned(),
+            });
+        }
+        if matches!(
+            status,
+            reqwest::StatusCode::BAD_REQUEST
+                | reqwest::StatusCode::NOT_FOUND
+                | reqwest::StatusCode::GONE
+        ) {
+            return Err(ContentError::CurseForge(format!(
+                "{what}失败：CurseForge 返回 HTTP {code}"
+            )));
+        }
+        Err(ContentError::Http(HttpError::AllSourcesFailed {
+            last: format!("{url}：HTTP {code}"),
+        }))
     }
 
     async fn get<T: DeserializeOwned>(&self, path: &str, what: &str) -> Result<T, ContentError> {
@@ -1280,9 +1300,6 @@ mod tests {
 
     #[tokio::test]
     async fn refuses_to_call_without_a_key() {
-        // 没 Key 会改问 MCIM；「仅官方源」时才直接拒绝（这样测不用联网）
-        crate::content::mirror::curseforge()
-            .set_policy(crate::config::DownloadSource::OfficialOnly);
         let cf = CurseForge::new(Client::new(), None);
         assert!(!cf.usable());
         assert!(!cf.has_key());

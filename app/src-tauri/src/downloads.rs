@@ -1,4 +1,4 @@
-//! 下载中心：下载历史、重试、测速、DoH 测试、补件盯的文件夹。
+//! 下载中心：下载历史、重试、DoH 测试、连通性检测、补件盯的文件夹。
 //!
 //! 每种能重试的任务开始时带一份 [`Retry`] 配方（存在历史文件里，界面拿不到：本地整合包的配方里有路径）。
 //! 「重试」按配方再开一个同样的任务，新任务接替历史里的旧记录；下载过的文件校验通过不重下，
@@ -14,7 +14,7 @@ use launcher_core::content::modrinth::PlanItem;
 use launcher_core::instance::{LoaderKind, LoaderRef};
 use launcher_core::jobs::{JobMeta, JobRegistry, JobSnapshot, JobSource, JobState};
 use launcher_core::modpack;
-use launcher_core::net::{DnsProbe, SpeedTest};
+use launcher_core::net::DnsProbe;
 use launcher_core::paths::GameDir;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -283,20 +283,6 @@ pub(crate) fn clean_imports(game: &GameDir, keep: &HashSet<String>, all: bool) {
     }
 }
 
-/// 设置里的「测速」：官方和 BMCLAPI 各下一次版本清单，看谁快（「自动」接下来就先用快的）
-#[tauri::command]
-#[specta::specta]
-pub async fn net_speed_test(state: State<'_, AppState>) -> Result<SpeedTest, AppError> {
-    Ok(state.sources.measure().await)
-}
-
-/// 最近一次测速（自动选源时测的也算）；还没测过为空
-#[tauri::command]
-#[specta::specta]
-pub fn net_speed_last(state: State<'_, AppState>) -> Option<SpeedTest> {
-    state.sources.last()
-}
-
 /// 设置里的「测试 DoH」：每个 DoH 服务和系统 DNS 各问一次
 #[tauri::command]
 #[specta::specta]
@@ -304,7 +290,7 @@ pub async fn net_doh_test(state: State<'_, AppState>) -> Result<Vec<DnsProbe>, A
     Ok(state.doh.test().await)
 }
 
-/// 设置里的「网络连通性检测」：并行探测 6 个核心服务端点
+/// 设置里的「网络连通性检测」：并行探测核心官方服务端点
 #[tauri::command]
 #[specta::specta]
 pub async fn net_diagnostics(

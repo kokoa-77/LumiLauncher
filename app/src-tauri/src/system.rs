@@ -309,13 +309,10 @@ pub fn java_install(
         let downloader = downloader(&state);
         let locator = state.java_locator();
         let cancel = job.cancel_token();
-        let source = state.source().await;
-        job.set_download_source(source);
         let ctx = JavaContext {
             locator: &locator,
             client: &state.http_client(),
             downloader: &downloader,
-            source,
             cancel: &cancel,
         };
         let request = JavaRequest {

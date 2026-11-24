@@ -18,11 +18,10 @@
 │  │  │  │                 download history is saved to jobs-history.json in the app data directory (written on a
 │  │  │  │                 background thread, broken entries skipped), together with the app shell's "retry recipe"
 │  │  │  ├─ redact.rs      Log redaction and the Secret wrapper
-│  │  │  ├─ net/           http.rs (shared client, one User-Agent for every request), mirrors.rs (official → BMCLAPI
-│  │  │  │                 rewriting, four download sources), speed.rs (measures official vs. BMCLAPI in "Auto" mode),
-│  │  │  │                 doh.rs (DNS-over-HTTPS: Cloudflare for official overseas sources, AliDNS for domestic mirrors,
-│  │  │  │                 steps aside when a proxy tool uses fake-IP mode), download.rs (concurrent, resumable,
-│  │  │  │                 verified download engine with source fallback; adds MCIM URLs when the official mod CDN fails),
+│  │  │  ├─ net/           http.rs (shared client, one User-Agent for every request), diagnostics.rs (parallel
+│  │  │  │                 connectivity probe for core official endpoints), doh.rs (DNS-over-HTTPS via Cloudflare and
+│  │  │  │                 AliDNS, steps aside when a proxy tool uses fake-IP mode), download.rs (concurrent,
+│  │  │  │                 resumable, verified download engine), mclogs.rs (opt-in redacted log upload),
 │  │  │  │                 status.rs (Minecraft server list ping: players online, latency, version, MOTD, icon),
 │  │  │  │                 srv.rs (_minecraft._tcp SRV lookup against the system's DNS servers with a minimal DNS query)
 │  │  │  ├─ meta/          manifest.rs (version manifest), version.rs (version JSON and inheritance merging),
@@ -47,10 +46,6 @@
 │  │  │  ├─ content/       mod.rs: instance content lists, enabling / disabling (renaming mods, writing Iris settings for
 │  │  │  │                 shaders, writing options.txt for resource packs), identification, update checks, one-click
 │  │  │  │                 updates, deletion, change history and undo;
-│  │  │  │                 mirror.rs: source switching for the Modrinth and CurseForge APIs (official or MCIM first
-│  │  │  │                 according to settings, falls back to MCIM after a failure or 5 s without a response,
-│  │  │  │                 rechecks the official API when an MCIM checked_at is older than 7 days, sends the
-│  │  │  │                 CurseForge key only to the official API);
 │  │  │  │                 modrinth.rs / curseforge.rs: search, version selection, dependency resolution, Iris added
 │  │  │  │                 automatically for shaders, hash-based identification and batch update checks;
 │  │  │  │                 store.rs: content store (one copy per SHA-1; files are stored before being replaced or
@@ -109,7 +104,7 @@
 │  │  ├─ src/linked.rs     Other launchers: linked directories (linked-roots.json, rescanned in the background), discovery,
 │  │  │                    importing instances (copy → install game and loader)
 │  │  ├─ src/discover.rs   Discover: project details, favorites, world search and install, server search / join / list
-│  │  ├─ src/downloads.rs  Download center: history, retry recipes, speed test, DoH test, folders watched for manual downloads
+│  │  ├─ src/downloads.rs  Download center: history, retry recipes, DoH test, connectivity diagnostics, folders watched for manual downloads
 │  │  ├─ src/claims.rs     Manual downloads for files whose authors disallow third-party downloads
 │  │  ├─ src/drops.rs      Install by dragging files into the window
 │  │  ├─ src/worlds.rs     Worlds: one instance's worlds, the latest world of each instance, screenshots

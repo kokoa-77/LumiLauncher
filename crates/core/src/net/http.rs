@@ -5,7 +5,7 @@ use std::time::Duration;
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 
-/// Modrinth、BMCLAPI、MCIM 都要求客户端能被识别（「名字/版本」，所有请求同一个）。
+/// 所有对外请求统一使用的客户端标识（「名字/版本」）。
 /// 2026-11-15 定名「微光 / Lumi」，以前是代号 `UnnamedLauncher`
 pub const USER_AGENT: &str = concat!("LumiLauncher/", env!("CARGO_PKG_VERSION"));
 
@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use crate::net::{DownloadItem, Downloader};
 
-    /// BMCLAPI 要求所有请求都带 `名字/版本` 的 UA（MCLF-CN/docs#2）
+    /// 所有请求都带 `名字/版本` 格式的 User-Agent
     #[test]
     fn user_agent_is_name_slash_version() {
         let (name, version) = USER_AGENT.split_once('/').unwrap();
@@ -125,7 +125,7 @@ mod tests {
         );
     }
 
-    /// 本机小服务器：记下每个请求的路径和 UA；`/old` 302 跳到 `/file`（像 BMCLAPI 跳到节点）
+    /// 本机小服务器：记下每个请求的路径和 UA；`/old` 302 跳到 `/file`（验证重定向保持 UA）
     async fn recording_server() -> (String, Arc<Mutex<Vec<(String, String)>>>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());

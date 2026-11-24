@@ -1148,8 +1148,6 @@
     "soundEffects": "界面轻音效",
     "soundEffectsHint": "在启动游戏、任务完成和回滚恢复时播放极轻柔的提示音。",
     "download": "内容与下载",
-    "source": "Minecraft 文件、加载器与 Java",
-    "sourceHint": "游戏文件、资源、依赖库、模组加载器和 Java 运行时。",
     "doh": "用 DoH 解析下载域名",
     "dohHint": "使用 DNS over HTTPS 解析下载域名。网络不支持时，可关闭此选项。",
     "moveClaimed": "补件认领后移走原文件",
@@ -1317,13 +1315,11 @@
       "privacyHint": "认证直连官方服务，刷新令牌隔离存放在 Windows 凭据管理器。",
       "expand": "展开说明",
       "collapse": "收起",
-      "privacyAuth": "使用系统浏览器打开 Microsoft 官方登录页，并在启动游戏前通过官方服务核验当前账号的 Java 版游玩权与官方档案，认证请求不经过任何内容镜像。",
+      "privacyAuth": "使用系统浏览器打开 Microsoft 官方登录页，并在启动游戏前直接通过官方服务核验当前账号的 Java 版游玩权与官方档案。",
       "privacyCredentials": "刷新令牌按账号保存在 Windows 凭据管理器（不可用时仅存当前会话内存）；游戏会话通过 Java 子进程标准输入管道交付，不出现在命令行、临时文件、界面事件或导出的诊断包中。",
       "privacyRemoval": "移除账号会立即撤销启动授权并清理本机凭据，已有实例、模组与世界存档完整保留。",
       "securityDoc": "查看安全说明",
       "creditsGroup": "外部服务与社区致谢",
-      "credit_bmclapi": "由 bangbang93 维护的 Minecraft 社区镜像，提供游戏文件、加载器与 Java 的国内加速回退。",
-      "credit_mcim": "为中文玩家提供 Modrinth 与 CurseForge 的元数据与文件镜像加速回退支持。",
       "credit_modrinth": "开放的模组、整合包、资源包与光影平台，支持检索、依赖解析与版本更新。",
       "credit_curseforge": "丰富的模组与整合包内容生态，严格尊重作者的第三方下载设置与补件认领流程。",
       "creditsFootnote": "所有游戏资产、模组与账号服务均以官方为准，Lumi 与上述服务均无隶属关系。",
@@ -1415,7 +1411,7 @@
     "proxyHostRequired": "请输入代理主机地址",
     "netDiagGroup": "网络诊断",
     "netDiagLabel": "连通性检测",
-    "netDiagHint": "并行测试账号认证、官方游戏源、模组平台与镜像服务的连通状态和延迟。",
+    "netDiagHint": "并行测试账号认证、官方游戏源与模组平台的连通状态和延迟。",
     "netDiagRun": "开始检测",
     "netDiagRunning": "检测中……",
     "netDiagCopy": "复制结果",
@@ -1428,10 +1424,8 @@
     "netDiagEndpoint": {
       "microsoftAuth": "Microsoft 登录",
       "mojang": "Minecraft 官方",
-      "bmclapi": "BMCLAPI 镜像",
       "modrinth": "Modrinth",
-      "curseforge": "CurseForge",
-      "mcim": "MCIM 镜像"
+      "curseforge": "CurseForge"
     },
     "storage": {
       "dirGroup": "游戏目录",
@@ -1489,22 +1483,6 @@
     "backupClearTitle": "删除所有世界备份？",
     "backupClearBody": "将永久删除 {{size}} 的备份，删除后无法恢复。世界存档本身不受影响。",
     "backupCleared": "已删除所有备份，释放 {{size}}",
-    "sourceOption": {
-      "auto": "自动（推荐）",
-      "official": "优先官方源",
-      "mirror": "优先 BMCLAPI",
-      "officialOnly": "仅官方源（不使用镜像）"
-    },
-    "speedTest": "测速",
-    "speedTesting": "测速中……",
-    "speedTestLabel": "下载源测速",
-    "speedResult": "官方 {{official}} · BMCLAPI {{mirror}}",
-    "speedPick": "自动模式将优先使用{{pick}}",
-    "speedPickOfficial": "官方源",
-    "speedPickMirror": "国内镜像",
-    "speedFailed": "无法连接官方源或镜像。请检查网络或代理设置。",
-    "speedTimeout": "超时",
-    "speedSeconds": "{{n}} 秒",
     "dohTest": "测试",
     "dohTesting": "测试中……",
     "dohOk": "{{ms}} 毫秒 · {{address}}",
@@ -1519,19 +1497,7 @@
     "claimFolderHint": "选择浏览器保存补件文件的目录。",
     "claimFolderSystem": "系统的「下载」文件夹",
     "claimFolderChange": "更换",
-    "claimFolderReset": "恢复默认目录",
-    "sourceMeta": "Minecraft 元数据",
-    "sourceMetaHint": "Minecraft 与受支持模组加载器的版本清单和元数据。",
-    "sourceModrinth": "Modrinth",
-    "sourceModrinthHint": "Modrinth 搜索、项目与版本查询和文件下载。Modrinth 失败或响应缓慢时改用 MCIM 镜像；文件始终先从官方 CDN 下载。",
-    "sourceCurseForge": "CurseForge 服务",
-    "sourceCurseForgeHint": "CurseForge 搜索、项目与文件查询和文件下载。CurseForge 失败或未设置 API Key 时改用 MCIM 镜像；文件始终先从官方 CDN 下载。",
-    "modSourceOption": {
-      "auto": "自动（推荐）",
-      "official": "优先官方源",
-      "mirror": "优先 MCIM",
-      "officialOnly": "仅官方源（不使用镜像）"
-    }
+    "claimFolderReset": "恢复默认目录"
   },
   "error": {
     "unexpected": "出了点问题，已经记录到日志",
@@ -2142,26 +2108,16 @@
       "steps": "每一步：",
       "id": "编号：{{id}}（{{key}}）",
       "version": "启动器：{{version}}",
-      "downloadSettings": "设置：Minecraft 元数据 {{meta}}；Minecraft 文件 {{source}}；Modrinth {{modrinth}}；CurseForge {{curseforge}}；DoH {{doh}}",
-      "speedTest": "最近测速：官方 {{official}}，BMCLAPI {{mirror}}",
+      "downloadSettings": "设置：代理 {{proxy}}；最大并发 {{concurrency}}；DoH {{doh}}",
       "on": "开",
       "off": "关",
-      "ms": "{{n}} 毫秒",
-      "noTime": "没测到",
-      "via": "下载源：{{source}}，换源 {{n}} 次"
+      "via": "备用地址重试：{{n}} 次"
     },
     "minutes": "{{n}} 分钟",
     "target": "目标实例：{{name}}",
     "instanceGone": "实例已删除",
-    "via": "下载源：{{source}}",
-    "fallbacks": "换源 {{n}} 次",
-    "remove": "删除记录",
-    "viaSource": {
-      "auto": "自动",
-      "official": "官方",
-      "mirror": "国内镜像（BMCLAPI）",
-      "officialOnly": "只用官方"
-    }
+    "fallbacks": "备用地址重试 {{n}} 次",
+    "remove": "删除记录"
   },
   "launchers": {
     "official": "官方启动器",

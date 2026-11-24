@@ -242,14 +242,12 @@ where
     }
 
     // 5. 游戏本体文件（导入完就能直接玩）
-    let version =
-        load_or_fetch_version(game, &version_id, ctx.loader.client, ctx.loader.meta_source).await?;
+    let version = load_or_fetch_version(game, &version_id, ctx.loader.client).await?;
     install_files(
         version,
         game,
         &Environment::current(),
         ctx.loader.downloader,
-        ctx.loader.source,
         ctx.loader.cancel,
         |phase, p| on_progress(ImportProgress::Game(phase, p)),
     )

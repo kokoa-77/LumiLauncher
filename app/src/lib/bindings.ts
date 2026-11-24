@@ -95,13 +95,9 @@ export const commands = {
 	jobsRemove: (id: string) => __TAURI_INVOKE<boolean>("jobs_remove", { id }),
 	/**  清空下载历史（正在进行的不动）。没做完的整合包导入的临时文件一起删掉（没法重试了） */
 	jobsClearHistory: () => __TAURI_INVOKE<void>("jobs_clear_history"),
-	/**  设置里的「测速」：官方和 BMCLAPI 各下一次版本清单，看谁快（「自动」接下来就先用快的） */
-	netSpeedTest: () => typedError<SpeedTest, AppError>(__TAURI_INVOKE("net_speed_test")),
-	/**  最近一次测速（自动选源时测的也算）；还没测过为空 */
-	netSpeedLast: () => __TAURI_INVOKE<SpeedTest | null>("net_speed_last"),
 	/**  设置里的「测试 DoH」：每个 DoH 服务和系统 DNS 各问一次 */
 	netDohTest: () => typedError<DnsProbe[], AppError>(__TAURI_INVOKE("net_doh_test")),
-	/**  设置里的「网络连通性检测」：并行探测 6 个核心服务端点 */
+	/**  设置里的「网络连通性检测」：并行探测核心官方服务端点 */
 	netDiagnostics: () => typedError<EndpointProbe[], AppError>(__TAURI_INVOKE("net_diagnostics")),
 	claimFolderInfo: () => __TAURI_INVOKE<ClaimFolderInfo>("claim_folder_info"),
 	/**  弹出「选择文件夹」换补件盯的文件夹；用户取消时返回 `None` */
@@ -687,14 +683,6 @@ export type DnsProbe = {
 };
 
 export type DownloadSettings = {
-	/**  Minecraft 文件、加载器与 Java：游戏文件、资源、依赖库、加载器安装器、Java 运行时从哪下（镜像是 BMCLAPI） */
-	source: DownloadSource,
-	/**  Minecraft 元数据：版本清单、版本描述、加载器的版本列表从哪拿（镜像是 BMCLAPI） */
-	metaSource: DownloadSource,
-	/**  Modrinth：搜索、项目和版本查询、文件下载（镜像是 MCIM；文件总是先官方） */
-	modrinthSource: DownloadSource,
-	/**  CurseForge：搜索、项目和文件查询、文件下载（镜像是 MCIM；Key 不发给镜像） */
-	curseforgeSource: DownloadSource,
 	/**  用 DoH 解析下载域名，防 DNS 污染和劫持（不承诺提速）。问不到时自动退回系统 DNS（`net::doh`）。 */
 	dohEnabled: boolean,
 	maxConcurrency: number,
@@ -712,20 +700,6 @@ export type DownloadSettings = {
 	/**  网络代理设置：跟随系统 / 直连 / 自定义 HTTP 或 SOCKS5 */
 	proxy: ProxySettings,
 };
-
-/**  下载源（四行设置共用）。镜像：Minecraft 两行是 BMCLAPI，Modrinth、CurseForge 两行是 MCIM */
-export type DownloadSource = 
-/**
- *  自动：Minecraft 两行测一下官方和 BMCLAPI 谁快，先用快的；Modrinth、CurseForge 先官方，
- *  失败或太慢时改用 MCIM。都是失败了再换另一个
- */
-"auto" | 
-/**  先官方，失败再换镜像 */
-"official" | 
-/**  先镜像，失败再换官方 */
-"mirror" | 
-/**  只用官方，不碰镜像 */
-"officialOnly";
 
 /**  拖进来的东西和这个实例对不对得上 */
 export type DropCheck = {
@@ -1210,9 +1184,7 @@ export type JobSnapshot = {
 	eta: number | null,
 	/**  失败或取消后能不能「重试」 */
 	retryable: boolean,
-	/**  游戏文件这次用的下载源（「自动」测速后选的那个）；只下模组、整合包这类平台文件的任务为空 */
-	downloadSource: DownloadSource | null,
-	/**  有几个文件第一个地址下不下来、换了地址才下好（换源次数） */
+	/**  有几个文件第一个候选地址下不下来、换了备用地址才下好 */
 	fallbacks: number,
 };
 
@@ -1916,18 +1888,6 @@ export type Side =
 /**  人物体型：经典（Steve，手臂 4 像素宽）、纤细（Alex，手臂 3 像素宽）。 */
 export type SkinModel = "classic" | "slim";
 
-/**  一次测速的结果 */
-export type SpeedTest = {
-	/**  官方下完用了多少毫秒；失败、超时或者没等它（另一边先下完了）时为空 */
-	officialMs: number | null,
-	/**  BMCLAPI 用了多少毫秒 */
-	mirrorMs: number | null,
-	/**  自动模式接下来先用哪个（`official` 或 `mirror`） */
-	pick: DownloadSource,
-	/**  什么时候测的（毫秒级 Unix 时间戳） */
-	at: number | null,
-};
-
 /**  磁盘占用分项报告（前端统一用 f64 字节数，避免 JS 精度丢失） */
 export type StorageReport = {
 	/**  实例文件夹总计（不含其中的世界备份，避免重复统计） */
@@ -2103,7 +2063,7 @@ export type WorldNotes = {
 export type WorldSettings = {
 	/**
 	 *  自动备份：正常退出游戏后备份这次玩过的世界、从首页进世界前世界变过也先备一份。
-	 *  默认关（用户 2026-11-14 选的：占空间，想要的自己打开）
+	 *  默认关闭以节省磁盘空间；需要时可在设置中开启
 	 */
 	autoBackup: boolean,
 	/**  每个世界最多留几份自动备份（手动的、恢复前的不算） */

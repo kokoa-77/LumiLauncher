@@ -6,8 +6,7 @@ use sha1::{Digest, Sha1};
 
 use super::MetaError;
 use super::version::VersionJson;
-use crate::config::DownloadSource;
-use crate::net::{candidate_urls, get_bytes, get_json, to_hex};
+use crate::net::{get_bytes, get_json, to_hex};
 
 pub const MANIFEST_URL: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 
@@ -49,21 +48,17 @@ impl VersionManifest {
     }
 }
 
-/// 下载版本清单（按下载源设置选官方或镜像，失败自动换另一个）。
-pub async fn fetch_manifest(
-    client: &Client,
-    source: DownloadSource,
-) -> Result<VersionManifest, MetaError> {
-    Ok(get_json(client, &candidate_urls(MANIFEST_URL, source)).await?)
+/// 从官方源下载版本清单。
+pub async fn fetch_manifest(client: &Client) -> Result<VersionManifest, MetaError> {
+    Ok(get_json(client, &[MANIFEST_URL.to_owned()]).await?)
 }
 
 /// 下载某个版本的 json，校验 SHA-1 后解析。返回解析结果和原始字节（用于原样保存到磁盘）。
 pub async fn fetch_version_json(
     client: &Client,
     entry: &ManifestEntry,
-    source: DownloadSource,
 ) -> Result<(VersionJson, Vec<u8>), MetaError> {
-    let bytes = get_bytes(client, &candidate_urls(&entry.url, source)).await?;
+    let bytes = get_bytes(client, std::slice::from_ref(&entry.url)).await?;
     if let Some(expected) = &entry.sha1 {
         let actual = to_hex(&Sha1::digest(&bytes));
         if !actual.eq_ignore_ascii_case(expected) {

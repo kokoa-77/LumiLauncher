@@ -7,8 +7,8 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
-use clap::{Parser, Subcommand, ValueEnum};
-use launcher_core::config::{DownloadSource, SettingsStore};
+use clap::{Parser, Subcommand};
+use launcher_core::config::SettingsStore;
 use launcher_core::content::claim::{ClaimParams, ClaimSession, ClaimState};
 use launcher_core::content::curseforge::CurseForge;
 use launcher_core::content::store::{ContentStore, STORE_DIR};
@@ -23,9 +23,7 @@ use launcher_core::meta::{Environment, fetch_manifest, fetch_version_json, rules
 use launcher_core::modpack::{
     self, ImportContext, ImportProgress, ModpackError, PackFormat, PackPlan, curseforge, mrpack,
 };
-use launcher_core::net::{
-    DownloadError, DownloadItem, DownloadProgress, Downloader, build_client, candidate_urls,
-};
+use launcher_core::net::{DownloadError, DownloadItem, DownloadProgress, Downloader, build_client};
 use launcher_core::paths::GameDir;
 use launcher_core::redact::redact;
 use tokio_util::sync::CancellationToken;
@@ -39,38 +37,12 @@ struct Cli {
     #[arg(long, global = true, default_value = ".mcl")]
     data_dir: PathBuf,
 
-    /// 下载源
-    #[arg(long, global = true, value_enum, default_value_t = SourceArg::Auto)]
-    source: SourceArg,
-
     /// 同时下载的文件数
     #[arg(long, global = true, default_value_t = 32)]
     concurrency: usize,
 
     #[command(subcommand)]
     command: Command,
-}
-
-#[derive(Clone, Copy, ValueEnum)]
-enum SourceArg {
-    /// 官方优先，失败换镜像
-    Auto,
-    Official,
-    /// 国内镜像（BMCLAPI）优先
-    Mirror,
-    /// 只用官方，不用镜像
-    OfficialOnly,
-}
-
-impl From<SourceArg> for DownloadSource {
-    fn from(value: SourceArg) -> Self {
-        match value {
-            SourceArg::Auto => DownloadSource::Auto,
-            SourceArg::Official => DownloadSource::Official,
-            SourceArg::OfficialOnly => DownloadSource::OfficialOnly,
-            SourceArg::Mirror => DownloadSource::Mirror,
-        }
-    }
 }
 
 #[derive(Subcommand)]
@@ -322,7 +294,6 @@ async fn main() -> Result<()> {
         .with_target(false)
         .init();
     let cli = Cli::parse();
-    let source = DownloadSource::from(cli.source);
 
     match cli.command {
         Command::Info => {
@@ -341,7 +312,7 @@ async fn main() -> Result<()> {
             }
         },
         Command::Redact { text } => println!("{}", redact(&text)),
-        Command::Versions { snapshots, limit } => list_versions(source, snapshots, limit).await?,
+        Command::Versions { snapshots, limit } => list_versions(snapshots, limit).await?,
         Command::Download {
             url,
             out,
@@ -349,7 +320,7 @@ async fn main() -> Result<()> {
             size,
         } => {
             let item = DownloadItem {
-                urls: candidate_urls(&url, source),
+                urls: vec![url],
                 path: out,
                 sha1,
                 size,
@@ -358,7 +329,7 @@ async fn main() -> Result<()> {
             println!("完成");
         }
         Command::Fetch { version, game_dir } => {
-            fetch_version(&version, &game_dir, source, cli.concurrency).await?;
+            fetch_version(&version, &game_dir, cli.concurrency).await?;
         }
         Command::Java => list_java(),
         Command::JavaInstall {
@@ -369,9 +340,9 @@ async fn main() -> Result<()> {
         } => {
             let game = game_dir_from(&game_dir)?;
             let request = JavaRequest { major, component };
-            install_java(&game, &request, !no_system, source, cli.concurrency).await?;
+            install_java(&game, &request, !no_system, cli.concurrency).await?;
         }
-        Command::Neoforge { mc, limit } => list_neoforge(mc.as_deref(), limit, source).await?,
+        Command::Neoforge { mc, limit } => list_neoforge(mc.as_deref(), limit).await?,
         Command::Install {
             version,
             game_dir,
@@ -382,19 +353,13 @@ async fn main() -> Result<()> {
             let started = Instant::now();
             let id = match loader {
                 Some(requested) => {
-                    let loader_version = resolve_neoforge(&version, &requested, source).await?;
-                    install_neoforge(
-                        &game,
-                        &loader_version,
-                        source,
-                        cli.concurrency,
-                        java.as_deref(),
-                    )
-                    .await?
+                    let loader_version = resolve_neoforge(&version, &requested).await?;
+                    install_neoforge(&game, &loader_version, cli.concurrency, java.as_deref())
+                        .await?
                 }
                 None => version,
             };
-            let installed = install_version(&game, &id, source, cli.concurrency, false).await?;
+            let installed = install_version(&game, &id, cli.concurrency, false).await?;
             println!(
                 "{} 安装完成：依赖库 + 客户端共 {} 个进类路径的文件，用时 {:.1} 秒",
                 installed.version.id,
@@ -506,7 +471,7 @@ async fn main() -> Result<()> {
                 dry_run,
                 downloads,
             };
-            import_pack(&game, &pack, &options, source, cli.concurrency).await?;
+            import_pack(&game, &pack, &options, cli.concurrency).await?;
         }
         Command::LinkScan { root } => {
             use launcher_core::external::root;
@@ -901,7 +866,6 @@ async fn import_pack(
     game: &GameDir,
     pack: &Path,
     options: &ImportOptions,
-    source: DownloadSource,
     concurrency: usize,
 ) -> Result<()> {
     let started = Instant::now();
@@ -957,7 +921,7 @@ async fn import_pack(
         return Ok(());
     }
 
-    let vanilla = load_or_fetch_version(game, &p.game_version, &client, source)
+    let vanilla = load_or_fetch_version(game, &p.game_version, &client)
         .await
         .with_context(|| format!("读取 {} 的版本描述失败", p.game_version))?;
     let java = pick_java(options.java.as_deref(), vanilla.required_java())?;
@@ -1008,8 +972,6 @@ async fn import_pack(
             game,
             client: &client,
             downloader: &downloader,
-            source,
-            meta_source: source,
             java: &java.executable,
             work_dir: &temp_root,
             cancel: &cancel,
@@ -1141,7 +1103,6 @@ async fn install_java(
     game: &GameDir,
     request: &JavaRequest,
     use_system: bool,
-    source: DownloadSource,
     concurrency: usize,
 ) -> Result<JavaInstall> {
     let client = build_client()?;
@@ -1155,7 +1116,6 @@ async fn install_java(
         locator: &locator,
         client: &client,
         downloader: &downloader,
-        source,
         cancel: &cancel,
     };
     let started = Instant::now();
@@ -1206,13 +1166,9 @@ fn list_java() {
     }
 }
 
-async fn list_neoforge(
-    game_version: Option<&str>,
-    limit: usize,
-    source: DownloadSource,
-) -> Result<()> {
+async fn list_neoforge(game_version: Option<&str>, limit: usize) -> Result<()> {
     let started = Instant::now();
-    let versions = neoforge::fetch_versions(&build_client()?, source)
+    let versions = neoforge::fetch_versions(&build_client()?)
         .await
         .context("获取 NeoForge 版本列表失败")?;
     let matching: Vec<_> = versions
@@ -1237,11 +1193,7 @@ async fn list_neoforge(
 }
 
 /// `latest` → 这个游戏版本最新的 NeoForge；写了具体版本号就检查它和游戏版本对得上
-async fn resolve_neoforge(
-    game_version: &str,
-    requested: &str,
-    source: DownloadSource,
-) -> Result<String> {
+async fn resolve_neoforge(game_version: &str, requested: &str) -> Result<String> {
     if requested != "latest" {
         let expected = neoforge::game_version_of(requested)
             .with_context(|| format!("认不出 NeoForge 版本号 {requested}"))?;
@@ -1250,7 +1202,7 @@ async fn resolve_neoforge(
         }
         return Ok(requested.to_owned());
     }
-    let versions = neoforge::fetch_versions(&build_client()?, source)
+    let versions = neoforge::fetch_versions(&build_client()?)
         .await
         .context("获取 NeoForge 版本列表失败")?;
     let latest = neoforge::latest_for(&versions, game_version)
@@ -1263,7 +1215,6 @@ async fn resolve_neoforge(
 async fn install_neoforge(
     game: &GameDir,
     loader_version: &str,
-    source: DownloadSource,
     concurrency: usize,
     java_override: Option<&Path>,
 ) -> Result<String> {
@@ -1273,22 +1224,13 @@ async fn install_neoforge(
         kind: LoaderKind::NeoForge,
         version: loader_version.to_owned(),
     };
-    install_loader(
-        game,
-        &game_version,
-        &loader,
-        source,
-        concurrency,
-        java_override,
-    )
-    .await
+    install_loader(game, &game_version, &loader, concurrency, java_override).await
 }
 
 async fn install_loader(
     game: &GameDir,
     game_version: &str,
     loader: &LoaderRef,
-    source: DownloadSource,
     concurrency: usize,
     java_override: Option<&Path>,
 ) -> Result<String> {
@@ -1298,7 +1240,7 @@ async fn install_loader(
     }
     let client = build_client()?;
     let java = if loader.kind.uses_processor() {
-        let vanilla = load_or_fetch_version(game, game_version, &client, source)
+        let vanilla = load_or_fetch_version(game, game_version, &client)
             .await
             .with_context(|| format!("读取 {game_version} 的版本描述失败"))?;
         Some(pick_java(java_override, vanilla.required_java())?)
@@ -1313,8 +1255,6 @@ async fn install_loader(
         game,
         client: &client,
         downloader: &downloader,
-        source,
-        meta_source: source,
         java: java
             .as_ref()
             .map_or_else(|| Path::new(""), |j| j.executable.as_path()),
@@ -1376,12 +1316,11 @@ async fn install_loader(
 async fn install_version(
     game: &GameDir,
     id: &str,
-    source: DownloadSource,
     concurrency: usize,
     quick: bool,
 ) -> Result<InstalledVersion> {
     let client = build_client()?;
-    let version = load_or_fetch_version(game, id, &client, source)
+    let version = load_or_fetch_version(game, id, &client)
         .await
         .with_context(|| format!("读取 {id} 的版本描述失败"))?;
     let downloader = Downloader::new(client, concurrency).quick_verify(quick);
@@ -1390,35 +1329,27 @@ async fn install_version(
 
     let started = Instant::now();
     let last_print = Mutex::new(Instant::now());
-    let result = install_files(
-        version,
-        game,
-        &env,
-        &downloader,
-        source,
-        &cancel,
-        |phase, p| {
-            let mut last = last_print.lock().unwrap_or_else(|e| e.into_inner());
-            if last.elapsed().as_millis() < 300 && p.done_files < p.total_files {
-                return;
-            }
-            *last = Instant::now();
-            let label = match phase {
-                InstallPhase::AssetIndex => "资源索引",
-                InstallPhase::Files => "补全文件",
-                InstallPhase::Natives => "解压本地库",
-            };
-            let secs = started.elapsed().as_secs_f64().max(0.001);
-            eprint!(
-                "\r  {label}：{}/{} 个文件  {:.1}/{:.1} MB  {:.1} MB/s    ",
-                p.done_files,
-                p.total_files,
-                mb(p.done_bytes),
-                mb(p.total_bytes),
-                mb(p.done_bytes) / secs
-            );
-        },
-    )
+    let result = install_files(version, game, &env, &downloader, &cancel, |phase, p| {
+        let mut last = last_print.lock().unwrap_or_else(|e| e.into_inner());
+        if last.elapsed().as_millis() < 300 && p.done_files < p.total_files {
+            return;
+        }
+        *last = Instant::now();
+        let label = match phase {
+            InstallPhase::AssetIndex => "资源索引",
+            InstallPhase::Files => "补全文件",
+            InstallPhase::Natives => "解压本地库",
+        };
+        let secs = started.elapsed().as_secs_f64().max(0.001);
+        eprint!(
+            "\r  {label}：{}/{} 个文件  {:.1}/{:.1} MB  {:.1} MB/s    ",
+            p.done_files,
+            p.total_files,
+            mb(p.done_bytes),
+            mb(p.total_bytes),
+            mb(p.done_bytes) / secs
+        );
+    })
     .await;
     eprintln!();
     match result {
@@ -1464,12 +1395,10 @@ fn ctrl_c_token() -> CancellationToken {
     cancel
 }
 
-async fn list_versions(source: DownloadSource, snapshots: bool, limit: usize) -> Result<()> {
+async fn list_versions(snapshots: bool, limit: usize) -> Result<()> {
     let started = Instant::now();
     let client = build_client()?;
-    let manifest = fetch_manifest(&client, source)
-        .await
-        .context("获取版本清单失败")?;
+    let manifest = fetch_manifest(&client).await.context("获取版本清单失败")?;
     println!(
         "最新正式版：{}    最新快照：{}    （共 {} 个版本，用时 {:.1} 秒）",
         manifest.latest.release,
@@ -1493,21 +1422,14 @@ async fn list_versions(source: DownloadSource, snapshots: bool, limit: usize) ->
     Ok(())
 }
 
-async fn fetch_version(
-    id: &str,
-    game_dir: &Path,
-    source: DownloadSource,
-    concurrency: usize,
-) -> Result<()> {
+async fn fetch_version(id: &str, game_dir: &Path, concurrency: usize) -> Result<()> {
     let client = build_client()?;
-    let manifest = fetch_manifest(&client, source)
-        .await
-        .context("获取版本清单失败")?;
+    let manifest = fetch_manifest(&client).await.context("获取版本清单失败")?;
     let Some(entry) = manifest.find(id) else {
         bail!("版本清单里没有 {id}");
     };
 
-    let (version, raw) = fetch_version_json(&client, entry, source).await?;
+    let (version, raw) = fetch_version_json(&client, entry).await?;
     let version_dir = safe_join(&game_dir.join("versions"), id)?;
     let json_path = version_dir.join(format!("{id}.json"));
     write_atomic(&json_path, &raw)?;
@@ -1520,7 +1442,7 @@ async fn fetch_version(
         bail!("{id} 没有客户端下载信息");
     };
     let item = DownloadItem {
-        urls: candidate_urls(&client_jar.url, source),
+        urls: vec![client_jar.url.clone()],
         path: version_dir.join(format!("{id}.jar")),
         sha1: client_jar.sha1.clone(),
         size: client_jar.size,

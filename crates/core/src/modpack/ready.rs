@@ -6,7 +6,6 @@ use reqwest::Client;
 use serde::Serialize;
 
 use super::plan::PackPreview;
-use crate::config::DownloadSource;
 use crate::install::{load_or_fetch_version, loaders};
 use crate::instance::LoaderRef;
 use crate::java::{self, JavaInstall};
@@ -32,14 +31,12 @@ pub struct PackReadiness {
 pub async fn readiness(
     game: &GameDir,
     client: &Client,
-    source: DownloadSource,
     preview: &PackPreview,
     javas: &[JavaInstall],
 ) -> PackReadiness {
     for_game(
         game,
         client,
-        source,
         &preview.game_version,
         preview.loader.as_ref(),
         javas,
@@ -52,7 +49,6 @@ pub async fn readiness(
 pub async fn for_game(
     game: &GameDir,
     client: &Client,
-    source: DownloadSource,
     mc: &str,
     loader: Option<&LoaderRef>,
     javas: &[JavaInstall],
@@ -61,7 +57,7 @@ pub async fn for_game(
     let game_installed = game.version_json(mc).is_ok_and(|p| p.is_file())
         && game.version_jar(mc).is_ok_and(|p| p.is_file());
     let loader_installed = loader.is_none_or(|loader| loaders::is_installed(game, mc, loader));
-    let java_required = match load_or_fetch_version(game, mc, client, source).await {
+    let java_required = match load_or_fetch_version(game, mc, client).await {
         Ok(version) => Some(version.required_java()),
         Err(error) => {
             tracing::warn!(%error, version = mc, "查不到这个游戏版本要哪个 Java（可能断网）");
@@ -135,27 +131,13 @@ mod tests {
             version: "21.1.265".to_owned(),
         });
 
-        let ready = readiness(
-            &game,
-            &client,
-            DownloadSource::default(),
-            &preview(neoforge),
-            &[java(17), java(21)],
-        )
-        .await;
+        let ready = readiness(&game, &client, &preview(neoforge), &[java(17), java(21)]).await;
         assert!(!ready.game_installed);
         assert!(!ready.loader_installed);
         assert_eq!(ready.java_required, Some(21));
         assert_eq!(ready.java_found.as_deref(), Some("21.0.5"));
 
-        let no_java = readiness(
-            &game,
-            &client,
-            DownloadSource::default(),
-            &preview(None),
-            &[java(17)],
-        )
-        .await;
+        let no_java = readiness(&game, &client, &preview(None), &[java(17)]).await;
         assert!(no_java.loader_installed, "原版整合包不需要加载器");
         assert_eq!(
             no_java.java_found, None,
@@ -163,14 +145,7 @@ mod tests {
         );
 
         std::fs::write(game.version_jar("1.21.1").unwrap(), b"jar").unwrap();
-        let installed = readiness(
-            &game,
-            &client,
-            DownloadSource::default(),
-            &preview(None),
-            &[java(21)],
-        )
-        .await;
+        let installed = readiness(&game, &client, &preview(None), &[java(21)]).await;
         assert!(installed.game_installed);
     }
 }

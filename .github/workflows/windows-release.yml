@@ -82,7 +82,7 @@ jobs:
           } elseif ($env:SIGN_RELEASE -eq 'true') {
             throw 'Missing MCL_CURSEFORGE_KEY secret: signed releases must ship with the CurseForge API key.'
           } else {
-            '::warning::MCL_CURSEFORGE_KEY is not set; this build can only reach CurseForge through the MCIM mirror.'
+            '::warning::MCL_CURSEFORGE_KEY is not set; CurseForge online browsing and downloads will be disabled in this pre-review build (Modrinth works normally).'
           }
 
       - name: Build unsigned pre-review installer

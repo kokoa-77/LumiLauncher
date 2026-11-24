@@ -2,9 +2,9 @@
 //!
 //! 有的网络会把 Mojang、Modrinth 的域名解析到错的地址（DNS 污染、运营商劫持），下载就一直失败。
 //! 开着时先问 DoH，问不到再用系统 DNS，**不会因为 DoH 坏了就上不了网**：
-//! - 海外官方源（Mojang、Modrinth、CurseForge、NeoForge、Fabric……）先问 Cloudflare，别的（国内镜像）先问阿里，
+//! - 海外官方源（Mojang、Modrinth、CurseForge、NeoForge、Fabric……）先问 Cloudflare，其余域名先问阿里，
 //!   一边问不到再问另一边。实测：阿里会把 `maven.neoforged.net` 答成污染过的地址（连不上），
-//!   Cloudflare 的对；而 BMCLAPI 这类国内镜像，阿里给国内节点、Cloudflare 给海外节点。地址直接写 IP，问 DoH 本身不用解析域名
+//!   Cloudflare 的对。地址直接写 IP，问 DoH 本身不用解析域名
 //! - 系统 DNS 给的是 198.18.x.x（代理软件「假地址」模式，代理在接管域名和分流）：DoH 让开，用系统 DNS，
 //!   不然拿真实地址直连会绕过代理（实测）
 //! - 两个都问不到：这次用系统 DNS，接下来两分钟都直接用系统 DNS（公司、学校网络常常拦 DoH，不让每个域名都等超时）
@@ -565,14 +565,14 @@ mod tests {
         }
     }
 
-    /// 海外官方源先问 Cloudflare（阿里会污染 maven.neoforged.net），国内镜像先问阿里
+    /// 海外官方源先问 Cloudflare（阿里会污染 maven.neoforged.net），其余域名先问阿里
     #[test]
     fn overseas_official_hosts_ask_cloudflare_first() {
         assert!(overseas("maven.neoforged.net"));
         assert!(overseas("piston-meta.mojang.com"));
         assert!(overseas("cdn.modrinth.com"));
         assert!(overseas("modrinth.com"));
-        assert!(!overseas("bmclapi2.bangbang93.com"));
+        assert!(!overseas("example.cn"));
         assert!(!overseas("notmodrinth.com"), "不是子域名的不算");
         assert!(!overseas("mirrors.cernet.edu.cn"));
     }

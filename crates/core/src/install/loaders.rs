@@ -4,9 +4,8 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use super::{InstallError, LoaderContext, LoaderProgress, neoforge, processors, profiles};
-use crate::config::DownloadSource;
 use crate::instance::{LoaderKind, LoaderRef};
-use crate::net::{candidate_urls, get_bytes, get_json};
+use crate::net::{get_bytes, get_json};
 use crate::paths::GameDir;
 
 const FORGE_MAVEN: &str = "https://maven.minecraftforge.net/net/minecraftforge/forge";
@@ -72,7 +71,6 @@ pub fn validate(mc: &str, loader: &LoaderRef) -> Result<(), InstallError> {
 /// NeoForge 可以沿用应用已有的完整版本列表缓存，其余加载器按游戏版本查询。
 pub async fn fetch_versions(
     client: &Client,
-    source: DownloadSource,
     mc: &str,
     kind: LoaderKind,
 ) -> Result<Vec<LoaderVersion>, InstallError> {
@@ -80,7 +78,7 @@ pub async fn fetch_versions(
         return Ok(Vec::new());
     }
     match kind {
-        LoaderKind::NeoForge => Ok(neoforge::fetch_versions(client, source)
+        LoaderKind::NeoForge => Ok(neoforge::fetch_versions(client)
             .await?
             .into_iter()
             .filter(|v| v.game_version == mc)
@@ -90,11 +88,7 @@ pub async fn fetch_versions(
             })
             .collect()),
         LoaderKind::Forge => {
-            let bytes = get_bytes(
-                client,
-                &candidate_urls(&format!("{FORGE_MAVEN}/maven-metadata.xml"), source),
-            )
-            .await?;
+            let bytes = get_bytes(client, &[format!("{FORGE_MAVEN}/maven-metadata.xml")]).await?;
             Ok(forge_versions(&String::from_utf8_lossy(&bytes), mc))
         }
         LoaderKind::Fabric | LoaderKind::Quilt => {
@@ -102,7 +96,7 @@ pub async fn fetch_versions(
                 return Ok(Vec::new());
             };
             let url = format!("{base}/{mc}");
-            let entries: Vec<MetaEntry> = get_json(client, &candidate_urls(&url, source)).await?;
+            let entries: Vec<MetaEntry> = get_json(client, std::slice::from_ref(&url)).await?;
             Ok(sorted_versions(entries.into_iter().map(|entry| {
                 let v = entry.loader;
                 LoaderVersion {

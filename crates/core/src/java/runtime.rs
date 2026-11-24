@@ -1,7 +1,7 @@
 //! Java 自动下载：电脑上没有合适的 Java 时，下载 Mojang 官方运行时（和官方启动器用的是同一份）。
 //!
 //! 流程：总清单 `all.json` → 按平台和组件名（版本文件里的 `javaVersion.component`，例如 `java-runtime-delta`）
-//! 找到这个运行时的文件清单 → 逐个文件下载，每个都校验大小和 SHA-1。官方地址失败自动换 BMCLAPI 镜像。
+//! 找到这个运行时的文件清单 → 逐个文件下载，每个都校验大小和 SHA-1。
 //!
 //! 下载的 Java 放在 `<游戏目录>/.mcl-java/<组件名>/`（和游戏放同一个盘，不占系统盘）。
 //! 全部文件下完、确认能用之后才写标记文件；没有标记文件的目录不算数，下次接着下。
@@ -16,12 +16,11 @@ use tokio_util::sync::CancellationToken;
 
 use super::prefs::JavaPrefs;
 use super::{JavaInstall, JavaOrigin, home_key, inspect, scan, select, subdirs};
-use crate::config::DownloadSource;
 use crate::fs::{AtomicWriteError, UnsafePath, safe_join, write_json_atomic};
 use crate::meta::VersionJson;
 use crate::net::{
-    DownloadError, DownloadItem, DownloadProgress, Downloader, HttpError, candidate_urls,
-    get_bytes, get_json, to_hex,
+    DownloadError, DownloadItem, DownloadProgress, Downloader, HttpError, get_bytes, get_json,
+    to_hex,
 };
 
 const ALL_RUNTIMES_URL: &str = "https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
@@ -173,7 +172,6 @@ pub struct JavaContext<'a> {
     pub locator: &'a JavaLocator,
     pub client: &'a Client,
     pub downloader: &'a Downloader,
-    pub source: DownloadSource,
     pub cancel: &'a CancellationToken,
 }
 
@@ -220,7 +218,7 @@ where
     let platform =
         platform_key(std::env::consts::OS, std::env::consts::ARCH).ok_or_else(not_offered)?;
     let mut all: BTreeMap<String, serde_json::Value> =
-        get_json(ctx.client, &candidate_urls(ALL_RUNTIMES_URL, ctx.source)).await?;
+        get_json(ctx.client, &[ALL_RUNTIMES_URL.to_owned()]).await?;
     let runtimes: BTreeMap<String, Vec<RuntimeEntry>> = all
         .remove(platform)
         .map(serde_json::from_value)
@@ -262,7 +260,7 @@ where
                     executables.push(path.clone());
                 }
                 items.push(DownloadItem {
-                    urls: candidate_urls(&raw.url, ctx.source),
+                    urls: vec![raw.url.clone()],
                     path,
                     sha1: Some(raw.sha1.clone()),
                     size: Some(raw.size),
@@ -298,25 +296,14 @@ where
     Ok(install)
 }
 
-/// 下载运行时的文件清单并核对它自己的 SHA-1（官方和镜像都试）
+/// 从官方地址下载运行时的文件清单并核对它自己的 SHA-1
 async fn fetch_manifest(ctx: &JavaContext<'_>, file: &RemoteFile) -> Result<Manifest, JavaError> {
-    let mut last = JavaError::Manifest("没有可用的地址".to_owned());
-    for url in candidate_urls(&file.url, ctx.source) {
-        let bytes = match get_bytes(ctx.client, std::slice::from_ref(&url)).await {
-            Ok(bytes) => bytes,
-            Err(error) => {
-                last = error.into();
-                continue;
-            }
-        };
-        if !to_hex(&Sha1::digest(&bytes)).eq_ignore_ascii_case(&file.sha1) {
-            tracing::warn!(url, "Java 文件清单校验不对，换下一个下载源");
-            last = JavaError::Manifest("文件清单校验不对".to_owned());
-            continue;
-        }
-        return serde_json::from_slice(&bytes).map_err(|e| JavaError::Manifest(e.to_string()));
+    let bytes = get_bytes(ctx.client, std::slice::from_ref(&file.url)).await?;
+    if !to_hex(&Sha1::digest(&bytes)).eq_ignore_ascii_case(&file.sha1) {
+        tracing::warn!(url = %file.url, "Java 文件清单校验不对");
+        return Err(JavaError::Manifest("文件清单校验不对".to_owned()));
     }
-    Err(last)
+    serde_json::from_slice(&bytes).map_err(|e| JavaError::Manifest(e.to_string()))
 }
 
 #[cfg(unix)]

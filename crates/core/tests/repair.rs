@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use launcher_core::config::DownloadSource;
 use launcher_core::install::LoaderContext;
 use launcher_core::install::setup::repair_version;
 use launcher_core::net::Downloader;
@@ -51,9 +50,9 @@ async fn repairs_same_size_corrupt_client_and_leaves_instance_files_alone() {
     let jar = game.version_jar(version).unwrap();
     std::fs::write(&jar, vec![b'!'; fixed.len()]).unwrap();
     let sentinels = [
-        "instances/d23-fixture/saves/Test/level.dat",
-        "instances/d23-fixture/mods/test.jar",
-        "instances/d23-fixture/options.txt",
+        "instances/repair-fixture/saves/Test/level.dat",
+        "instances/repair-fixture/mods/test.jar",
+        "instances/repair-fixture/options.txt",
     ];
     for name in sentinels {
         let file = root.path().join(name);
@@ -67,8 +66,6 @@ async fn repairs_same_size_corrupt_client_and_leaves_instance_files_alone() {
         game: &game,
         client: &client,
         downloader: &downloader,
-        source: DownloadSource::OfficialOnly,
-        meta_source: DownloadSource::OfficialOnly,
         java: Path::new(""),
         work_dir: root.path(),
         cancel: &cancel,

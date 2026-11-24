@@ -79,7 +79,7 @@ fn permitted(config: &Config, identifier: &str) -> bool {
     }
     // 真机验收用单独的调试安装标识，不改变系统证书和正式发布版的传输配置。
     cfg!(debug_assertions)
-        && identifier == "com.lumilauncher.d25qa"
+        && identifier == "com.lumilauncher.devqa"
         && config.dangerous_insecure_transport_protocol
         && endpoint.scheme() == "http"
         && endpoint.host_str() == Some("127.0.0.1")
@@ -251,7 +251,7 @@ mod tests {
         config.dangerous_insecure_transport_protocol = true;
         assert!(!permitted(&config, "com.lumilauncher.lumi"));
         assert_eq!(
-            permitted(&config, "com.lumilauncher.d25qa"),
+            permitted(&config, "com.lumilauncher.devqa"),
             cfg!(debug_assertions)
         );
     }

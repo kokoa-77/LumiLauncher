@@ -65,7 +65,7 @@ const MAX_KEEP_BACKUPS: u32 = 20;
 #[serde(rename_all = "camelCase")]
 pub struct WorldSettings {
     /// 自动备份：正常退出游戏后备份这次玩过的世界、从首页进世界前世界变过也先备一份。
-    /// 默认关（用户 2026-11-14 选的：占空间，想要的自己打开）
+    /// 默认关闭以节省磁盘空间；需要时可在设置中开启
     pub auto_backup: bool,
     /// 每个世界最多留几份自动备份（手动的、恢复前的不算）
     pub keep_backups: u32,
@@ -212,14 +212,6 @@ pub enum ThemeMode {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadSettings {
-    /// Minecraft 文件、加载器与 Java：游戏文件、资源、依赖库、加载器安装器、Java 运行时从哪下（镜像是 BMCLAPI）
-    pub source: DownloadSource,
-    /// Minecraft 元数据：版本清单、版本描述、加载器的版本列表从哪拿（镜像是 BMCLAPI）
-    pub meta_source: DownloadSource,
-    /// Modrinth：搜索、项目和版本查询、文件下载（镜像是 MCIM；文件总是先官方）
-    pub modrinth_source: DownloadSource,
-    /// CurseForge：搜索、项目和文件查询、文件下载（镜像是 MCIM；Key 不发给镜像）
-    pub curseforge_source: DownloadSource,
     /// 用 DoH 解析下载域名，防 DNS 污染和劫持（不承诺提速）。问不到时自动退回系统 DNS（`net::doh`）。
     pub doh_enabled: bool,
     pub max_concurrency: u32,
@@ -240,10 +232,6 @@ pub struct DownloadSettings {
 impl Default for DownloadSettings {
     fn default() -> Self {
         Self {
-            source: DownloadSource::Official,
-            meta_source: DownloadSource::Official,
-            modrinth_source: DownloadSource::Auto,
-            curseforge_source: DownloadSource::Auto,
             doh_enabled: true,
             max_concurrency: 32,
             move_claimed_files: false,
@@ -344,23 +332,6 @@ impl ProxySettings {
         };
         Some(format!("{scheme}://{formatted_host}:{}", self.port))
     }
-}
-
-/// 下载源（四行设置共用）。镜像：Minecraft 两行是 BMCLAPI，Modrinth、CurseForge 两行是 MCIM
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-#[serde(rename_all = "camelCase")]
-pub enum DownloadSource {
-    /// 自动：Minecraft 两行测一下官方和 BMCLAPI 谁快，先用快的；Modrinth、CurseForge 先官方，
-    /// 失败或太慢时改用 MCIM。都是失败了再换另一个
-    #[default]
-    Auto,
-    /// 先官方，失败再换镜像
-    Official,
-    /// 先镜像，失败再换官方
-    Mirror,
-    /// 只用官方，不碰镜像
-    OfficialOnly,
 }
 
 /// 内容平台（「首选平台」）。和 `content::ContentSource` 的写法一样
@@ -878,7 +849,7 @@ mod tests {
 
         let mut changed = store.get();
         changed.appearance.theme = ThemeMode::Dark;
-        changed.download.source = DownloadSource::Mirror;
+        changed.download.doh_enabled = false;
         store.set(changed.clone()).unwrap();
 
         assert_eq!(SettingsStore::open(&path).get(), changed);
@@ -914,24 +885,19 @@ mod tests {
 
     #[test]
     fn old_download_settings_keep_their_values() {
-        // 加了「补件认领后移走」：以前保存的设置没有这个字段，其他值不能因此丢掉
+        // 加了「补件认领后移走」并移除了旧下载源字段：以前保存的设置能正常忽略旧键并保留其余值
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         std::fs::write(
             &path,
-            r#"{ "download": { "source": "mirror", "dohEnabled": false, "maxConcurrency": 8 } }"#,
+            r#"{ "download": { "source": "official", "dohEnabled": false, "maxConcurrency": 8 } }"#,
         )
         .unwrap();
 
         let download = SettingsStore::open(&path).get().download;
-        assert_eq!(download.source, DownloadSource::Mirror);
         assert!(!download.doh_enabled);
         assert_eq!(download.max_concurrency, 8);
         assert!(!download.move_claimed_files, "默认复制，不移走");
-        // 后来加的几项和三个下载源也有默认值
-        assert_eq!(download.meta_source, DownloadSource::Official);
-        assert_eq!(download.modrinth_source, DownloadSource::Auto);
-        assert_eq!(download.curseforge_source, DownloadSource::Auto);
         assert_eq!(download.preferred_platform, Platform::Modrinth);
         assert!(download.auto_dependencies, "默认自动装前置");
         assert_eq!(download.claim_folder, None);

@@ -33,7 +33,7 @@ import {
   jobSpeed,
   stateTone,
 } from "@/lib/jobs";
-import { logError, reportError } from "@/lib/report";
+import { reportError } from "@/lib/report";
 import { useAppStore } from "@/stores/app";
 import { useGameStore } from "@/stores/game";
 import { Button } from "../ui/Button";
@@ -80,9 +80,9 @@ function Dot({ tone, children }: { tone: string; children: string }) {
 }
 
 /**
- * 下载历史里的一条（排版参考了你发的下载页）：
+ * 下载历史里的一条记录：
  * 第一行名字、来源标签、「● 状态」，实例删了再加「● 实例已删除」；
- * 第二行「状态 · 时间 · 目标实例：某某 · 用了多久」；下游戏文件的再一行「下载源：官方 · 换源 3 次」；
+ * 第二行「状态 · 时间 · 目标实例：某某 · 用了多久」；
  * 进行中的有进度条、速度、还剩多久，失败的写原因。右边：重试 / 取消、打开实例、复制诊断信息、展开每一步、删除这条。
  */
 function DownloadRow({
@@ -124,14 +124,7 @@ function DownloadRow({
   ]
     .filter(Boolean)
     .join(" · ");
-  const via = job.downloadSource
-    ? [
-        t("downloads.via", { source: t(`downloads.viaSource.${job.downloadSource}`) }),
-        job.fallbacks > 0 ? t("downloads.fallbacks", { n: job.fallbacks }) : null,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : null;
+  const via = job.fallbacks > 0 ? t("downloads.fallbacks", { n: job.fallbacks }) : null;
 
   const retry = async () => {
     setRetrying(true);
@@ -142,14 +135,10 @@ function DownloadRow({
     setRetrying(false);
   };
 
-  const copy = async () => {
-    const speed = await commands.netSpeedLast().catch((error: unknown) => {
-      logError(error, "读取最近一次测速");
-      return null;
-    });
+  const copy = () => {
     const text = jobDiagnostics(
       job,
-      { appVersion: version, instanceName: instance?.name ?? null, settings, speed },
+      { appVersion: version, instanceName: instance?.name ?? null, settings },
       t,
     );
     navigator.clipboard

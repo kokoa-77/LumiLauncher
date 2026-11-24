@@ -191,7 +191,7 @@ export function CommandPalette() {
         group: "pages",
         title: t("palette.settings", { section: t("settings.download") }),
         keywords:
-          "settings download mirror doh proxy bmclapi mcim shezhi xiazai 下载源 镜像 测速 代理 并发 连通性 网络诊断 补件 前置 平台",
+          "settings download doh proxy shezhi xiazai 下载 代理 并发 连通性 网络诊断 补件 前置 平台",
         icon: iconOf(Download),
         run: settings("download"),
       },

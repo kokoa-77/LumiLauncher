@@ -20,7 +20,6 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
-use super::mirrors::{ModPlatform, mod_file_mirror};
 use super::{to_hex, url_host};
 use crate::redact::Secret;
 
@@ -34,7 +33,7 @@ const RETRY_BASE_DELAY: Duration = Duration::from_millis(500);
 /// 一个要下载的文件。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadItem {
-    /// 候选地址，按尝试顺序排列（一般由 `mirrors::candidate_urls` 生成）
+    /// 候选地址，按尝试顺序排列
     pub urls: Vec<String>,
     /// 保存位置（调用方负责保证它在允许的目录里）
     pub path: PathBuf,
@@ -170,15 +169,6 @@ pub struct Downloader {
     concurrency: usize,
     quick_verify: bool,
     host_header: Option<HostHeader>,
-    mod_mirrors: ModMirrors,
-}
-
-/// 模组文件能不能退到 MCIM 镜像（按「Modrinth」「CurseForge」两行下载源设置；只用官方时关）。
-/// 文件总是先从官方 CDN 下，官方的地址都失败了才试镜像。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ModMirrors {
-    pub modrinth: bool,
-    pub curseforge: bool,
 }
 
 impl Downloader {
@@ -188,32 +178,7 @@ impl Downloader {
             concurrency: concurrency.max(1),
             quick_verify: false,
             host_header: None,
-            mod_mirrors: ModMirrors::default(),
         }
-    }
-
-    /// 模组文件失败时退到 MCIM 镜像
-    pub fn with_mod_mirrors(mut self, mirrors: ModMirrors) -> Self {
-        self.mod_mirrors = mirrors;
-        self
-    }
-
-    /// 一个文件要试的地址：原来的地址照原顺序，后面补上允许的 MCIM 镜像（官方总是在前）
-    fn candidates(&self, item: &DownloadItem) -> Vec<String> {
-        let mut urls = item.urls.clone();
-        for url in &item.urls {
-            let Some((platform, mirror)) = mod_file_mirror(url) else {
-                continue;
-            };
-            let allowed = match platform {
-                ModPlatform::Modrinth => self.mod_mirrors.modrinth,
-                ModPlatform::CurseForge => self.mod_mirrors.curseforge,
-            };
-            if allowed && !urls.contains(&mirror) {
-                urls.push(mirror);
-            }
-        }
-        urls
     }
 
     /// 给指定域名的下载带上请求头（凭据）。
@@ -310,7 +275,7 @@ impl Downloader {
         }
 
         let mut last_reason = String::from("没有可用的下载地址");
-        for (index, url) in self.candidates(item).iter().enumerate() {
+        for (index, url) in item.urls.iter().enumerate() {
             for attempt in 0..ATTEMPTS_PER_URL {
                 let mut credit = Credit { counters, bytes: 0 };
                 match self
@@ -600,37 +565,6 @@ mod tests {
         ] {
             assert!(!header.applies_to(other), "{other}");
         }
-    }
-
-    /// 模组文件官方在前，MCIM 补在后面；关掉的平台不补，别的地址不动
-    #[test]
-    fn mod_files_get_an_mcim_fallback_after_the_official_cdn() {
-        let item = |url: &str| DownloadItem {
-            urls: vec![url.to_owned()],
-            path: PathBuf::from("a.jar"),
-            sha1: None,
-            size: None,
-        };
-        let downloader = Downloader::new(Client::new(), 1).with_mod_mirrors(ModMirrors {
-            modrinth: true,
-            curseforge: false,
-        });
-        assert_eq!(
-            downloader.candidates(&item("https://cdn.modrinth.com/data/x/a.jar")),
-            [
-                "https://cdn.modrinth.com/data/x/a.jar",
-                "https://mod.mcimirror.top/data/x/a.jar"
-            ]
-        );
-        assert_eq!(
-            downloader.candidates(&item("https://edge.forgecdn.net/files/1/2/a.jar")),
-            ["https://edge.forgecdn.net/files/1/2/a.jar"],
-            "CurseForge 那行只用官方"
-        );
-        assert_eq!(
-            downloader.candidates(&item("https://libraries.minecraft.net/a.jar")),
-            ["https://libraries.minecraft.net/a.jar"]
-        );
     }
 
     #[test]

@@ -21,7 +21,7 @@ fn recognizes_five_failures_and_keeps_an_unknown_fallback() {
             CrashKind::Dependency,
         ),
         (
-            "Incompatible mods found!\n[HARD_DEP_NO_CANDIDATE d23needs depends d23missing]\n模组 d23needs 需要 d23missing，但没有安装它！",
+            "Incompatible mods found!\n[HARD_DEP_NO_CANDIDATE mod_needs depends mod_missing]\n模组 mod_needs 需要 mod_missing，但没有安装它！",
             CrashKind::Dependency,
         ),
         (

@@ -242,12 +242,6 @@ export function SettingsDialog() {
         keywords: "modrinth curseforge 平台 前置",
       },
       {
-        id: "sources",
-        section: "download",
-        label: t("settings.source"),
-        keywords: "bmclapi mcim mirror 镜像 下载源 测速",
-      },
-      {
         id: "concurrency",
         section: "download",
         label: t("settings.maxConcurrency"),

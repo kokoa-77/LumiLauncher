@@ -31,13 +31,11 @@ async fn settings_view(
     state: &AppState,
     instance: launcher_core::instance::Instance,
 ) -> InstanceSettingsView {
-    let source = state.meta_source_now();
     // 挂上的别家版本：版本描述在别家的 .minecraft 里
     let required_java = match launcher_core::install::load_or_fetch_version(
         &instance.files(&state.game()),
         &instance.version_id(),
         &state.http_client(),
-        source,
     )
     .await
     {

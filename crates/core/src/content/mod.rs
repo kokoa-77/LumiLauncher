@@ -19,7 +19,6 @@ pub mod fingerprint;
 pub mod identify;
 pub mod journal;
 pub mod maps;
-pub mod mirror;
 pub mod modrinth;
 pub mod names;
 pub mod snapshot;
@@ -3091,7 +3090,7 @@ mod tests {
         assert!(result.lookup_failed);
     }
 
-    /// 验收时你连着装两个共用前置的模组：两个一起下完，先后放进实例。
+    /// 连续安装两个共用前置的模组：两个一起下完，先后放进实例。
     /// 前置只放一份，第二次的改动历史里没有它（撤销第二个时不会把第一个要的前置删掉）
     #[tokio::test]
     async fn two_installs_sharing_a_dependency_place_it_once() {
@@ -3146,7 +3145,7 @@ mod tests {
 
     #[test]
     fn update_keeps_icon_of_hand_added_mods() {
-        // 验收发现：手动放进来的 Jade 更新后图标没了（旧文件没有安装记录）
+        // 手动放进来的模组没有安装记录，更新后仍保留原有图标
         let dir = tempfile::tempdir().unwrap();
         let mut cache = IdentityCache::load(dir.path());
         let old_sha1 = "a".repeat(40);
@@ -3610,7 +3609,7 @@ mod tests {
         *content.fault.lock().unwrap() = fault;
     }
 
-    /// 方案的验收：每种操作在每一步之前被打断（启动器被关掉），下次打开都退回成一模一样的「改之前」，
+    /// 崩溃恢复不变量：每种操作在每一步之前被打断（启动器被关掉），下次打开都退回成一模一样的「改之前」，
     /// 退回本身再做一遍也不出错
     #[tokio::test]
     async fn every_interruption_goes_back_to_exactly_before() {

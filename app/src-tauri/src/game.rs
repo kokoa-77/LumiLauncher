@@ -57,19 +57,11 @@ fn now() -> f64 {
 /// 下载器：CurseForge 的 CDN 要带 Key（只对 CurseForge 的域名带）
 pub(crate) fn downloader(state: &AppState) -> Downloader {
     let settings = state.settings.get();
-    // 模组文件官方 CDN 下不了时退到 MCIM；那一行选了「仅官方源」就不退
-    let mod_mirrors = launcher_core::net::ModMirrors {
-        modrinth: settings.download.modrinth_source
-            != launcher_core::config::DownloadSource::OfficialOnly,
-        curseforge: settings.download.curseforge_source
-            != launcher_core::config::DownloadSource::OfficialOnly,
-    };
     Downloader::new(
         state.http_client(),
         settings.download.max_concurrency as usize,
     )
     .with_host_header(state.curseforge.download_header())
-    .with_mod_mirrors(mod_mirrors)
 }
 
 pub(crate) fn load_instance(state: &AppState, id: &str) -> Result<Instance, AppError> {
@@ -240,8 +232,6 @@ pub fn instances_create(
         let state = app.state::<AppState>();
         let result = async {
             let downloader = downloader(&state);
-            let source = state.source().await;
-            job.set_download_source(source);
             let java = pick_java_for(&state, &job, &downloader, &game_version).await?;
             let game = state.game();
             let work_dir = game.root().join(".mcl-tmp").join("create");
@@ -250,8 +240,6 @@ pub fn instances_create(
                 game: &game,
                 client: &state.http_client(),
                 downloader: &downloader,
-                source,
-                meta_source: state.meta_source().await,
                 java: &java,
                 work_dir: &work_dir,
                 cancel: &cancel,
@@ -340,20 +328,12 @@ pub fn instances_repair_files(
             let downloader = downloader(&state).quick_verify(false);
             let config = &instance.config;
             let version_id = instance.version_id();
-            let source = state.source_now();
-            let meta_source = state.meta_source_now();
             job.set_step("检查版本文件");
             let java = if config.loader.as_ref().is_some_and(|loader| {
                 loader.kind.uses_processor()
                     && loader.version_id(&config.game_version) == version_id
             }) {
-                repair_base_metadata(
-                    &game,
-                    &config.game_version,
-                    &state.http_client(),
-                    meta_source,
-                )
-                .await?;
+                repair_base_metadata(&game, &config.game_version, &state.http_client()).await?;
                 pick_java_for(&state, &job, &downloader, &config.game_version).await?
             } else {
                 PathBuf::new()
@@ -363,8 +343,6 @@ pub fn instances_repair_files(
                 game: &game,
                 client: &state.http_client(),
                 downloader: &downloader,
-                source,
-                meta_source,
                 java: &java,
                 work_dir: &work_dir,
                 cancel: &cancel,
@@ -404,12 +382,10 @@ pub(crate) async fn pick_java_for(
     downloader: &Downloader,
     game_version: &str,
 ) -> Result<std::path::PathBuf, AppError> {
-    let source = state.source().await;
     let vanilla = launcher_core::install::load_or_fetch_version(
         &state.game(),
         game_version,
         &state.http_client(),
-        state.meta_source().await,
     )
     .await?;
     let request = JavaRequest::of(&vanilla);
@@ -419,7 +395,6 @@ pub(crate) async fn pick_java_for(
         locator: &locator,
         client: &state.http_client(),
         downloader,
-        source,
         cancel: &cancel,
     };
     let label = format!("下载 Java {}", request.major);
@@ -442,8 +417,7 @@ pub async fn catalog_game_versions(state: State<'_, AppState>) -> Result<Vec<Str
     {
         return Ok(cached);
     }
-    // 打开版本列表要快：不等测速
-    let manifest = fetch_manifest(&state.http_client(), state.meta_source_now()).await?;
+    let manifest = fetch_manifest(&state.http_client()).await?;
     let mut versions: Vec<String> = manifest
         .versions
         .into_iter()
@@ -477,8 +451,7 @@ pub async fn catalog_neoforge_versions(
     let all = match cached {
         Some(all) => all,
         None => {
-            let all =
-                neoforge::fetch_versions(&state.http_client(), state.meta_source_now()).await?;
+            let all = neoforge::fetch_versions(&state.http_client()).await?;
             *state
                 .catalog
                 .neoforge
@@ -516,13 +489,7 @@ pub async fn catalog_loader_versions(
                 .collect(),
         ));
     }
-    let versions = loaders::fetch_versions(
-        &state.http_client(),
-        state.meta_source_now(),
-        &game_version,
-        kind,
-    )
-    .await?;
+    let versions = loaders::fetch_versions(&state.http_client(), &game_version, kind).await?;
     Ok(Some(versions))
 }
 
@@ -702,8 +669,6 @@ pub fn launch_start(
                     game: &game,
                     client: &state.http_client(),
                     downloader: &downloader,
-                    source: state.source_now(),
-                    meta_source: state.meta_source_now(),
                     temp_root: &temp_root,
                     cancel: &cancel,
                     account,
@@ -2046,14 +2011,8 @@ pub async fn modpack_pick(
 pub(crate) async fn pack_choice(state: &AppState, path: PathBuf) -> Result<PackChoice, AppError> {
     let plan = inspect_file(state, path).await?;
     let javas = scan_java(state).await;
-    let readiness = ready::readiness(
-        &state.game(),
-        &state.http_client(),
-        state.meta_source_now(),
-        &plan.preview,
-        &javas,
-    )
-    .await;
+    let readiness =
+        ready::readiness(&state.game(), &state.http_client(), &plan.preview, &javas).await;
     let token = uuid::Uuid::new_v4().simple().to_string();
     let preview = plan.preview.clone();
     state
@@ -2222,7 +2181,6 @@ pub async fn modpack_readiness(
     Ok(ready::for_game(
         &state.game(),
         &state.http_client(),
-        state.meta_source_now(),
         &game_version,
         None,
         &javas,
@@ -2333,8 +2291,6 @@ async fn import_plan(
     resume_key: &str,
 ) -> Result<Instance, AppError> {
     let downloader = downloader(state);
-    let source = state.source().await;
-    job.set_download_source(source);
     let java = pick_java_for(state, job, &downloader, &plan.preview.game_version).await?;
     let claim = crate::claims::start(
         app,
@@ -2351,8 +2307,6 @@ async fn import_plan(
             game: &game,
             client: &state.http_client(),
             downloader: &downloader,
-            source,
-            meta_source: state.meta_source().await,
             java: &java,
             work_dir: &temp_root,
             cancel: &cancel,

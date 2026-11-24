@@ -45,10 +45,6 @@ const settings: Settings = {
   },
   autoCheckUpdates: true,
   download: {
-    source: "official",
-    metaSource: "official",
-    modrinthSource: "auto",
-    curseforgeSource: "auto",
     dohEnabled: true,
     maxConcurrency: 32,
     moveClaimedFiles: false,
