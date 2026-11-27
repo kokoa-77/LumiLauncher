@@ -70,6 +70,21 @@ const HARD_EXCLUDE_TOP: &[&str] = &[
     "axolotl_config.json",
 ];
 
+fn is_hard_excluded_top(name: &str) -> bool {
+    if HARD_EXCLUDE_TOP
+        .iter()
+        .any(|n| n.eq_ignore_ascii_case(name))
+    {
+        return true;
+    }
+    let lower = name.to_ascii_lowercase();
+    (lower.starts_with("hs_err_pid") && lower.ends_with(".log"))
+        || (lower.starts_with("replay_pid") && lower.ends_with(".log"))
+        || lower.ends_with(".mdmp")
+        || lower.ends_with(".dmp")
+        || lower.ends_with(".hprof")
+}
+
 /// 顶层折叠为单个隐私/缓存节点（默认不勾选，防止上万张小地图瓦片或截图撑爆文件树）
 const COLLAPSED_PRIVACY_DIRS: &[&str] = &[
     "screenshots",
@@ -645,9 +660,7 @@ fn scan_sync(game: &GameDir, instance: &Instance) -> Result<ExportPlan, ModpackE
         };
         let lower = name.to_lowercase();
         let file_type = entry.file_type().map_err(io_error(&entry.path()))?;
-        let skipped = HARD_EXCLUDE_TOP
-            .iter()
-            .any(|n| n.eq_ignore_ascii_case(&name))
+        let skipped = is_hard_excluded_top(&name)
             || lower.starts_with("natives")
             || lower == own_json
             || lower == own_jar
@@ -1385,13 +1398,21 @@ fn build_mmc_pack(
     }];
     if let Some(loader) = loader {
         let (uid, cached_name) = match loader.kind {
-            LoaderKind::NeoForge => ("net.neoforge", "NeoForge"),
+            LoaderKind::NeoForge => ("net.neoforged", "NeoForge"),
             LoaderKind::Fabric => ("net.fabricmc.fabric-loader", "Fabric Loader"),
             LoaderKind::Forge => ("net.minecraftforge", "Forge"),
             LoaderKind::Quilt => ("org.quiltmc.quilt-loader", "Quilt Loader"),
             LoaderKind::LegacyFabric => ("net.fabricmc.fabric-loader", "Legacy Fabric"),
             LoaderKind::Babric => ("net.fabricmc.fabric-loader", "Babric Loader"),
         };
+        if loader.kind == LoaderKind::LegacyFabric {
+            components.push(MmcComponentOut {
+                uid: "net.legacyfabric.intermediary".to_owned(),
+                version: Some(game_version.to_owned()),
+                cached_name: Some("Legacy Fabric Intermediary".to_owned()),
+                important: false,
+            });
+        }
         components.push(MmcComponentOut {
             uid: uid.to_owned(),
             version: Some(canonical_loader_version(game_version, loader).to_owned()),
@@ -1954,6 +1975,63 @@ mod tests {
             mr_zip
                 .by_name("overrides/mods/only-here.jar.disabled")
                 .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn multimc_export_uses_neoforged_uid_and_excludes_jvm_crash_dumps() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = GameDir::new(dir.path());
+        let mut config = InstanceConfig::new(
+            "NF Pack",
+            "1.21.1",
+            Some(LoaderRef {
+                kind: LoaderKind::NeoForge,
+                version: "21.1.77".to_owned(),
+            }),
+        );
+        config.version_id = "neoforge-21.1.77".to_owned();
+        let instance = crate::instance::register(&game, "nf-pack", &config).unwrap();
+        let inst_dir = instance.game_dir(&game).unwrap();
+        std::fs::create_dir_all(&inst_dir).unwrap();
+        std::fs::write(
+            inst_dir.join("hs_err_pid1234.log"),
+            b"user=C:\\Users\\secret",
+        )
+        .unwrap();
+        std::fs::write(inst_dir.join("replay_pid56.log"), b"replay").unwrap();
+        std::fs::write(inst_dir.join("crash.mdmp"), b"dump").unwrap();
+        std::fs::write(inst_dir.join("options.txt"), b"fov:0.0\n").unwrap();
+
+        let plan = scan_plan(&game, &instance).await.unwrap();
+        assert!(!plan.nodes.iter().any(|n| n.key.contains("hs_err_pid")));
+        assert!(!plan.nodes.iter().any(|n| n.key.contains("replay_pid")));
+        assert!(!plan.nodes.iter().any(|n| n.key.ends_with(".mdmp")));
+
+        let mmc_dest = dir.path().join("nf.zip");
+        plan.write(
+            &ExportOptions {
+                format: ExportFormat::MultiMc,
+                name: "NF Pack".to_owned(),
+                version: "1.0.0".to_owned(),
+                author: None,
+                summary: None,
+                recommended_memory_mb: None,
+                selected_keys: vec!["options.txt".to_owned()],
+            },
+            &mmc_dest,
+            &CancellationToken::new(),
+            |_| {},
+        )
+        .unwrap();
+
+        let reinspected = crate::modpack::multimc::inspect(&mmc_dest).unwrap();
+        assert_eq!(
+            reinspected.preview.loader,
+            Some(LoaderRef {
+                kind: LoaderKind::NeoForge,
+                version: "21.1.77".to_owned(),
+            })
         );
     }
 }

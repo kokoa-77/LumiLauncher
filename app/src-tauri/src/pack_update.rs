@@ -238,6 +238,14 @@ fn cache_plan(state: &AppState, plan: update::PackUpdatePlan) -> PackUpdateChoic
 #[tauri::command]
 #[specta::specta]
 pub fn modpack_update_discard(state: State<'_, AppState>, token: String) {
+    if let Some(cancel) = state
+        .pack_update_preview_cancel
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+    {
+        cancel.cancel();
+    }
     let removed = state
         .pending_pack_updates
         .lock()
@@ -271,24 +279,39 @@ pub fn modpack_update_start(
             )
         })?;
 
-    let instance_id = plan.preview.instance_id.clone();
-    let instance = load_instance(&state, &instance_id)?;
-    ensure_idle(&state, &instance_id, &instance.config.name, "更新整合包")?;
+    let start_setup = (|| -> Result<_, AppError> {
+        let instance_id = plan.preview.instance_id.clone();
+        let instance = load_instance(&state, &instance_id)?;
+        ensure_idle(&state, &instance_id, &instance.config.name, "更新整合包")?;
 
-    let game = state.game();
-    let directory = instance.game_dir(&game)?;
-    let turn = state.turns.try_take(&directory).ok_or_else(busy_error)?;
+        let game = state.game();
+        let directory = instance.game_dir(&game)?;
+        let turn = state.turns.try_take(&directory).ok_or_else(busy_error)?;
 
-    let title = format!(
-        "更新整合包 {} → {}",
-        plan.preview.pack_name, plan.preview.target_pack_version
-    );
-    let job = state.jobs.start_with(
-        format!("modpack-update:{instance_id}"),
-        title,
-        ProgressUnit::Bytes,
-        crate::downloads::meta(JobSource::Game, Some(&instance_id), None, None),
-    )?;
+        let title = format!(
+            "更新整合包 {} → {}",
+            plan.preview.pack_name, plan.preview.target_pack_version
+        );
+        let job = state.jobs.start_with(
+            format!("modpack-update:{instance_id}"),
+            title,
+            ProgressUnit::Bytes,
+            crate::downloads::meta(JobSource::Game, Some(&instance_id), None, None),
+        )?;
+        Ok((instance_id, game, turn, job))
+    })();
+
+    let (_instance_id, game, turn, job) = match start_setup {
+        Ok(ok) => ok,
+        Err(err) => {
+            state
+                .pending_pack_updates
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(token, plan);
+            return Err(err);
+        }
+    };
     let job_id = job.id().to_owned();
 
     tauri::async_runtime::spawn(async move {

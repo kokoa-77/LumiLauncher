@@ -75,11 +75,11 @@ export const THIRD_PARTY_ENTRIES: readonly ThirdPartyEntry[] = [
   },
   {
     category: "rust",
-    name: "reqwest & futures-util",
+    name: "reqwest, rustls & futures-util",
     license: "MIT / Apache-2.0",
     usage: {
-      zh: "基于 rustls 与 HTTP/2 的网络请求与并发流式下载",
-      en: "HTTP/2 networking with rustls, system proxy support, and concurrent streaming downloads",
+      zh: "基于 rustls 与 HTTP/2 的网络请求、TLS 错误细分与并发流式下载",
+      en: "HTTP/2 networking with rustls TLS inspection, system proxy support, and concurrent streaming downloads",
     },
   },
   {
@@ -150,8 +150,8 @@ export const THIRD_PARTY_ENTRIES: readonly ThirdPartyEntry[] = [
     name: "rusqlite (bundled SQLite)",
     license: "MIT",
     usage: {
-      zh: "只读解析 Modrinth App 的实例清单以导入实例",
-      en: "Read-only inspection of Modrinth App instance databases during import",
+      zh: "本地内容复用与去重索引，以及 Modrinth App 实例清单的只读导入",
+      en: "Local content hydration index and read-only inspection of Modrinth App instance databases during import",
     },
   },
   {
@@ -174,11 +174,11 @@ export const THIRD_PARTY_ENTRIES: readonly ThirdPartyEntry[] = [
   },
   {
     category: "rust",
-    name: "windows-sys & windows-version",
+    name: "windows, windows-sys & windows-version",
     license: "MIT / Apache-2.0",
     usage: {
-      zh: "Windows 版本识别（云母背景）与受控内存整理接口封装",
-      en: "Windows version checks for Mica backdrop and controlled memory trim bindings",
+      zh: "Windows 版本识别（云母背景）、代理辅助检测与受控内存整理接口封装",
+      en: "Windows version checks for Mica backdrop, proxy helpers, and controlled memory trim bindings",
     },
   },
   {

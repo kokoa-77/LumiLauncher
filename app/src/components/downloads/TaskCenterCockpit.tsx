@@ -39,7 +39,7 @@ import {
   playableAfter,
   stateTone,
 } from "@/lib/jobs";
-import { reportError } from "@/lib/report";
+import { logError, reportError } from "@/lib/report";
 import { type SettingsSection, useAppStore } from "@/stores/app";
 import { isComplete, settledCount, useClaimStore } from "@/stores/claims";
 import { seedDownloadMetrics, useDownloadMetricsStore } from "@/stores/downloadMetrics";
@@ -149,7 +149,7 @@ function DiagnosisCard({
   };
 
   return (
-    <div className="mx-3 mt-2 rounded-control border border-warning/40 bg-warning/10 p-3 text-xs">
+    <div className="mx-3 mt-2 rounded-panel border border-warning/40 bg-warning/10 p-3 text-xs">
       <div className="flex items-start gap-2">
         <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
         <div className="min-w-0 flex-1">
@@ -340,7 +340,7 @@ export default function TaskCenterCockpit({
       .then((snap) => {
         if (alive) seedDownloadMetrics(snap);
       })
-      .catch(() => {});
+      .catch((error: unknown) => logError(error, "读取下载实时状态"));
     return () => {
       alive = false;
     };
@@ -355,11 +355,24 @@ export default function TaskCenterCockpit({
     [list],
   );
 
-  const failedWithDiag = useMemo(
-    () => list.find((j) => j.state === "failed" && (j.diagnosis || (j.failedCount ?? 0) > 0)),
-    [list],
-  );
-  const diagnosis = metrics?.activeDiagnosis ?? failedWithDiag?.diagnosis ?? null;
+  const { diagnosis, diagnosisJobId } = useMemo(() => {
+    const active = metrics?.activeDiagnosis ?? null;
+    if (active) {
+      const matchingJob = list.find(
+        (j) =>
+          j.state === "failed" &&
+          j.diagnosis?.cause === active.cause &&
+          j.diagnosis?.summary === active.summary &&
+          (j.failedCount ?? 0) > 0,
+      );
+      return { diagnosis: active, diagnosisJobId: matchingJob?.id ?? null };
+    }
+    const fallbackJob = list.find((j) => j.state === "failed" && j.diagnosis);
+    return {
+      diagnosis: fallbackJob?.diagnosis ?? null,
+      diagnosisJobId: fallbackJob && (fallbackJob.failedCount ?? 0) > 0 ? fallbackJob.id : null,
+    };
+  }, [list, metrics?.activeDiagnosis]);
 
   const speedBps = metrics?.speedBytesPerSec ?? 0;
   const limitKib = metrics?.effectiveSpeedLimitKib ?? 0;
@@ -416,7 +429,7 @@ export default function TaskCenterCockpit({
       </div>
 
       {metrics?.metered && settings?.download.meteredPolicy === "warn" && (
-        <div className="mx-3 mt-2 flex items-center justify-between gap-2 rounded-control border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
+        <div className="mx-3 mt-2 flex items-center justify-between gap-2 rounded-panel border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
           <span className="flex min-w-0 items-center gap-1.5 text-fg">
             <Wifi className="size-3.5 shrink-0 text-warning" aria-hidden />
             <span className="truncate">{t("tasks.meteredBanner")}</span>
@@ -467,7 +480,7 @@ export default function TaskCenterCockpit({
           </div>
 
           {(metrics.reusedBytes ?? 0) > 0 && (
-            <div className="flex items-center gap-1.5 rounded-control bg-accent-soft px-2.5 py-1 text-2xs text-accent tabular-nums">
+            <div className="flex items-center gap-1.5 rounded-panel bg-accent-soft px-2.5 py-1 text-2xs text-accent tabular-nums">
               <Sparkles className="size-3.5 shrink-0" aria-hidden />
               <span>
                 {t("tasks.reusedBanner", {
@@ -512,11 +525,7 @@ export default function TaskCenterCockpit({
       )}
 
       {diagnosis && (
-        <DiagnosisCard
-          diagnosis={diagnosis}
-          failedJobId={failedWithDiag?.id ?? null}
-          onApplied={onClose}
-        />
+        <DiagnosisCard diagnosis={diagnosis} failedJobId={diagnosisJobId} onApplied={onClose} />
       )}
 
       {list.length === 0 ? (

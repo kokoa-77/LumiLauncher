@@ -305,8 +305,8 @@ export default function UpdatePackDialog({
   const startUpdate = async () => {
     if (!choice || starting) return;
     setStarting(true);
+    const token = choice.token;
     try {
-      const token = choice.token;
       tokenRef.current = null;
       const jobId = unwrap(
         await commands.modpackUpdateStart(token, {
@@ -316,6 +316,7 @@ export default function UpdatePackDialog({
       useGameStore.getState().showTasksFor(jobId);
       onClose();
     } catch (error) {
+      tokenRef.current = token;
       reportError(error, t("packUpdate.failed"));
       setStarting(false);
     }
@@ -748,8 +749,8 @@ export default function UpdatePackDialog({
               </div>
 
               {!preview.hasOriginBaseline && (
-                <div className="flex items-start gap-2 rounded-panel border border-line bg-surface-2 px-3 py-2 text-fg-muted text-xs">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-hidden />
+                <div className="flex items-start gap-2 rounded-panel border border-warning/40 bg-warning/10 px-3 py-2 text-fg text-xs">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
                   <p>{t("packUpdate.noOriginHint")}</p>
                 </div>
               )}

@@ -25,7 +25,7 @@ struct VersionParent {
 const JAVA_DIR: &str = ".mcl-java";
 const THUMBS_DIR: &str = "thumbs";
 const BACKUPS_SUBDIR: &str = "backups";
-const TEMP_PREFIXES: &[&str] = &[".mcl-temp", ".mcl-drops", ".mcl-pack-"];
+const TEMP_PREFIXES: &[&str] = &[".mcl-temp", ".mcl-drops", ".mcl-pack-", ".mcl-tmp"];
 /// 清理旧日志时至少保留最近几份，方便排查最近的问题
 const KEEP_RECENT_LOGS: usize = 2;
 
@@ -416,11 +416,6 @@ fn scan_cache_targets(
         }
     }
 
-    let (orphan_bytes, orphan_files) =
-        crate::net::scan_orphan_part_files(game.root(), std::time::Duration::from_secs(24 * 3600));
-    bytes = bytes.saturating_add(orphan_bytes);
-    files = files.saturating_add(orphan_files);
-
     (bytes, files)
 }
 
@@ -690,5 +685,25 @@ mod tests {
         assert!(!path_contains_bang(Path::new(
             r"D:\Games\Minecraft\.minecraft"
         )));
+    }
+
+    #[test]
+    fn scan_cache_targets_counts_orphan_parts_once_and_includes_mcl_tmp() {
+        let root = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let game = GameDir::new(root.path());
+
+        let mcl_tmp = game.root().join(".mcl-tmp").join("pack-update-dl-123");
+        std::fs::create_dir_all(&mcl_tmp).unwrap();
+        std::fs::write(mcl_tmp.join("pack.mrpack"), vec![1u8; 256]).unwrap();
+
+        let (bytes, files) = scan_cache_targets(&game, data.path(), &HashSet::new());
+        assert_eq!(bytes, 256);
+        assert_eq!(files, 1);
+
+        let cleaned = clean_cache(&game, data.path(), &HashSet::new());
+        assert_eq!(cleaned.freed_bytes, 256.0);
+        assert_eq!(cleaned.removed_files, 1);
+        assert!(!game.root().join(".mcl-tmp").exists());
     }
 }

@@ -82,6 +82,8 @@ pub struct AppState {
     pub upgrade_preview_cancels: Mutex<HashMap<String, tokio_util::sync::CancellationToken>>,
     /// 整合包无损更新：已完成三方比对、等用户确认的更新计划（一次性令牌）
     pub pending_pack_updates: Mutex<HashMap<String, PackUpdatePlan>>,
+    /// 整合包无损更新：正在下载远端整合包用于预检的取消令牌
+    pub pack_update_preview_cancel: Mutex<Option<tokio_util::sync::CancellationToken>>,
     /// 整合包导出：已本地扫描完毕、可选已匹配外链的导出计划（按弹窗令牌缓存）
     pub pending_exports: Mutex<HashMap<String, PendingExport>>,
     /// 拖进窗口、还没装也没取消的文件（一次性编号 → 认出来的结果）

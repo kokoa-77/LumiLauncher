@@ -321,6 +321,8 @@ pub async fn preview(
             true,
             true,
             false,
+            false,
+            false,
             has_worlds,
             patch_names,
             &items,
@@ -337,6 +339,8 @@ pub async fn preview(
             None,
             same_game_version,
             same_loader_kind,
+            false,
+            false,
             false,
             has_worlds,
             patch_names,
@@ -380,6 +384,8 @@ pub async fn preview(
         same_game_version,
         same_loader_kind,
         check.lookup_failed,
+        check.modrinth_failed,
+        check.curseforge_failed,
         has_worlds,
         patch_names,
         &items,
@@ -396,6 +402,8 @@ fn build_plan(
     same_game_version: bool,
     same_loader_kind: bool,
     lookup_failed: bool,
+    modrinth_failed: bool,
+    curseforge_failed: bool,
     has_worlds: bool,
     patch_names: Vec<String>,
     items: &[ContentItem],
@@ -409,6 +417,14 @@ fn build_plan(
 
     for item in items {
         let key = item.file_name.to_lowercase();
+        let platform_failed = lookup_failed
+            || match item.source {
+                Some(crate::content::IdentitySource::CurseForge) => curseforge_failed,
+                Some(crate::content::IdentitySource::Modrinth) => modrinth_failed,
+                Some(crate::content::IdentitySource::File) | None => {
+                    modrinth_failed || curseforge_failed
+                }
+            };
         let (status, target_version, delivery, update_page) = if !item.enabled {
             counts.disabled += 1;
             (ModUpgradeStatus::Disabled, None, None, None)
@@ -441,7 +457,7 @@ fn build_plan(
         } else if compatible_set.contains(&key) {
             counts.compatible += 1;
             (ModUpgradeStatus::Compatible, None, None, None)
-        } else if (item.project_id.is_none() && item.source.is_none()) || lookup_failed {
+        } else if (item.project_id.is_none() && item.source.is_none()) || platform_failed {
             counts.unknown += 1;
             (ModUpgradeStatus::Unknown, None, None, None)
         } else {
@@ -773,187 +789,218 @@ where
     // 4. 解析每条模组的最终动作（支持逐条覆写）
     let (updates_to_apply, files_to_disable) = resolve_actions(plan, options);
 
-    // 4a. 模组自动升级（支持 CurseForge 受限文件自动接入补件认领）
-    let mut upgraded_mods = 0u32;
-    let mut skipped_manual = 0u32;
-    let mut applied_updates = Vec::new();
-    if !updates_to_apply.is_empty() {
-        let prepared = content
-            .prepare_update(ctx.client, curseforge, &updates_to_apply)
-            .await?;
-        let claim_guard = if !prepared.manual.is_empty() {
-            on_claim(
-                format!("版本切换补件 · {}", target_instance.config.name),
-                prepared.manual.clone(),
-            )
-        } else {
-            None
-        };
-
-        if !prepared.manual.is_empty() && claim_guard.is_none() {
-            // 无交互补件宿主的场景（如 CLI/测试）：仅执行可直连更新，其余计入跳过
-            let direct_only: Vec<UpdateInfo> = updates_to_apply
-                .iter()
-                .filter(|u| u.delivery != Delivery::Manual)
-                .cloned()
-                .collect();
-            skipped_manual =
-                u32::try_from(updates_to_apply.len().saturating_sub(direct_only.len()))
-                    .unwrap_or(u32::MAX);
-            if !direct_only.is_empty() {
-                content
-                    .update(
-                        curseforge,
-                        ctx.downloader,
-                        &direct_only,
-                        None,
-                        ctx.cancel,
-                        |p| on_progress(UpgradeProgress::UpdatingMods(p)),
-                    )
-                    .await?;
-                upgraded_mods = u32::try_from(direct_only.len()).unwrap_or(u32::MAX);
-                applied_updates = direct_only;
-            }
-        } else {
-            let staged = content
-                .download_update(
-                    ctx.downloader,
-                    prepared,
-                    claim_guard.as_ref().map(|c| c.session.as_ref()),
-                    ctx.cancel,
-                    |p| on_progress(UpgradeProgress::UpdatingMods(p)),
-                )
+    // 4a-5 包裹在同一事务内：任一步出错或取消时自动回滚（原地模式恢复快照；克隆模式删除半成品副本）
+    let tx_res: Result<(u32, u32, u32, u32, String), UpgradeError> = async {
+        // 4a. 模组自动升级（支持 CurseForge 受限文件自动接入补件认领）
+        let mut upgraded_mods = 0u32;
+        let mut skipped_manual = 0u32;
+        let mut applied_updates = Vec::new();
+        if !updates_to_apply.is_empty() {
+            let prepared = content
+                .prepare_update(ctx.client, curseforge, &updates_to_apply)
                 .await?;
-            drop(claim_guard);
-            content.finish_update(staged, "切换版本升级").await?;
-            upgraded_mods = u32::try_from(updates_to_apply.len()).unwrap_or(u32::MAX);
-            applied_updates = updates_to_apply;
-        }
-    }
-
-    // 4b. 自动补装新版模组新增的必需前置依赖
-    let mut installed_deps = 0u32;
-    if options.install_dependencies
-        && !applied_updates.is_empty()
-        && let Some(target_loader) = &plan.preview.target_loader
-    {
-        on_progress(UpgradeProgress::ResolvingDependencies);
-        let deps = resolve_missing_dependencies(
-            &content,
-            ctx.client,
-            curseforge,
-            &plan.preview.target_game_version,
-            target_loader,
-            &applied_updates,
-            ctx.cancel,
-        )
-        .await?;
-        if !deps.is_empty() {
-            let prepared_deps = content
-                .prepare_install(ctx.client, curseforge, &deps)
-                .await?;
-            let dep_claim = if !prepared_deps.manual.is_empty() {
+            let claim_guard = if !prepared.manual.is_empty() {
                 on_claim(
-                    format!("前置依赖补件 · {}", target_instance.config.name),
-                    prepared_deps.manual.clone(),
+                    format!("版本切换补件 · {}", target_instance.config.name),
+                    prepared.manual.clone(),
                 )
             } else {
                 None
             };
-            if prepared_deps.manual.is_empty() || dep_claim.is_some() {
-                let staged_deps = content
-                    .download_install(
+
+            if !prepared.manual.is_empty() && claim_guard.is_none() {
+                // 无交互补件宿主的场景（如 CLI/测试）：仅执行可直连更新，其余计入跳过
+                let direct_only: Vec<UpdateInfo> = updates_to_apply
+                    .iter()
+                    .filter(|u| u.delivery != Delivery::Manual)
+                    .cloned()
+                    .collect();
+                skipped_manual =
+                    u32::try_from(updates_to_apply.len().saturating_sub(direct_only.len()))
+                        .unwrap_or(u32::MAX);
+                if !direct_only.is_empty() {
+                    content
+                        .update(
+                            curseforge,
+                            ctx.downloader,
+                            &direct_only,
+                            None,
+                            ctx.cancel,
+                            |p| on_progress(UpgradeProgress::UpdatingMods(p)),
+                        )
+                        .await?;
+                    upgraded_mods = u32::try_from(direct_only.len()).unwrap_or(u32::MAX);
+                    applied_updates = direct_only;
+                }
+            } else {
+                let staged = content
+                    .download_update(
                         ctx.downloader,
-                        prepared_deps,
-                        dep_claim.as_ref().map(|c| c.session.as_ref()),
+                        prepared,
+                        claim_guard.as_ref().map(|c| c.session.as_ref()),
                         ctx.cancel,
-                        |p| on_progress(UpgradeProgress::InstallingDependencies(p)),
+                        |p| on_progress(UpgradeProgress::UpdatingMods(p)),
                     )
                     .await?;
-                drop(dep_claim);
-                content.finish_install(staged_deps).await?;
-                installed_deps = u32::try_from(deps.len()).unwrap_or(u32::MAX);
-            } else {
-                skipped_manual = skipped_manual
-                    .saturating_add(u32::try_from(prepared_deps.manual.len()).unwrap_or(0));
+                drop(claim_guard);
+                content.finish_update(staged, "切换版本升级").await?;
+                upgraded_mods = u32::try_from(updates_to_apply.len()).unwrap_or(u32::MAX);
+                applied_updates = updates_to_apply;
             }
         }
-    }
 
-    // 4c. 停用不兼容或用户指定停用的模组
-    let mut disabled_mods = 0u32;
-    if !files_to_disable.is_empty() {
-        on_progress(UpgradeProgress::DisablingMods);
-        let changed = content
-            .set_many_enabled(ContentKind::Mod, &files_to_disable, false)
-            .await?;
-        disabled_mods = u32::try_from(changed.len()).unwrap_or(u32::MAX);
-    }
-
-    // 5. 跨游戏版本或跨加载器切换时：移除不再适用的旧版本补丁文件，并解除原整合包跟踪
-    on_progress(UpgradeProgress::Finalizing);
-    let major_switch = !plan.preview.same_game_version || !plan.preview.same_loader_kind;
-    if major_switch {
-        let patch_path = target_dir.join(META_DIR).join(patches::PATCHES_FILE);
-        if let Err(error) = std::fs::remove_file(&patch_path)
-            && error.kind() != std::io::ErrorKind::NotFound
+        // 4b. 自动补装新版模组新增的必需前置依赖
+        let mut installed_deps = 0u32;
+        if options.install_dependencies
+            && !applied_updates.is_empty()
+            && let Some(target_loader) = &plan.preview.target_loader
         {
-            tracing::warn!(%error, path = %patch_path.display(), "清理旧版本补丁文件失败");
-        }
-    }
-
-    let rename = if options.mode == UpgradeMode::InPlace {
-        options
-            .new_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-    } else {
-        None
-    };
-    let updated = instance::update(game, &target_instance.id, |config| {
-        if let Some(next_name) = &rename {
-            config.name = next_name.clone();
-        }
-        config.game_version = plan.preview.target_game_version.clone();
-        config.loader = plan.preview.target_loader.clone();
-        config.version_id = target_version_id.clone();
-        if major_switch {
-            config.source = None;
-        }
-    })?
-    .ok_or(UpgradeError::NotFound)?;
-
-    if options.mode == UpgradeMode::InPlace {
-        let loader_label = updated
-            .config
-            .loader
-            .as_ref()
-            .map(|l| format!(" · {} {}", l.kind.label(), l.version))
-            .unwrap_or_default();
-        content
-            .finish_timeline_change(
-                tl_guard,
-                format!("切换版本至 {}{loader_label}", updated.config.game_version),
+            on_progress(UpgradeProgress::ResolvingDependencies);
+            let deps = resolve_missing_dependencies(
+                &content,
+                ctx.client,
+                curseforge,
+                &plan.preview.target_game_version,
+                target_loader,
+                &applied_updates,
+                ctx.cancel,
             )
-            .await;
-    }
+            .await?;
+            if !deps.is_empty() {
+                let prepared_deps = content
+                    .prepare_install(ctx.client, curseforge, &deps)
+                    .await?;
+                let dep_claim = if !prepared_deps.manual.is_empty() {
+                    on_claim(
+                        format!("前置依赖补件 · {}", target_instance.config.name),
+                        prepared_deps.manual.clone(),
+                    )
+                } else {
+                    None
+                };
+                if prepared_deps.manual.is_empty() || dep_claim.is_some() {
+                    let staged_deps = content
+                        .download_install(
+                            ctx.downloader,
+                            prepared_deps,
+                            dep_claim.as_ref().map(|c| c.session.as_ref()),
+                            ctx.cancel,
+                            |p| on_progress(UpgradeProgress::InstallingDependencies(p)),
+                        )
+                        .await?;
+                    drop(dep_claim);
+                    content.finish_install(staged_deps).await?;
+                    installed_deps = u32::try_from(deps.len()).unwrap_or(u32::MAX);
+                } else {
+                    skipped_manual = skipped_manual
+                        .saturating_add(u32::try_from(prepared_deps.manual.len()).unwrap_or(0));
+                }
+            }
+        }
 
-    tracing::info!(
-        instance = %updated.id,
-        mode = ?options.mode,
-        game_version = %updated.config.game_version,
-        loader = ?updated.config.loader,
-        upgraded_mods,
-        installed_deps,
-        disabled_mods,
-        skipped_manual,
-        "实例版本切换完成"
-    );
+        // 4c. 停用不兼容或用户指定停用的模组
+        let mut disabled_mods = 0u32;
+        if !files_to_disable.is_empty() {
+            on_progress(UpgradeProgress::DisablingMods);
+            let changed = content
+                .set_many_enabled(ContentKind::Mod, &files_to_disable, false)
+                .await?;
+            disabled_mods = u32::try_from(changed.len()).unwrap_or(u32::MAX);
+        }
+
+        // 5. 跨游戏版本或跨加载器切换时：移除不再适用的旧版本补丁文件，并解除原整合包跟踪
+        on_progress(UpgradeProgress::Finalizing);
+        let major_switch = !plan.preview.same_game_version || !plan.preview.same_loader_kind;
+        if major_switch {
+            let patch_path = target_dir.join(META_DIR).join(patches::PATCHES_FILE);
+            if let Err(error) = std::fs::remove_file(&patch_path)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                tracing::warn!(%error, path = %patch_path.display(), "清理旧版本补丁文件失败");
+            }
+        }
+
+        let rename = if options.mode == UpgradeMode::InPlace {
+            options
+                .new_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+        } else {
+            None
+        };
+        let updated = instance::update(game, &target_instance.id, |config| {
+            if let Some(next_name) = &rename {
+                config.name = next_name.clone();
+            }
+            config.game_version = plan.preview.target_game_version.clone();
+            config.loader = plan.preview.target_loader.clone();
+            config.version_id = target_version_id.clone();
+            if major_switch {
+                config.source = None;
+            }
+        })?
+        .ok_or(UpgradeError::NotFound)?;
+
+        if options.mode == UpgradeMode::InPlace {
+            let loader_label = updated
+                .config
+                .loader
+                .as_ref()
+                .map(|l| format!(" · {} {}", l.kind.label(), l.version))
+                .unwrap_or_default();
+            content
+                .finish_timeline_change(
+                    tl_guard,
+                    format!("切换版本至 {}{loader_label}", updated.config.game_version),
+                )
+                .await;
+        }
+
+        tracing::info!(
+            instance = %updated.id,
+            mode = ?options.mode,
+            game_version = %updated.config.game_version,
+            loader = ?updated.config.loader,
+            upgraded_mods,
+            installed_deps,
+            disabled_mods,
+            skipped_manual,
+            "实例版本切换完成"
+        );
+
+        Ok((
+            upgraded_mods,
+            installed_deps,
+            disabled_mods,
+            skipped_manual,
+            updated.id,
+        ))
+    }
+    .await;
+
+    let (upgraded_mods, installed_deps, disabled_mods, skipped_manual, updated_id) = match tx_res {
+        Ok(ok) => ok,
+        Err(err) => {
+            match options.mode {
+                UpgradeMode::InPlace => {
+                    if let Err(rb_err) = content.restore_snapshot().await {
+                        tracing::warn!(%rb_err, instance = %target_instance.id, "版本切换失败后恢复模组快照失败");
+                    }
+                }
+                UpgradeMode::Clone => {
+                    if let Err(rm_err) = std::fs::remove_dir_all(&target_dir) {
+                        tracing::warn!(%rm_err, dir = %target_dir.display(), "清理半成品克隆实例失败");
+                    }
+                }
+            }
+            return Err(err);
+        }
+    };
 
     Ok(UpgradeOutcome {
-        instance_id: updated.id,
+        instance_id: updated_id,
         upgraded_mods,
         installed_deps,
         disabled_mods,
@@ -1071,6 +1118,8 @@ mod tests {
             false,
             true,
             false,
+            false,
+            false,
             true,
             vec!["Custom Patch".to_owned()],
             &items,
@@ -1137,6 +1186,8 @@ mod tests {
             false,
             false,
             false,
+            false,
+            false,
             Vec::new(),
             &items,
             &HashMap::new(),
@@ -1182,6 +1233,8 @@ mod tests {
             }),
             true,
             true,
+            false,
+            false,
             false,
             false,
             Vec::new(),
@@ -1462,5 +1515,61 @@ mod tests {
         assert!(cloned_dir.join("mods").join("demo.jar.disabled").is_file());
         // 外部原目录保持原样
         assert!(ext_ver_dir.join("mods").join("demo.jar").is_file());
+    }
+
+    #[test]
+    fn partial_curseforge_failure_marks_only_cf_items_unknown_not_incompatible() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = GameDir::new(dir.path());
+        let instance = instance::register(
+            &game,
+            "cf-partial",
+            &InstanceConfig::new(
+                "CF Partial",
+                "1.20.1",
+                Some(LoaderRef {
+                    kind: LoaderKind::Fabric,
+                    version: "0.15.0".to_owned(),
+                }),
+            ),
+        )
+        .unwrap();
+
+        let mut cf_item = dummy_item("cf-mod.jar", true, false, Some("12345"));
+        cf_item.source = Some(crate::content::IdentitySource::CurseForge);
+        let mr_item = dummy_item("mr-mod.jar", true, false, Some("AANobbMI"));
+
+        let plan = build_plan(
+            &instance,
+            "1.21.1".to_owned(),
+            Some(LoaderRef {
+                kind: LoaderKind::Fabric,
+                version: "0.16.0".to_owned(),
+            }),
+            false,
+            true,
+            false,
+            false,
+            true,
+            false,
+            Vec::new(),
+            &[cf_item, mr_item],
+            &HashMap::new(),
+            &HashSet::new(),
+        );
+        let cf_res = plan
+            .preview
+            .mods
+            .iter()
+            .find(|m| m.file_name == "cf-mod.jar")
+            .unwrap();
+        let mr_res = plan
+            .preview
+            .mods
+            .iter()
+            .find(|m| m.file_name == "mr-mod.jar")
+            .unwrap();
+        assert_eq!(cf_res.status, ModUpgradeStatus::Unknown);
+        assert_eq!(mr_res.status, ModUpgradeStatus::Incompatible);
     }
 }

@@ -528,6 +528,14 @@ pub struct UpdateCheckResult {
     pub unchecked: u32,
     /// 整次平台查询失败，调用方应显示失败说明。
     pub lookup_failed: bool,
+    /// Modrinth 查询失败（部分失败时用于把该平台项归为 Unknown 而非 Incompatible）
+    #[serde(skip)]
+    #[cfg_attr(feature = "specta", specta(skip))]
+    pub modrinth_failed: bool,
+    /// CurseForge 查询失败（部分失败时用于把该平台项归为 Unknown 而非 Incompatible）
+    #[serde(skip)]
+    #[cfg_attr(feature = "specta", specta(skip))]
+    pub curseforge_failed: bool,
     /// 当前文件本身已兼容目标版本且已是最新（供版本切换/升级向导区分「兼容」与「不兼容」）
     #[serde(skip)]
     #[cfg_attr(feature = "specta", specta(skip))]
@@ -1948,6 +1956,8 @@ impl InstanceContent {
             }
         }
 
+        result.modrinth_failed = modrinth_failed;
+        result.curseforge_failed = cf_failed;
         // 两个平台都失败、或唯一需要查询的平台失败时标为查询失败
         let only_modrinth =
             cf_known_or_unknown_empty(modrinth_targets.len(), result.checked, cf_failed);

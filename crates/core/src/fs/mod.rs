@@ -6,6 +6,6 @@ pub mod safe_path;
 pub use atomic::{
     AtomicWriteError, ReadJsonError, is_win_lock_error, read_json, remove_with_win_retry,
     remove_with_win_retry_sync, rename_with_win_retry, rename_with_win_retry_sync, write_atomic,
-    write_atomic_from, write_json_atomic,
+    write_atomic_async, write_atomic_from, write_json_atomic, write_json_atomic_async,
 };
 pub use safe_path::{UnsafePath, safe_file_name, safe_join};

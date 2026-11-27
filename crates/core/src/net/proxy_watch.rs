@@ -22,6 +22,14 @@ pub struct SystemProxySnapshot {
     pub auto_config_url: Option<String>,
 }
 
+impl SystemProxySnapshot {
+    /// Windows 未开启静态代理（`ProxyEnable == 0`），仅设置了 PAC 自动配置脚本地址。
+    /// `reqwest` 原生不执行 PAC 脚本，实际连接会走直连，界面需诚实提示。
+    pub fn has_pac_only(&self) -> bool {
+        !self.enabled && self.auto_config_url.is_some()
+    }
+}
+
 /// 规范化代理条目；`socks` / `socks5` 强制升级为 `socks5h://` 防止本地 DNS 泄露。
 fn normalize_proxy_url(raw: &str, default_scheme: &str) -> Option<String> {
     let trimmed = raw.trim();
@@ -198,11 +206,8 @@ fn apply_system_snapshot(
     snap: &SystemProxySnapshot,
 ) -> Result<reqwest::ClientBuilder, HttpError> {
     if !snap.enabled {
-        // 未启用 ProxyEnable 且没有 PAC，显式禁代理避免系统/环境变量缓存残留
-        if snap.auto_config_url.is_none() {
-            builder = builder.no_proxy();
-        }
-        return Ok(builder);
+        // 未启用静态系统代理时显式禁代理避免环境变量残留；PAC 暂不支持，外层会如实标注直连提示
+        return Ok(builder.no_proxy());
     }
 
     let has_explicit =

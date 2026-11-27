@@ -328,6 +328,20 @@ pub async fn jobs_retry_failed(app: AppHandle, id: String) -> Result<String, App
         .find(&id)
         .ok_or_else(|| AppError::new("jobs.not_found", "找不到这个任务，可能已经清掉了"))?;
 
+    let turn = if let Some(inst_id) = old_snap.instance_id.as_deref() {
+        let instance = crate::game::load_instance(&state, inst_id)?;
+        crate::instances::ensure_idle(&state, inst_id, &instance.config.name, "补齐失败文件")?;
+        let directory = instance.game_dir(&state.game())?;
+        Some(state.turns.try_take(&directory).ok_or_else(|| {
+            AppError::new(
+                "instance.busy",
+                format!("「{}」正在改动文件，先等这一步做完", instance.config.name),
+            )
+        })?)
+    } else {
+        None
+    };
+
     let items: Vec<_> = receipt
         .failed_entries
         .iter()
@@ -367,6 +381,7 @@ pub async fn jobs_retry_failed(app: AppHandle, id: String) -> Result<String, App
     };
     let app_bg = app.clone();
     tauri::async_runtime::spawn(async move {
+        let mut turn = turn;
         let state = app_bg.state::<AppState>();
         let dl = crate::game::downloader_for_job(&state, DownloadPriority::Interactive, &job);
         let cancel = job.cancel_token();
@@ -377,6 +392,8 @@ pub async fn jobs_retry_failed(app: AppHandle, id: String) -> Result<String, App
             .await
         {
             Ok(_) => {
+                // 续跑 follow-up 前释放实例 turn 锁，避免 create_instance 等后续任务自己申请同一目录锁时互锁
+                drop(turn.take());
                 if let Some(recipe) = follow_up
                     && let Err(err) = spawn_retry_recipe(app_bg.clone(), recipe).await
                 {
@@ -423,6 +440,18 @@ pub struct ProxyTestResult {
 #[specta::specta]
 pub async fn net_test_proxy(proxy: ProxySettings) -> Result<ProxyTestResult, AppError> {
     let normalized = proxy.normalized();
+    if normalized.mode == ProxyMode::System
+        && launcher_core::net::proxy_watch::read_system_proxy().has_pac_only()
+    {
+        return Ok(ProxyTestResult {
+            ok: false,
+            latency_ms: None,
+            http_status: None,
+            error: Some(
+                "检测到系统代理使用自动配置脚本（PAC），启动器无法直接测试 PAC 规则；请改用「手动代理」填写 HTTP 或 SOCKS5 地址".to_owned(),
+            ),
+        });
+    }
     let builder = reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .connect_timeout(Duration::from_secs(5))
@@ -607,6 +636,21 @@ pub(crate) fn clean_imports(game: &GameDir, keep: &HashSet<String>, all: bool) {
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with("pack-update-dl-") {
+            let expired = entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age > Duration::from_secs(3600));
+            if !all || expired {
+                let dir = entry.path();
+                if let Err(error) = std::fs::remove_dir_all(&dir) {
+                    tracing::warn!(%error, dir = %dir.display(), "清理整合包更新预检临时目录失败");
+                }
+            }
+            continue;
+        }
         if !name.starts_with(modpack::STAGING_PREFIX) {
             continue;
         }

@@ -18,7 +18,7 @@ use launcher_core::auth::{LaunchAccount, LaunchAuthority};
 use launcher_core::redact::Secret;
 use reqwest::{Client, Url};
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 use tokio_util::sync::CancellationToken;
@@ -460,6 +460,7 @@ pub(crate) fn preflight(state: &AppState) -> Result<LaunchSelection, AppError> {
 }
 
 pub(crate) async fn ready(
+    app: &AppHandle,
     state: &AppState,
     selection: &LaunchSelection,
     cancel: &CancellationToken,
@@ -499,18 +500,17 @@ pub(crate) async fn ready(
     if cancel.is_cancelled() {
         return Err(AuthError::Cancelled.into());
     }
-    if accounts.authority.generation() != selection.generation {
+    if accounts.authority.generation() != selection.generation
+        || accounts.store.get(&account.id).is_none()
+    {
         return Err(VerifyError::Changed.into());
     }
     vault_save(&accounts.vault, &account.id, session.refresh_token()).await?;
-    let (skin, capes) =
-        cache_profile_assets(&client, session.profile(), accounts.store.skins_dir()).await;
-    let _ = accounts.store.update_profile_assets(
-        &account.id,
-        &session.profile().name,
-        skin,
-        session.profile().skin_url.is_none(),
-        capes,
+    spawn_profile_asset_refresh(
+        app.clone(),
+        client,
+        account.id.clone(),
+        session.profile().clone(),
     );
     accounts
         .health
@@ -947,15 +947,18 @@ async fn ensure_verified_session(
         );
         return Err(VerifyError::Relogin.into());
     }
+    if cancel.is_cancelled() {
+        return Err(AuthError::Cancelled.into());
+    }
+    if accounts.authority.generation() != generation || accounts.store.get(&account.id).is_none() {
+        return Err(VerifyError::Changed.into());
+    }
     vault_save(&accounts.vault, &account.id, session.refresh_token()).await?;
-    let (skin, capes) =
-        cache_profile_assets(&client, session.profile(), accounts.store.skins_dir()).await;
-    let _ = accounts.store.update_profile_assets(
-        &account.id,
-        &session.profile().name,
-        skin,
-        session.profile().skin_url.is_none(),
-        capes,
+    spawn_profile_asset_refresh(
+        app.clone(),
+        client,
+        account.id.clone(),
+        session.profile().clone(),
     );
     accounts.store_warm_session(&account.id, generation, session.clone());
     Ok(accounts.set_health_ready(app, &account.id)).map(|_| session)
@@ -1005,6 +1008,41 @@ pub async fn accounts_prewarm(
         .cloned()
         .unwrap_or_default();
     Ok(health)
+}
+
+fn spawn_profile_asset_refresh(
+    app: AppHandle,
+    client: Client,
+    account_id: String,
+    profile: MinecraftProfile,
+) {
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        if state.accounts.store.get(&account_id).is_none() {
+            return;
+        }
+        let (skin, capes) =
+            cache_profile_assets(&client, &profile, state.accounts.store.skins_dir()).await;
+        if state.accounts.store.get(&account_id).is_none() {
+            return;
+        }
+        if state
+            .accounts
+            .store
+            .update_profile_assets(
+                &account_id,
+                &profile.name,
+                skin,
+                profile.skin_url.is_none(),
+                capes,
+            )
+            .is_ok()
+        {
+            let skins_dir = state.accounts.store.skins_dir().to_path_buf();
+            let keep = state.accounts.store.active_asset_hashes();
+            let _ = tokio::task::spawn_blocking(move || skin::gc_unused(&skins_dir, &keep)).await;
+        }
+    });
 }
 
 async fn apply_profile_update(

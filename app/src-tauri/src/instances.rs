@@ -826,45 +826,60 @@ pub fn instances_upgrade_start(
         .remove(&token)
         .ok_or_else(|| AppError::new("upgrade.expired", "预检结果已过期，请重新检查版本兼容性"))?;
 
-    let instance_id = plan.preview.instance_id.clone();
-    let instance = load_instance(&state, &instance_id)?;
-    ensure_idle(&state, &instance_id, &instance.config.name, "切换版本")?;
+    let start_setup = (|| -> Result<_, AppError> {
+        let instance_id = plan.preview.instance_id.clone();
+        let instance = load_instance(&state, &instance_id)?;
+        ensure_idle(&state, &instance_id, &instance.config.name, "切换版本")?;
 
-    let game = state.game();
-    let directory = instance.game_dir(&game)?;
-    let turn = state.turns.try_take(&directory).ok_or_else(busy_error)?;
+        let game = state.game();
+        let directory = instance.game_dir(&game)?;
+        let turn = state.turns.try_take(&directory).ok_or_else(busy_error)?;
 
-    let target_label = match &plan.preview.target_loader {
-        Some(loader) => format!(
-            "{} · {} {}",
-            plan.preview.target_game_version,
-            loader.kind.label(),
-            loader.version
-        ),
-        None => plan.preview.target_game_version.clone(),
-    };
-    let (title, expected_instance_id) = match options.mode {
-        UpgradeMode::InPlace => (
-            format!("切换版本 {} → {target_label}", instance.config.name),
-            instance_id.clone(),
-        ),
-        UpgradeMode::Clone => {
-            let clone_name =
-                upgrade::clone_target_name(&plan.preview, options.clone_name.as_deref());
-            let predicted_id = instance::unique_id(&game, &clone_name);
-            (
-                format!("克隆并升级 {clone_name} → {target_label}"),
-                predicted_id,
-            )
+        let target_label = match &plan.preview.target_loader {
+            Some(loader) => format!(
+                "{} · {} {}",
+                plan.preview.target_game_version,
+                loader.kind.label(),
+                loader.version
+            ),
+            None => plan.preview.target_game_version.clone(),
+        };
+        let (title, expected_instance_id) = match options.mode {
+            UpgradeMode::InPlace => (
+                format!("切换版本 {} → {target_label}", instance.config.name),
+                instance_id.clone(),
+            ),
+            UpgradeMode::Clone => {
+                let clone_name =
+                    upgrade::clone_target_name(&plan.preview, options.clone_name.as_deref());
+                let predicted_id = instance::unique_id(&game, &clone_name);
+                (
+                    format!("克隆并升级 {clone_name} → {target_label}"),
+                    predicted_id,
+                )
+            }
+        };
+
+        let job = state.jobs.start_with(
+            format!("instance-upgrade:{instance_id}"),
+            title,
+            ProgressUnit::Bytes,
+            crate::downloads::meta(JobSource::Game, Some(&expected_instance_id), None, None),
+        )?;
+        Ok((game, turn, expected_instance_id, job))
+    })();
+
+    let (game, turn, expected_instance_id, job) = match start_setup {
+        Ok(ok) => ok,
+        Err(err) => {
+            state
+                .pending_upgrades
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(token, plan);
+            return Err(err);
         }
     };
-
-    let job = state.jobs.start_with(
-        format!("instance-upgrade:{instance_id}"),
-        title,
-        ProgressUnit::Bytes,
-        crate::downloads::meta(JobSource::Game, Some(&expected_instance_id), None, None),
-    )?;
     let job_id = job.id().to_owned();
     let started = UpgradeStarted {
         job_id: job_id.clone(),

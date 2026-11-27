@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 use crate::config::SegmentMode;
 use crate::fs::{
     AtomicWriteError, read_json, remove_with_win_retry, remove_with_win_retry_sync,
-    rename_with_win_retry_sync, write_json_atomic,
+    rename_with_win_retry_sync, write_json_atomic_async,
 };
 use crate::jobs::PauseControl;
 
@@ -429,7 +429,7 @@ fn process_orphan_parts(root: &Path, min_age: Duration, delete: bool) -> (u64, u
 }
 
 fn is_orphan_part_name(name: &str) -> bool {
-    if name.ends_with(".part") || name.ends_with(".part.meta") {
+    if name.ends_with(".part") || name.ends_with(".part.meta") || name.ends_with(".part.etag") {
         return true;
     }
     if let Some((_, suffix)) = name.rsplit_once(".part.s") {
@@ -493,6 +493,29 @@ pub(crate) async fn download_segmented(
             end: total_expected - 1,
             written: 0,
         });
+    }
+
+    // 续传时若全部分段已严丝合缝写满（例如在合并前取消），绝不再发超出 end 的 Range（会触发 416 清空全部分片）
+    if resuming
+        && initial_segments.iter().all(|s| s.start + s.written > s.end)
+        && verify_contiguous_coverage(&initial_segments, total_expected)
+    {
+        credit.sync_to(total_expected);
+        let saved_etag = saved_meta.as_ref().and_then(|m| m.etag.clone());
+        let saved_lm = saved_meta.as_ref().and_then(|m| m.last_modified.clone());
+        return finalize_completed_segments(
+            item,
+            engine,
+            initial_segments,
+            total_expected,
+            0,
+            None,
+            &meta_path,
+            saved_etag,
+            saved_lm,
+            cancel,
+        )
+        .await;
     }
 
     // 选择用于 Zero-HEAD 首包探测的未完成段（优先 seg_0；若续传中 seg_0 已满则挑首条未满段）
@@ -677,7 +700,7 @@ pub(crate) async fn download_segmented(
         (1.25f64, cap, PROXIED_RUNGS)
     } else {
         let mode_cap = match cfg.segment_mode {
-            crate::config::SegmentMode::Auto => 16u8,
+            crate::config::SegmentMode::Auto => cfg.max_segments_per_file.clamp(1, 16),
             crate::config::SegmentMode::Aggressive => cfg.max_segments_per_file.clamp(4, 32),
             crate::config::SegmentMode::Off => 1u8,
         };
@@ -1066,19 +1089,19 @@ pub(crate) async fn download_segmented(
     if cancel.is_cancelled() && !paused_triggered {
         // 取消时保存已下载分片进度供断点续传或清理
         let meta = coord.snapshot_meta(total_expected, etag, last_modified);
-        let _ = write_json_atomic(&meta_path, &meta);
+        let _ = write_json_atomic_async(&meta_path, &meta).await;
         return SegmentedOutcome::Cancelled;
     }
 
     if paused_triggered || pause.is_some_and(PauseControl::is_paused) {
         let meta = coord.snapshot_meta(total_expected, etag, last_modified);
-        let _ = write_json_atomic(&meta_path, &meta);
+        let _ = write_json_atomic_async(&meta_path, &meta).await;
         return SegmentedOutcome::Paused;
     }
 
     if let Some(err) = final_err {
         let meta = coord.snapshot_meta(total_expected, etag, last_modified);
-        let _ = write_json_atomic(&meta_path, &meta);
+        let _ = write_json_atomic_async(&meta_path, &meta).await;
         return match err {
             WorkerErr::NextUrl(msg) => {
                 clean_segment_artifacts(&item.path, cancel).await;
@@ -1104,7 +1127,7 @@ pub(crate) async fn download_segmented(
         .segments;
     if !verify_contiguous_coverage(&snapshot_segs, total_expected) {
         let meta = coord.snapshot_meta(total_expected, etag, last_modified);
-        let _ = write_json_atomic(&meta_path, &meta);
+        let _ = write_json_atomic_async(&meta_path, &meta).await;
         return SegmentedOutcome::Retry {
             reason: "分片区间尚未写满，准备继续补齐".to_owned(),
             delay_override: Some(Duration::from_millis(80)),
@@ -1119,17 +1142,6 @@ pub(crate) async fn download_segmented(
             .record_host(&sig, &host_for_profile, k_opt_recorded, peak_bps);
     }
 
-    // Zero-set_len Segment-0 Live-Hash Relay Single-Pass Merge
-    let path_lock = engine.lock_for_path(&item.path);
-    let _path_guard = path_lock.lock().await;
-    let Some(_disk_permit) = engine.acquire_disk(cancel).await else {
-        let meta = coord.snapshot_meta(total_expected, etag, last_modified);
-        let _ = write_json_atomic(&meta_path, &meta);
-        return SegmentedOutcome::Cancelled;
-    };
-    let mut disk_guard = engine.metrics().begin_disk_write();
-    disk_guard.mark_active();
-
     let live_hasher = if seg0_live_hash_valid.load(Ordering::Acquire) {
         seg0_live_hasher
             .lock()
@@ -1138,6 +1150,48 @@ pub(crate) async fn download_segmented(
     } else {
         None
     };
+
+    finalize_completed_segments(
+        item,
+        engine,
+        snapshot_segs,
+        total_expected,
+        rx_sum,
+        live_hasher,
+        &meta_path,
+        etag,
+        last_modified,
+        cancel,
+    )
+    .await
+}
+
+/// Zero-set_len Segment-0 Live-Hash Relay Single-Pass Merge（由调用方 `Downloader::download_one` 持有路径锁）。
+#[allow(clippy::too_many_arguments)]
+async fn finalize_completed_segments(
+    item: &DownloadItem,
+    engine: &DownloadEngine,
+    snapshot_segs: Vec<SavedSegment>,
+    total_expected: u64,
+    rx_sum: u64,
+    live_hasher: Option<Sha1>,
+    meta_path: &Path,
+    etag: Option<String>,
+    last_modified: Option<String>,
+    cancel: &CancellationToken,
+) -> SegmentedOutcome {
+    let Some(_disk_permit) = engine.acquire_disk(cancel).await else {
+        let meta = PartMeta {
+            total_size: total_expected,
+            etag,
+            last_modified,
+            segments: snapshot_segs,
+        };
+        let _ = write_json_atomic_async(meta_path, &meta).await;
+        return SegmentedOutcome::Cancelled;
+    };
+    let mut disk_guard = engine.metrics().begin_disk_write();
+    disk_guard.mark_active();
 
     let target_clone = item.path.clone();
     let expected_sha1 = item.sha1.clone();
@@ -1167,7 +1221,8 @@ pub(crate) async fn download_segmented(
             if let Some(sha1) = &item.sha1 {
                 engine
                     .hydrator()
-                    .record_file(&item.path, sha1, total_expected);
+                    .record_file_async(item.path.clone(), sha1.clone(), total_expected)
+                    .await;
             }
             SegmentedOutcome::Done { received: rx_sum }
         }
@@ -1789,27 +1844,53 @@ async fn stream_segment_body(
     let mut bytes_since_sample = 0u64;
     let _seg_guard = ctx.metrics.begin_h1_segment();
     let is_binary = is_binary_target(target_path);
-    let mut sniff_checked = !is_binary || written > 0;
+    let mut sniff_checked = !is_binary || written > 0 || seg.start > 0;
     let mut sniff_buf = Vec::new();
+
+    let flush_and_reconcile =
+        |seg: &SegmentState, seg0_live_hash_valid: &AtomicBool, disk_len: Option<u64>| {
+            if let Some(actual_len) = disk_len {
+                let cur = seg.written.load(Ordering::Acquire);
+                if actual_len < cur {
+                    seg.written.store(actual_len, Ordering::Release);
+                }
+            }
+            if seg.id == 0 {
+                seg0_live_hash_valid.store(false, Ordering::Release);
+            }
+        };
 
     loop {
         if let Some(p) = pause
             && p.is_paused()
         {
-            let _ = writer.flush().await;
-            if seg.id == 0 {
-                seg0_live_hash_valid.store(false, Ordering::Release);
-            }
+            let flushed_ok = writer.flush().await.is_ok();
+            let disk_len = if flushed_ok {
+                writer.get_ref().metadata().await.ok().map(|m| m.len())
+            } else {
+                Some(
+                    writer
+                        .get_ref()
+                        .metadata()
+                        .await
+                        .ok()
+                        .map_or(initial_written, |m| m.len()),
+                )
+            };
+            flush_and_reconcile(seg, seg0_live_hash_valid, disk_len);
             return Err(WorkerErr::Paused);
         }
         let next = tokio::select! {
             step = tokio::time::timeout(SEG_STALL_TIMEOUT, body.next()) => match step {
                 Ok(n) => n,
                 Err(_) => {
-                    let _ = writer.flush().await;
-                    if seg.id == 0 {
-                        seg0_live_hash_valid.store(false, Ordering::Release);
-                    }
+                    let flushed_ok = writer.flush().await.is_ok();
+                    let disk_len = if flushed_ok {
+                        writer.get_ref().metadata().await.ok().map(|m| m.len())
+                    } else {
+                        Some(writer.get_ref().metadata().await.ok().map_or(initial_written, |m| m.len()))
+                    };
+                    flush_and_reconcile(seg, seg0_live_hash_valid, disk_len);
                     return Err(WorkerErr::Retry {
                         reason: "分片接收长时间停滞".to_owned(),
                         delay_override: Some(Duration::from_millis(120)),
@@ -1818,10 +1899,13 @@ async fn stream_segment_body(
                 }
             },
             () = cancel.cancelled() => {
-                let _ = writer.flush().await;
-                if seg.id == 0 {
-                    seg0_live_hash_valid.store(false, Ordering::Release);
-                }
+                let flushed_ok = writer.flush().await.is_ok();
+                let disk_len = if flushed_ok {
+                    writer.get_ref().metadata().await.ok().map(|m| m.len())
+                } else {
+                    Some(writer.get_ref().metadata().await.ok().map_or(initial_written, |m| m.len()))
+                };
+                flush_and_reconcile(seg, seg0_live_hash_valid, disk_len);
                 return Err(WorkerErr::Cancelled);
             }
         };
@@ -1829,10 +1913,20 @@ async fn stream_segment_body(
         match next {
             None => break,
             Some(Err(e)) => {
-                let _ = writer.flush().await;
-                if seg.id == 0 {
-                    seg0_live_hash_valid.store(false, Ordering::Release);
-                }
+                let flushed_ok = writer.flush().await.is_ok();
+                let disk_len = if flushed_ok {
+                    writer.get_ref().metadata().await.ok().map(|m| m.len())
+                } else {
+                    Some(
+                        writer
+                            .get_ref()
+                            .metadata()
+                            .await
+                            .ok()
+                            .map_or(initial_written, |m| m.len()),
+                    )
+                };
+                flush_and_reconcile(seg, seg0_live_hash_valid, disk_len);
                 return Err(WorkerErr::Retry {
                     reason: format!("分片传输中断：{e}"),
                     delay_override: None,
@@ -1864,10 +1958,20 @@ async fn stream_segment_body(
                 let slice = &chunk[..allowed];
 
                 if !ctx.throttle.consume(slice.len(), cancel).await {
-                    let _ = writer.flush().await;
-                    if seg.id == 0 {
-                        seg0_live_hash_valid.store(false, Ordering::Release);
-                    }
+                    let flushed_ok = writer.flush().await.is_ok();
+                    let disk_len = if flushed_ok {
+                        writer.get_ref().metadata().await.ok().map(|m| m.len())
+                    } else {
+                        Some(
+                            writer
+                                .get_ref()
+                                .metadata()
+                                .await
+                                .ok()
+                                .map_or(initial_written, |m| m.len()),
+                        )
+                    };
+                    flush_and_reconcile(seg, seg0_live_hash_valid, disk_len);
                     return Err(WorkerErr::Cancelled);
                 }
 
@@ -1921,6 +2025,11 @@ async fn stream_segment_body(
     }
 
     writer.flush().await.map_err(|e| {
+        if let Ok(m) = std::fs::metadata(&seg_path)
+            && m.len() < seg.written.load(Ordering::Acquire)
+        {
+            seg.written.store(m.len(), Ordering::Release);
+        }
         if seg.id == 0 {
             seg0_live_hash_valid.store(false, Ordering::Release);
         }
@@ -1930,6 +2039,17 @@ async fn stream_segment_body(
             connect_failed: false,
         }
     })?;
+    let end = seg.end.load(Ordering::Acquire);
+    if seg.start.saturating_add(written) <= end {
+        if seg.id == 0 {
+            seg0_live_hash_valid.store(false, Ordering::Release);
+        }
+        return Err(WorkerErr::Retry {
+            reason: "服务器提前结束分片响应".to_owned(),
+            delay_override: Some(Duration::from_millis(80)),
+            connect_failed: false,
+        });
+    }
     Ok(rx_this_stream)
 }
 
@@ -2094,8 +2214,6 @@ async fn finish_unranged_200_stream(
         };
     }
 
-    let path_lock = engine.lock_for_path(&item.path);
-    let _path_guard = path_lock.lock().await;
     let Some(_disk_permit) = engine.acquire_disk(cancel).await else {
         return SegmentedOutcome::Cancelled;
     };
@@ -2108,7 +2226,10 @@ async fn finish_unranged_200_stream(
     match res {
         Ok(()) => {
             if let Some(sha1) = &item.sha1 {
-                engine.hydrator().record_file(&item.path, sha1, written);
+                engine
+                    .hydrator()
+                    .record_file_async(item.path.clone(), sha1.clone(), written)
+                    .await;
             }
             SegmentedOutcome::Done { received: written }
         }
@@ -2217,7 +2338,7 @@ async fn load_valid_saved_meta(
     Some(meta)
 }
 
-fn header_str(headers: &header::HeaderMap, name: header::HeaderName) -> Option<String> {
+pub(super) fn header_str(headers: &header::HeaderMap, name: header::HeaderName) -> Option<String> {
     headers
         .get(name)
         .and_then(|v| v.to_str().ok())
@@ -2226,7 +2347,7 @@ fn header_str(headers: &header::HeaderMap, name: header::HeaderName) -> Option<S
         .map(str::to_owned)
 }
 
-fn parse_content_range(raw: &str) -> Option<(u64, u64, Option<u64>)> {
+pub(super) fn parse_content_range(raw: &str) -> Option<(u64, u64, Option<u64>)> {
     let rest = raw.trim().strip_prefix("bytes ")?;
     let (range, total_part) = rest.split_once('/')?;
     let (s, e) = range.split_once('-')?;
@@ -2704,6 +2825,81 @@ mod tests {
         assert!(!bounced.load(Ordering::Acquire), "分段暂停恢复禁止进度回弹");
         assert_eq!(report.downloaded, 1);
         assert_eq!(max_seen.load(Ordering::Acquire), total_size);
+        assert_eq!(fs::read(&target).unwrap(), payload);
+    }
+
+    #[tokio::test]
+    async fn resume_with_all_segments_already_completed_merges_without_sending_416_range() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let payload = vec![b'Z'; 4 * 1024 * 1024 + 128];
+        let expected_sha1 = {
+            let mut h = Sha1::new();
+            h.update(&payload);
+            to_hex(&h.finalize())
+        };
+        let total = payload.len() as u64;
+        let split = align_4k_down(total / 2);
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("pre_complete.bin");
+        fs::write(part_seg_path(&target, 0), &payload[..split as usize]).unwrap();
+        fs::write(part_seg_path(&target, 1), &payload[split as usize..]).unwrap();
+        let meta = PartMeta {
+            total_size: total,
+            etag: Some("\"done\"".to_owned()),
+            last_modified: None,
+            segments: vec![
+                SavedSegment {
+                    id: 0,
+                    start: 0,
+                    end: split - 1,
+                    written: split,
+                },
+                SavedSegment {
+                    id: 1,
+                    start: split,
+                    end: total - 1,
+                    written: total - split,
+                },
+            ],
+        };
+        crate::fs::write_json_atomic(&part_meta_path(&target), &meta).unwrap();
+
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let req_c = requests.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                req_c.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                let mut buf = [0u8; 256];
+                let _ = sock.read(&mut buf).await;
+                let _ = sock
+                    .write_all(b"HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    .await;
+            }
+        });
+
+        let doh = Arc::new(Doh::new(false).unwrap());
+        let watcher = Arc::new(crate::net::ProxyWatcher::new());
+        let engine = Arc::new(
+            DownloadEngine::new(doh, watcher, &crate::config::ProxySettings::default()).unwrap(),
+        );
+        let downloader =
+            crate::net::Downloader::from_engine(engine, DownloadPriority::Interactive, 2);
+        let item = DownloadItem {
+            urls: vec![format!("http://{addr}/pre_complete.bin")],
+            path: target.clone(),
+            sha1: Some(expected_sha1),
+            size: Some(total),
+        };
+        let report = downloader
+            .download_all(&[item], &CancellationToken::new(), |_| {})
+            .await
+            .unwrap();
+        assert_eq!(report.downloaded, 1);
+        assert_eq!(requests.load(std::sync::atomic::Ordering::Acquire), 0);
         assert_eq!(fs::read(&target).unwrap(), payload);
     }
 }

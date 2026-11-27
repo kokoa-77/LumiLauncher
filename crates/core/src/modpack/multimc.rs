@@ -610,9 +610,6 @@ fn order_patches(active: &[&MmcComponent], mut raw: HashMap<String, MetaPatch>) 
             ordered.push(patch);
         }
     }
-    let mut rest: Vec<(String, MetaPatch)> = raw.into_iter().collect();
-    rest.sort_by(|(a, _), (b, _)| a.cmp(b));
-    ordered.extend(rest.into_iter().map(|(_, p)| p));
     ordered
 }
 
@@ -733,5 +730,20 @@ mod tests {
             ],
         );
         assert!(matches!(inspect(&bad_path), Err(ModpackError::Rejected(_))));
+    }
+
+    #[test]
+    fn order_patches_ignores_disabled_or_unlisted_patch_files() {
+        let active: Vec<&MmcComponent> = Vec::new();
+        let mut raw = HashMap::new();
+        raw.insert(
+            "org.lwjgl3".to_owned(),
+            MetaPatch {
+                uid: "org.lwjgl3".to_owned(),
+                name: Some("Disabled".to_owned()),
+                ..MetaPatch::default()
+            },
+        );
+        assert!(order_patches(&active, raw).is_empty());
     }
 }

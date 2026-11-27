@@ -22,6 +22,7 @@ futures-util = "0.3"
 regex = "1"
 # 默认功能：rustls + 系统证书校验 + HTTP/2 + 跟随 Windows 系统代理 + SOCKS5 代理支持
 reqwest = { version = "0.13", features = ["stream", "socks"] }
+rustls = { version = "0.23", default-features = false, features = ["std"] }
 # 读 Modrinth App 的实例清单（它存在 SQLite 数据库里）。bundled：自带 SQLite，不依赖电脑上装没装；
 # 0.41.1 发布满两周（0.42、0.43 是这几天才出的）
 rusqlite = { version = "0.41", features = ["bundled"] }

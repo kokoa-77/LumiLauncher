@@ -95,7 +95,14 @@ pub fn gc_unused(dir: &Path, keep_hashes: &std::collections::HashSet<String>) {
             continue;
         }
         let lower = stem.to_ascii_lowercase();
-        if !keep_hashes.contains(&lower)
+        let recently_written = entry
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| std::time::SystemTime::now().duration_since(t).ok())
+            .is_some_and(|age| age < std::time::Duration::from_secs(60));
+        if !recently_written
+            && !keep_hashes.contains(&lower)
             && let Err(error) = std::fs::remove_file(&path)
         {
             tracing::warn!(%error, path = %path.display(), "清理孤儿皮肤或披风缓存失败");
@@ -287,7 +294,18 @@ pub(crate) mod tests {
         ));
         let keep_hash = save(dir.path(), &cape_png).unwrap_or_else(|e| panic!("{e}"));
         let dead_hash = "0".repeat(64);
-        std::fs::write(dir.path().join(format!("{dead_hash}.png")), b"stale").unwrap();
+        let dead_path = dir.path().join(format!("{dead_hash}.png"));
+        std::fs::write(&dead_path, b"stale").unwrap();
+        let expired = std::time::SystemTime::now() - std::time::Duration::from_secs(120);
+        std::fs::File::options()
+            .write(true)
+            .open(&dead_path)
+            .unwrap()
+            .set_modified(expired)
+            .unwrap();
+        let recent_dead_hash = "1".repeat(64);
+        let recent_dead_path = dir.path().join(format!("{recent_dead_hash}.png"));
+        std::fs::write(&recent_dead_path, b"recent").unwrap();
         std::fs::write(dir.path().join("notes.txt"), b"keep-non-png").unwrap();
 
         let keep = std::collections::HashSet::from([keep_hash.clone()]);
@@ -295,6 +313,7 @@ pub(crate) mod tests {
 
         assert!(path_of(dir.path(), &keep_hash).unwrap().is_file());
         assert!(!path_of(dir.path(), &dead_hash).unwrap().exists());
+        assert!(path_of(dir.path(), &recent_dead_hash).unwrap().is_file());
         assert!(dir.path().join("notes.txt").is_file());
     }
 }

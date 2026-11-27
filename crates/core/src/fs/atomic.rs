@@ -187,6 +187,26 @@ pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), Ato
     write_atomic(path, &bytes)
 }
 
+/// 异步原子写入：将包含 Windows 退避 `std::thread::sleep` 与 `sync_all` 的落盘放到阻塞线程池，避免卡住 Tokio 工作线程。
+pub async fn write_atomic_async(path: PathBuf, bytes: Vec<u8>) -> Result<(), AtomicWriteError> {
+    tokio::task::spawn_blocking(move || write_atomic(&path, &bytes))
+        .await
+        .map_err(|e| AtomicWriteError::Io {
+            path: PathBuf::new(),
+            source: io::Error::other(e),
+        })?
+}
+
+/// 异步序列化并原子写入 JSON（带 Windows 占用重试退避，不阻塞异步调度线程）。
+pub async fn write_json_atomic_async<T: Serialize>(
+    path: &Path,
+    value: &T,
+) -> Result<(), AtomicWriteError> {
+    let mut bytes = serde_json::to_vec_pretty(value)?;
+    bytes.push(b'\n');
+    write_atomic_async(path.to_path_buf(), bytes).await
+}
+
 /// 读取 JSON 文件。文件不存在时返回 `Ok(None)`。
 pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, ReadJsonError> {
     let bytes = match fs::read(path) {

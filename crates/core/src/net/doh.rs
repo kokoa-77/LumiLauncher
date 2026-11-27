@@ -3,7 +3,7 @@
 //! - 全程采用纯 IP `POST {endpoint}` + `application/dns-message`（RFC 8484 二进制协议），解析 DoH 端点本身零 DNS 依赖；
 //! - `PoisonProneOverseas`（`neoforged.net` / `modrinth.com` / `curseforge.com` / `forgecdn.net` / `github.com` 等）
 //!   严格隔离在 `OverseasClean`（`1.0.0.1` / `1.1.1.1` / `9.9.9.9`），绝不回退国内 DNS 防缓存污染；
-//! - 8s TUN 租约 + 20s `FakeIpBypass` 冷却：关闭 Clash TUN 后击穿 Windows `Dnscache` 残留 `198.18.x.y`；
+//! - 30s TUN 租约 + 20s `FakeIpBypass` 冷却：关闭 Clash TUN 后击穿 Windows `Dnscache` 残留 `198.18.x.y`；
 //! - 每次主连接仅投放 1 个优选主 IP 并记 `last_served`，精准支持 `1-Rotate → 2-RST → SniBlocked(60s)` 闭环。
 
 use std::collections::HashMap;
@@ -217,7 +217,7 @@ struct ServedRecord {
     provider_id: Option<&'static str>,
 }
 
-type SingleflightPayload = Option<Result<Vec<IpAddr>, String>>;
+type SingleflightPayload = Option<Result<(Vec<IpAddr>, &'static str), String>>;
 type InFlightMap = HashMap<String, watch::Receiver<SingleflightPayload>>;
 
 struct SingleflightGuard<'a> {
@@ -811,12 +811,23 @@ impl Doh {
         out
     }
 
-    /// 按 RFC 8484 二进制查询单个节点，自动更新其 EWMA 延迟与冷却状态。
+    /// 按 RFC 8484 二进制查询单个节点，按 `record_health` 决定是否计入运行期 EWMA 与冷却状态。
     async fn query_wire(
         &self,
         provider: &ProviderSpec,
         host: &str,
         qtype: u16,
+    ) -> Result<(Vec<IpAddr>, u32), QueryErr> {
+        self.query_wire_with_health(provider, host, qtype, true)
+            .await
+    }
+
+    async fn query_wire_with_health(
+        &self,
+        provider: &ProviderSpec,
+        host: &str,
+        qtype: u16,
+        record_health: bool,
     ) -> Result<(Vec<IpAddr>, u32), QueryErr> {
         let wire_req = dns_wire::build_query(0x0000, host, qtype).ok_or(QueryErr::InvalidHost)?;
         let started = Instant::now();
@@ -829,49 +840,63 @@ impl Doh {
             .send()
             .await
             .map_err(|e| {
-                self.mark_provider_failure(provider.id);
+                if record_health {
+                    self.mark_provider_failure(provider.id);
+                }
                 QueryErr::Transport(describe(&e))
             })?;
         if !resp.status().is_success() {
             let code = resp.status().as_u16();
-            self.mark_provider_failure(provider.id);
+            if record_health {
+                self.mark_provider_failure(provider.id);
+            }
             return Err(QueryErr::Transport(format!("服务返回 {code}")));
         }
         let bytes = resp.bytes().await.map_err(|e| {
-            self.mark_provider_failure(provider.id);
+            if record_health {
+                self.mark_provider_failure(provider.id);
+            }
             QueryErr::Transport(describe(&e))
         })?;
         let rtt_ms = started.elapsed().as_secs_f64() * 1000.0;
         match dns_wire::parse_ip_response(&bytes, host, qtype) {
             DnsWireOutcome::Records { ips, min_ttl } => {
-                self.providers
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .entry(provider.id.to_owned())
-                    .or_default()
-                    .record_ok(rtt_ms);
+                if record_health {
+                    self.providers
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .entry(provider.id.to_owned())
+                        .or_default()
+                        .record_ok(rtt_ms);
+                }
                 Ok((ips, min_ttl))
             }
             DnsWireOutcome::NoData { nxdomain } => {
-                self.providers
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .entry(provider.id.to_owned())
-                    .or_default()
-                    .record_ok(rtt_ms);
+                if record_health {
+                    self.providers
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .entry(provider.id.to_owned())
+                        .or_default()
+                        .record_ok(rtt_ms);
+                }
                 Err(QueryErr::NoRecords { nxdomain })
             }
             DnsWireOutcome::PoisonedOrBogon => {
-                self.providers
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .entry(provider.id.to_owned())
-                    .or_default()
-                    .record_poison(Instant::now());
+                if record_health {
+                    self.providers
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .entry(provider.id.to_owned())
+                        .or_default()
+                        .record_poison(Instant::now());
+                }
                 Err(QueryErr::Poisoned)
             }
             DnsWireOutcome::Malformed | DnsWireOutcome::ServerFailure => {
-                self.mark_provider_failure(provider.id);
+                if record_health {
+                    self.mark_provider_failure(provider.id);
+                }
                 Err(QueryErr::Transport("DNS 报文异常".to_owned()))
             }
         }
@@ -912,6 +937,10 @@ impl Doh {
             res0 = &mut f0 => {
                 if let Some((ips, ttl)) = res0 {
                     return Some((ips, p0.id, ttl));
+                }
+                // P0 在 180ms 内快速失败：必须接着询问 P1，不能直接跳过 P1 落入 candidates[2..]
+                if let Some((ips, ttl)) = self.query_provider_dual(&p1, host, suppress_v6).await {
+                    return Some((ips, p1.id, ttl));
                 }
             }
             () = tokio::time::sleep(HEDGE_DELAY) => {
@@ -985,7 +1014,7 @@ impl Doh {
         match role {
             Role::Follower(mut rx) => loop {
                 if let Some(res) = rx.borrow().clone() {
-                    return res.map(|ips| (ips, "singleflight"));
+                    return res;
                 }
                 if rx.changed().await.is_err() {
                     return Err("DoH 查询未返回".to_owned());
@@ -1023,12 +1052,7 @@ impl Doh {
                 };
                 guard.done = true;
                 if let Some(tx) = guard.tx.take() {
-                    let _ = tx.send(Some(
-                        outcome
-                            .as_ref()
-                            .map(|(ips, _)| ips.clone())
-                            .map_err(Clone::clone),
-                    ));
+                    let _ = tx.send(Some(outcome.clone()));
                 }
                 outcome
             }
@@ -1134,8 +1158,7 @@ impl Doh {
         if let Ok((ips, provider_id)) = self.resolve_with_singleflight(&host).await
             && !ips.is_empty()
         {
-            let provider =
-                (provider_id != "system" && provider_id != "singleflight").then_some(provider_id);
+            let provider = (provider_id != "system").then_some(provider_id);
             let primary = self.select_primary_ip(&host, &ips, provider);
             return filter_rebinding_addrs(
                 &host,
@@ -1469,7 +1492,9 @@ impl Doh {
 
         let doh_futures = defs.into_iter().map(|def| async move {
             let started = Instant::now();
-            let result = self.query_wire(&def, TEST_HOST, TYPE_A).await;
+            let result = self
+                .query_wire_with_health(&def, TEST_HOST, TYPE_A, false)
+                .await;
             let ms = started.elapsed().as_secs_f64() * 1000.0;
             let name = server_label(def.endpoint.as_ref());
             match result {
@@ -1585,14 +1610,18 @@ fn classify_connect_error_kind(err: &reqwest::Error) -> ConnectFailureKind {
             {
                 return ConnectFailureKind::HandshakeResetOrEof;
             }
-            if io_err.get_ref().is_some_and(|inner| {
-                let s = format!("{inner:?}");
-                s.contains("InvalidCertificate")
-                    || s.contains("UnknownIssuer")
-                    || s.contains("Expired")
-            }) {
+            if io_err
+                .get_ref()
+                .and_then(|inner| inner.downcast_ref::<rustls::Error>())
+                .is_some_and(|e| matches!(e, rustls::Error::InvalidCertificate(_)))
+            {
                 return ConnectFailureKind::TlsCertMismatch;
             }
+        }
+        if let Some(tls_err) = node.downcast_ref::<rustls::Error>()
+            && matches!(tls_err, rustls::Error::InvalidCertificate(_))
+        {
+            return ConnectFailureKind::TlsCertMismatch;
         }
         cur = node.source();
     }
@@ -1889,6 +1918,47 @@ mod tests {
             probes[0].error
         );
         assert!(probes[1].name.starts_with("系统 DNS"), "{}", probes[1].name);
+        // 测试探针不应把节点写进冷却期
+        assert!(doh.providers.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn fast_p0_failure_falls_back_to_p1_instead_of_skipping_it() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        // 一个只返回 SERVFAIL (P0)、一个返回合法 A 记录 (P1)，测试本地 HTTP/HTTPS？
+        // 这里验证 wire 构建/解析与 2-node custom_servers 下 P0 快速失败时不会跳过 P1：
+        let dead = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let dead_addr = dead.local_addr().unwrap();
+        drop(dead); // 立刻拒连（<180ms 快速失败）
+
+        // P1 通过明文 HTTP 服务器仅校验是否真的收到请求（即使 HTTPS 失败或端口被测到）
+        let p1_hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let p1_hits_srv = p1_hits.clone();
+        let p1_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let p1_addr = p1_listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = p1_listener.accept().await {
+                p1_hits_srv.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                let mut buf = [0u8; 256];
+                let _ = sock.read(&mut buf).await;
+                let _ = sock.write_all(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await;
+            }
+        });
+
+        let doh = Doh::with_servers(
+            true,
+            vec![
+                format!("http://{dead_addr}/dns-query"),
+                format!("http://{p1_addr}/dns-query"),
+            ],
+        )
+        .unwrap();
+        let _ = doh.resolve_via_providers("example.com").await;
+        assert!(
+            p1_hits.load(std::sync::atomic::Ordering::Acquire) >= 1,
+            "P0 快速失败后必须紧接着询问 P1"
+        );
     }
 
     #[test]

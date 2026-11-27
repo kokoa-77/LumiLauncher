@@ -176,14 +176,18 @@ pub fn classify_reqwest_error(
             if matches!(io_err.raw_os_error(), Some(10054)) {
                 has_reset_eof = true;
             }
-            if io_err.get_ref().is_some_and(|inner| {
-                let name = format!("{inner:?}");
-                name.contains("InvalidCertificate")
-                    || name.contains("UnknownIssuer")
-                    || name.contains("Expired")
-            }) {
+            if io_err
+                .get_ref()
+                .and_then(|inner| inner.downcast_ref::<rustls::Error>())
+                .is_some_and(|e| matches!(e, rustls::Error::InvalidCertificate(_)))
+            {
                 has_cert_hint = true;
             }
+        }
+        if let Some(tls_err) = node.downcast_ref::<rustls::Error>()
+            && matches!(tls_err, rustls::Error::InvalidCertificate(_))
+        {
+            has_cert_hint = true;
         }
         cur = node.source();
     }

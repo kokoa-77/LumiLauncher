@@ -27,7 +27,9 @@ use crate::content::InstanceContent;
 use crate::content::claim::ManualFile;
 use crate::content::detail::BodyFormat;
 use crate::content::store::{ContentStore, STORE_DIR};
-use crate::fs::{read_json, safe_join, write_atomic_from, write_json_atomic};
+use crate::fs::{
+    read_json, safe_join, write_atomic_from, write_json_atomic, write_json_atomic_async,
+};
 use crate::install::processors::LoaderContext;
 use crate::install::{InstallPhase, LoaderProgress, install_files, load_or_fetch_version, loaders};
 use crate::instance::{self, Instance, LoaderRef, META_DIR, PackSource};
@@ -243,6 +245,7 @@ struct TargetFile {
     sha1: String,
     source: TargetSource,
     size: Option<u64>,
+    keep_disabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -279,6 +282,33 @@ pub(crate) fn normalize_rel(path: &str) -> String {
         .filter(|s| !s.is_empty() && *s != ".")
         .collect::<Vec<_>>()
         .join("/")
+}
+
+fn walk_rel_files_sync(root: &Path) -> Vec<String> {
+    fn visit(base: &Path, dir: &Path, out: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(ft) = entry.file_type() else {
+                continue;
+            };
+            if ft.is_dir() {
+                visit(base, &path, out);
+            } else if ft.is_file()
+                && let Ok(rel) = path.strip_prefix(base)
+            {
+                out.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    if root.is_dir() {
+        visit(root, root, &mut out);
+    }
+    out.sort();
+    out
 }
 
 /// `saves/`（玩家存档）与 `Lumi/`（启动器元数据）在整合包更新中无条件受保护。
@@ -487,6 +517,7 @@ pub async fn preview(
                 sha1: file.sha1.to_ascii_lowercase(),
                 source: TargetSource::Download(file.clone()),
                 size: file.size,
+                keep_disabled: false,
             },
         );
     }
@@ -503,6 +534,7 @@ pub async fn preview(
                 sha1: file.sha1.to_ascii_lowercase(),
                 source: TargetSource::Manual(file.clone()),
                 size: None,
+                keep_disabled: false,
             },
         );
     }
@@ -515,6 +547,7 @@ pub async fn preview(
                 sha1,
                 source: TargetSource::Override { entry_name },
                 size: Some(size),
+                keep_disabled: false,
             },
         );
     }
@@ -773,8 +806,78 @@ pub async fn preview(
         }
     }
 
-    let player_added_count = u32::try_from(player_added_paths.len()).unwrap_or(u32::MAX);
-    for rel in player_added_paths {
+    let mut removed_disabled_stems: HashMap<String, usize> = HashMap::new();
+    for op in &ops {
+        if let PlannedOp::Remove { disk_path } = op
+            && disk_path.to_ascii_lowercase().ends_with(".jar.disabled")
+            && let Some(stem) = normalize_mod_stem(disk_path)
+        {
+            *removed_disabled_stems.entry(stem).or_insert(0) += 1;
+        }
+    }
+
+    // 若无基线（老版导入的实例），按模组名词干识别旧版同名模组并安全替换移除，防新旧 jar 并存崩溃
+    let mut kept_player_added = Vec::with_capacity(player_added_paths.len());
+    if !has_origin_baseline {
+        let target_mod_stems: HashSet<String> = target_map
+            .values()
+            .filter(|tf| categorize(&tf.rel_path) == PackFileCategory::Mod)
+            .filter_map(|tf| normalize_mod_stem(&tf.rel_path))
+            .collect();
+        for rel in player_added_paths {
+            if categorize(&rel) == PackFileCategory::Mod
+                && let Some(stem) = normalize_mod_stem(&rel)
+                && target_mod_stems.contains(&stem)
+            {
+                if rel.to_ascii_lowercase().ends_with(".jar.disabled") {
+                    *removed_disabled_stems.entry(stem).or_insert(0) += 1;
+                }
+                removed_count += 1;
+                items.push(PackDiffItem {
+                    path: rel.clone(),
+                    kind: PackDiffKind::Removed,
+                    category: PackFileCategory::Mod,
+                    has_target: false,
+                    manual: false,
+                });
+                ops.push(PlannedOp::Remove { disk_path: rel });
+                continue;
+            }
+            kept_player_added.push(rel);
+        }
+    } else {
+        kept_player_added = player_added_paths;
+    }
+
+    // 把玩家已停用的旧版模组 `.jar.disabled` 停用状态延续到新版改名后的模组（唯一 1-to-1 词干匹配）
+    let mut added_mod_stem_counts: HashMap<String, usize> = HashMap::new();
+    for op in &ops {
+        if let PlannedOp::Install(tf) = op
+            && categorize(&tf.rel_path) == PackFileCategory::Mod
+            && let Some(stem) = normalize_mod_stem(&tf.rel_path)
+        {
+            *added_mod_stem_counts.entry(stem).or_insert(0) += 1;
+        }
+    }
+    let unique_disabled_stems: HashSet<String> = removed_disabled_stems
+        .into_iter()
+        .filter(|(stem, cnt)| *cnt == 1 && added_mod_stem_counts.get(stem).copied() == Some(1))
+        .map(|(stem, _)| stem)
+        .collect();
+    if !unique_disabled_stems.is_empty() {
+        for op in &mut ops {
+            if let PlannedOp::Install(tf) = op
+                && categorize(&tf.rel_path) == PackFileCategory::Mod
+                && normalize_mod_stem(&tf.rel_path)
+                    .is_some_and(|stem| unique_disabled_stems.contains(&stem))
+            {
+                tf.keep_disabled = true;
+            }
+        }
+    }
+
+    let player_added_count = u32::try_from(kept_player_added.len()).unwrap_or(u32::MAX);
+    for rel in kept_player_added {
         items.push(PackDiffItem {
             category: categorize(&rel),
             path: rel,
@@ -834,6 +937,37 @@ pub async fn preview(
         ops,
         target_origin,
     })
+}
+
+fn normalize_mod_stem(rel_path: &str) -> Option<String> {
+    let fname = rel_path.rsplit('/').next()?;
+    let without_disabled = fname
+        .strip_suffix(".disabled")
+        .or_else(|| fname.strip_suffix(".DISABLED"))
+        .unwrap_or(fname);
+    let stem = without_disabled
+        .strip_suffix(".jar")
+        .or_else(|| without_disabled.strip_suffix(".JAR"))?;
+    let bytes = stem.as_bytes();
+    let mut cut = stem.len();
+    for i in 1..bytes.len().saturating_sub(1) {
+        if matches!(bytes[i], b'-' | b'_' | b'+') {
+            let next = bytes[i + 1];
+            let next2 = bytes.get(i + 2).copied();
+            let looks_like_ver = next.is_ascii_digit()
+                || (matches!(next, b'v' | b'V') && next2.is_some_and(|b| b.is_ascii_digit()))
+                || stem[i..].to_ascii_lowercase().starts_with("-mc1.")
+                || stem[i..].to_ascii_lowercase().starts_with("_mc1.");
+            if looks_like_ver {
+                cut = i;
+                break;
+            }
+        }
+    }
+    let normalized = stem[..cut]
+        .trim_end_matches(['-', '_', '+'])
+        .to_ascii_lowercase();
+    (!normalized.is_empty()).then_some(normalized)
 }
 
 fn category_rank(category: PackFileCategory) -> u8 {
@@ -1104,7 +1238,15 @@ where
                                   tf: &TargetFile,
                                   kind: WriteKind|
          -> Result<(), ModpackError> {
-            let staged_file = safe_join(&files_staging, &tf.rel_path)?;
+            let dest_rel = if tf.keep_disabled
+                && categorize(&tf.rel_path) == PackFileCategory::Mod
+                && !tf.rel_path.ends_with(".disabled")
+            {
+                format!("{}.disabled", tf.rel_path)
+            } else {
+                tf.rel_path.clone()
+            };
+            let staged_file = safe_join(&files_staging, &dest_rel)?;
             match &tf.source {
                 TargetSource::Download(pf) => {
                     download_items.push(DownloadItem {
@@ -1118,12 +1260,12 @@ where
                     manual_needed.push(m.clone());
                 }
                 TargetSource::Override { entry_name } => {
-                    override_entries.push((entry_name.clone(), tf.rel_path.clone()));
+                    override_entries.push((entry_name.clone(), dest_rel.clone()));
                 }
             }
             writes.push(PreparedWrite {
                 disk_path,
-                rel_path: tf.rel_path.clone(),
+                rel_path: dest_rel,
                 staged_file,
                 sha1: tf.sha1.clone(),
                 kind,
@@ -1166,6 +1308,7 @@ where
 
         // 5. 处理 CurseForge 作者禁止第三方下载的手动补件
         let mut skipped_manual = 0u32;
+        let mut skipped_manual_keys: HashSet<String> = HashSet::new();
         if !manual_needed.is_empty() {
             let claim_title = format!(
                 "{} {}",
@@ -1196,16 +1339,18 @@ where
                         .await
                         .map_err(|source| ModpackError::Io { path: dest, source })?;
                 }
-                // 玩家跳过某些手动补件时，将其从待写入队列移除
+                // 玩家跳过某些手动补件时，将其从待写入队列移除，并记录以校正 pack-origin.json
                 writes.retain(|w| {
+                    let canonical = w.rel_path.strip_suffix(".disabled").unwrap_or(&w.rel_path);
                     if w.staged_file.is_file() {
                         true
                     } else if manual_needed
                         .iter()
-                        .any(|m| normalize_rel(&m.path).eq_ignore_ascii_case(&w.rel_path))
-                        && !claimed_paths.contains(&w.rel_path.to_lowercase())
+                        .any(|m| normalize_rel(&m.path).eq_ignore_ascii_case(canonical))
+                        && !claimed_paths.contains(&canonical.to_lowercase())
                     {
                         skipped_manual += 1;
+                        skipped_manual_keys.insert(canonical.to_lowercase());
                         false
                     } else {
                         true
@@ -1214,11 +1359,13 @@ where
             } else {
                 // 无宿主补件会话（如纯无头模式）：跳过手动补件并记录数量
                 writes.retain(|w| {
+                    let canonical = w.rel_path.strip_suffix(".disabled").unwrap_or(&w.rel_path);
                     let is_manual = manual_needed
                         .iter()
-                        .any(|m| normalize_rel(&m.path).eq_ignore_ascii_case(&w.rel_path));
+                        .any(|m| normalize_rel(&m.path).eq_ignore_ascii_case(canonical));
                     if is_manual {
                         skipped_manual += 1;
+                        skipped_manual_keys.insert(canonical.to_lowercase());
                     }
                     !is_manual
                 });
@@ -1237,21 +1384,25 @@ where
             .map_err(|e| ModpackError::Invalid(format!("解压配置文件失败：{e}")))??;
         }
 
-        // 7. 若新包带本地补丁库，拷贝到实例 Lumi/libraries/
-        if !plan.target_plan.local_libraries.is_empty() {
+        // 7. 若新包带本地补丁库，先解压到暂存目录（后续纳入回滚快照与事务写盘）
+        let local_libs_staged = if !plan.target_plan.local_libraries.is_empty() {
             let pack = plan.target_plan.pack_path.clone();
             let libs = plan.target_plan.local_libraries.clone();
-            let libs_dest = inst_dir.join(META_DIR).join(LOCAL_LIBS_DIR);
-            tokio::task::spawn_blocking(move || {
-                super::plan::extract_overrides(&pack, &libs, &libs_dest)
+            let libs_stage = staging.join("local-libs");
+            tokio::task::spawn_blocking({
+                let libs_stage = libs_stage.clone();
+                move || super::plan::extract_overrides(&pack, &libs, &libs_stage)
             })
             .await
             .map_err(|e| ModpackError::Invalid(format!("解压补丁库失败：{e}")))??;
-        }
+            Some(libs_stage)
+        } else {
+            None
+        };
 
-        // 8. 事务应用阶段：打快照、写回滚记录、落地文件、更新元数据
+        // 8. 事务应用阶段：打快照、写回滚记录、落地文件与补丁库、更新元数据
         on_progress(PackUpdateProgress::Applying);
-        apply_staged_update(
+        apply_staged_update_with_extras(
             game,
             &instance,
             plan,
@@ -1260,21 +1411,22 @@ where
             removals,
             preserved_player_modified,
             skipped_manual,
+            &skipped_manual_keys,
+            local_libs_staged.as_deref(),
         )
         .await
     }
     .await;
 
-    // 清理本次暂存目录（以及在线下载的临时整合包目录）
+    // 无条件清理暂存目录及在线下载的临时整合包目录（计划已被启动消耗，避免报错时漏下整包数百 MB 残留）
     super::discard_staging(&staging).await;
-    if result.is_ok()
-        && let Some(temp_dir) = &plan.temp_pack_dir
-    {
+    if let Some(temp_dir) = &plan.temp_pack_dir {
         super::discard_staging(temp_dir).await;
     }
     result
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[allow(clippy::too_many_arguments)]
 async fn apply_staged_update(
     game: &GameDir,
@@ -1285,6 +1437,34 @@ async fn apply_staged_update(
     removals: Vec<String>,
     preserved_player_modified: u32,
     skipped_manual: u32,
+) -> Result<PackUpdateOutcome, ModpackError> {
+    apply_staged_update_with_extras(
+        game,
+        instance,
+        plan,
+        version_id,
+        writes,
+        removals,
+        preserved_player_modified,
+        skipped_manual,
+        &HashSet::new(),
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn apply_staged_update_with_extras(
+    game: &GameDir,
+    instance: &Instance,
+    plan: &PackUpdatePlan,
+    version_id: String,
+    writes: Vec<PreparedWrite>,
+    removals: Vec<String>,
+    preserved_player_modified: u32,
+    skipped_manual: u32,
+    skipped_manual_keys: &HashSet<String>,
+    local_libs_staged: Option<&Path>,
 ) -> Result<PackUpdateOutcome, ModpackError> {
     let inst_dir = instance.game_dir(game)?;
     let store = ContentStore::new(game.root().join(STORE_DIR));
@@ -1381,6 +1561,49 @@ async fn apply_staged_update(
         }
     }
 
+    // 备份将被新包本地补丁库覆盖的 Lumi/libraries/* 文件，并记录新增补丁库以便回滚删除
+    let mut local_lib_copies: Vec<(PathBuf, String)> = Vec::new();
+    if let Some(libs_stage) = local_libs_staged {
+        for rel_sub in walk_rel_files_sync(libs_stage) {
+            let staged = libs_stage.join(&rel_sub);
+            let inst_rel = format!("{META_DIR}/{LOCAL_LIBS_DIR}/{}", normalize_rel(&rel_sub));
+            let target_abs = safe_join(&inst_dir, &inst_rel)?;
+            if target_abs.is_file() {
+                let sha1 = sha1_file(&target_abs)
+                    .await
+                    .map_err(|source| ModpackError::Io {
+                        path: target_abs.clone(),
+                        source,
+                    })?;
+                store
+                    .add_copy(&target_abs, &sha1)
+                    .await
+                    .map_err(|source| ModpackError::Io {
+                        path: target_abs,
+                        source,
+                    })?;
+                if backed_up_paths.insert(inst_rel.to_lowercase()) {
+                    restored_files.push(RollbackFile {
+                        path: inst_rel.clone(),
+                        sha1,
+                    });
+                }
+            } else {
+                let sha1 = sha1_file(&staged)
+                    .await
+                    .map_err(|source| ModpackError::Io {
+                        path: staged.clone(),
+                        source,
+                    })?;
+                added_files.push(RollbackFile {
+                    path: inst_rel.clone(),
+                    sha1,
+                });
+            }
+            local_lib_copies.push((staged, inst_rel));
+        }
+    }
+
     let from_version = instance
         .config
         .source
@@ -1414,7 +1637,7 @@ async fn apply_staged_update(
 
     // 在改动任何实例文件之前，先原子落盘带 `in_progress: true` 标记的回滚清单
     let rollback_path = inst_dir.join(META_DIR).join(ROLLBACK_FILE);
-    write_json_atomic(&rollback_path, &rollback_record)?;
+    write_json_atomic_async(&rollback_path, &rollback_record).await?;
 
     // 第二、三阶段包裹在事务块内：任何一步出错立即自动回滚，绝不留半新半旧实例
     let apply_result: Result<(u32, u32, u32, u32), ModpackError> = async {
@@ -1456,14 +1679,21 @@ async fn apply_staged_update(
                         source,
                     })?;
             }
-            // 同盘直接 rename，失败则原子复制
+            // 同盘直接 rename，失败则放到阻塞线程池执行原子复制（避免卡住 Tokio 工作线程）
             if tokio::fs::rename(&write.staged_file, &dest).await.is_err() {
-                let mut src =
-                    std::fs::File::open(&write.staged_file).map_err(|source| ModpackError::Io {
-                        path: write.staged_file.clone(),
-                        source,
-                    })?;
-                write_atomic_from(&dest, &mut src)?;
+                let staged = write.staged_file.clone();
+                let dest_copy = dest.clone();
+                tokio::task::spawn_blocking(move || -> Result<(), ModpackError> {
+                    let mut src =
+                        std::fs::File::open(&staged).map_err(|source| ModpackError::Io {
+                            path: staged,
+                            source,
+                        })?;
+                    write_atomic_from(&dest_copy, &mut src)?;
+                    Ok(())
+                })
+                .await
+                .map_err(|e| ModpackError::Invalid(format!("写入文件任务失败：{e}")))??;
             }
             match write.kind {
                 WriteKind::Added => added_done += 1,
@@ -1472,8 +1702,58 @@ async fn apply_staged_update(
             }
         }
 
-        // 第三阶段：更新基线清单、补丁与 instance.json
-        save_origin(&inst_dir, &plan.target_origin)?;
+        for (staged, inst_rel) in local_lib_copies {
+            let dest = safe_join(&inst_dir, &inst_rel)?;
+            if let Some(parent) = dest.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|source| ModpackError::Io {
+                        path: parent.to_path_buf(),
+                        source,
+                    })?;
+            }
+            if tokio::fs::rename(&staged, &dest).await.is_err() {
+                let dest_copy = dest.clone();
+                tokio::task::spawn_blocking(move || -> Result<(), ModpackError> {
+                    let mut src =
+                        std::fs::File::open(&staged).map_err(|source| ModpackError::Io {
+                            path: staged,
+                            source,
+                        })?;
+                    write_atomic_from(&dest_copy, &mut src)?;
+                    Ok(())
+                })
+                .await
+                .map_err(|e| ModpackError::Invalid(format!("写入补丁库失败：{e}")))??;
+            }
+        }
+
+        // 第三阶段：更新基线清单（过滤被玩家跳过的手动补件）、补丁与 instance.json
+        let mut effective_origin = plan.target_origin.clone();
+        if !skipped_manual_keys.is_empty() {
+            let prev_map: HashMap<String, (String, String)> = rollback_record
+                .prev_origin
+                .as_ref()
+                .map(|po| {
+                    po.files
+                        .iter()
+                        .map(|(k, v)| (normalize_rel(k).to_lowercase(), (k.clone(), v.clone())))
+                        .collect()
+                })
+                .unwrap_or_default();
+            effective_origin
+                .files
+                .retain(|k, _| !skipped_manual_keys.contains(&normalize_rel(k).to_lowercase()));
+            for key_lower in skipped_manual_keys {
+                if let Some((old_rel, old_sha1)) = prev_map.get(key_lower) {
+                    effective_origin
+                        .files
+                        .insert(old_rel.clone(), old_sha1.clone());
+                }
+            }
+        }
+        let origin_path = inst_dir.join(META_DIR).join(ORIGIN_FILE);
+        write_json_atomic_async(&origin_path, &effective_origin).await?;
         if let Some(bundle) = &plan.target_plan.patches {
             patches::save_for_instance(&inst_dir, bundle)?;
         } else {
@@ -1525,7 +1805,7 @@ async fn apply_staged_update(
         Ok(counts) => {
             // 全部落盘成功后清除事务进行中标记，保留记录供玩家手动一键回滚
             rollback_record.in_progress = false;
-            write_json_atomic(&rollback_path, &rollback_record)?;
+            write_json_atomic_async(&rollback_path, &rollback_record).await?;
             counts
         }
         Err(apply_err) => {
@@ -2195,5 +2475,123 @@ mod tests {
         assert!(!has_pending_update(&inst_dir));
         assert!(!inst_dir.join("mods/core-2.0.jar").exists());
         assert_eq!(std::fs::read(&old_mod_path).unwrap(), old_mod_bytes);
+    }
+
+    #[tokio::test]
+    async fn preserves_disabled_mod_state_across_renamed_version_update() {
+        let root = tempfile::tempdir().unwrap();
+        let game = GameDir::new(root.path());
+        let packs_dir = root.path().join("packs");
+        std::fs::create_dir_all(&packs_dir).unwrap();
+
+        let config = InstanceConfig::new("Disabled Test", "1.21.1", None);
+        let inst = instance::register(&game, "disabled-test", &config).unwrap();
+        let inst_dir = inst.game_dir(&game).unwrap();
+        std::fs::create_dir_all(inst_dir.join("mods")).unwrap();
+        let v1_bytes = b"sodium-v1-bytes";
+        std::fs::write(
+            inst_dir.join("mods/sodium-fabric-0.5.8.jar.disabled"),
+            v1_bytes,
+        )
+        .unwrap();
+
+        let mut origin_files = BTreeMap::new();
+        origin_files.insert("mods/sodium-fabric-0.5.8.jar".to_owned(), sha1_of(v1_bytes));
+        save_origin(
+            &inst_dir,
+            &PackOriginManifest {
+                format_version: MANIFEST_FORMAT,
+                kind: "mrpack".to_owned(),
+                name: "Disabled Test".to_owned(),
+                version: "1.0.0".to_owned(),
+                project_id: None,
+                version_id: None,
+                files: origin_files,
+            },
+        )
+        .unwrap();
+
+        let pack = make_mrpack(
+            &packs_dir,
+            "v2.mrpack",
+            "2.0.0",
+            "1.21.1",
+            "0.16.10",
+            &[("mods/sodium-fabric-0.6.0.jar", b"sodium-v2-bytes")],
+            &[],
+        );
+        let target_plan = mrpack::inspect(&pack).unwrap();
+        let plan = preview(&game, &inst, target_plan, None, BodyFormat::Markdown, None)
+            .await
+            .unwrap();
+        let install_op = plan.ops.iter().find_map(|op| match op {
+            PlannedOp::Install(tf) if tf.rel_path == "mods/sodium-fabric-0.6.0.jar" => Some(tf),
+            _ => None,
+        });
+        assert!(install_op.unwrap().keep_disabled);
+    }
+
+    #[tokio::test]
+    async fn skipped_manual_file_is_not_written_into_pack_origin() {
+        let root = tempfile::tempdir().unwrap();
+        let game = GameDir::new(root.path());
+        let inst = instance::register(
+            &game,
+            "manual-skip",
+            &InstanceConfig::new("Manual Skip", "1.21.1", None),
+        )
+        .unwrap();
+        let inst_dir = inst.game_dir(&game).unwrap();
+        std::fs::create_dir_all(inst_dir.join(META_DIR)).unwrap();
+
+        let packs_dir = root.path().join("packs");
+        std::fs::create_dir_all(&packs_dir).unwrap();
+        let pack = make_mrpack(
+            &packs_dir,
+            "v2.mrpack",
+            "2.0.0",
+            "1.21.1",
+            "0.16.10",
+            &[("mods/opt.jar", b"ok")],
+            &[],
+        );
+        let mut target_plan = mrpack::inspect(&pack).unwrap();
+        target_plan.preview.manual_files.push(ManualFile {
+            project_id: 7,
+            file_id: 42,
+            project_name: "Restricted".to_owned(),
+            display_name: "Restricted".to_owned(),
+            file_name: "restricted.jar".to_owned(),
+            size: 128.0,
+            required: false,
+            kind: crate::content::ContentKind::Mod,
+            page_url: Some("https://www.curseforge.com/projects/7".to_owned()),
+            icon_url: None,
+            sha1: "1111111111111111111111111111111111111111".to_owned(),
+            path: "mods/restricted.jar".to_owned(),
+        });
+        let update_plan = preview(&game, &inst, target_plan, None, BodyFormat::Markdown, None)
+            .await
+            .unwrap();
+
+        let skipped = HashSet::from(["mods/restricted.jar".to_owned()]);
+        apply_staged_update_with_extras(
+            &game,
+            &inst,
+            &update_plan,
+            "1.21.1".to_owned(),
+            Vec::new(),
+            Vec::new(),
+            0,
+            1,
+            &skipped,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let saved_origin = load_origin(&inst_dir).unwrap().unwrap();
+        assert!(!saved_origin.files.contains_key("mods/restricted.jar"));
+        assert!(saved_origin.files.contains_key("mods/opt.jar"));
     }
 }

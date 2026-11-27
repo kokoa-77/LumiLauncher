@@ -1248,10 +1248,14 @@ pub async fn latest_versions(
     .await
 }
 
-/// 各类内容在 Modrinth 上用的「加载器」筛选值
+/// 各类内容在 Modrinth 上用的「加载器」筛选值（Quilt 兼容多数未专门标 Quilt 的 Fabric 模组）
 pub fn loaders_for(kind: ContentKind, mod_loader: Option<&str>) -> Vec<&str> {
     match kind {
-        ContentKind::Mod => mod_loader.into_iter().collect(),
+        ContentKind::Mod => match mod_loader {
+            Some("quilt") => vec!["quilt", "fabric"],
+            Some(other) => vec![other],
+            None => Vec::new(),
+        },
         ContentKind::Shader => vec!["iris", "optifine"],
         ContentKind::ResourcePack => vec!["minecraft"],
     }
@@ -1611,5 +1615,17 @@ mod tests {
         assert_eq!(v.primary_file().unwrap().filename, "b.jar");
         v.files = vec![file("a.jar", false)];
         assert_eq!(v.primary_file().unwrap().filename, "a.jar");
+    }
+
+    #[test]
+    fn quilt_mod_loader_includes_fabric_fallback() {
+        assert_eq!(
+            loaders_for(ContentKind::Mod, Some("quilt")),
+            vec!["quilt", "fabric"]
+        );
+        assert_eq!(
+            loaders_for(ContentKind::Mod, Some("fabric")),
+            vec!["fabric"]
+        );
     }
 }

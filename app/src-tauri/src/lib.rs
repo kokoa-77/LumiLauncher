@@ -560,6 +560,7 @@ pub fn run() {
                 pending_upgrades: Mutex::default(),
                 upgrade_preview_cancels: Mutex::default(),
                 pending_pack_updates: Mutex::default(),
+                pack_update_preview_cancel: Mutex::default(),
                 pending_exports: Mutex::default(),
                 drops: Mutex::default(),
                 search_cache: TtlCache::new(state::DISCOVER_CACHE_TTL, 300),

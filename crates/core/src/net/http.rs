@@ -93,22 +93,12 @@ impl ClientBundle {
                         msg,
                     ));
                 }
-                // 严防 CurseForge API 跨源重定向泄露 `x-api-key`
-                if prev
-                    .host_str()
-                    .is_some_and(|h| h.eq_ignore_ascii_case("api.curseforge.com"))
-                {
-                    let next_allowed = attempt.url().host_str().is_some_and(|h| {
-                        h.eq_ignore_ascii_case("api.curseforge.com")
-                            || h.eq_ignore_ascii_case("edge.forgecdn.net")
-                            || h.eq_ignore_ascii_case("mediafilez.forgecdn.net")
-                    });
-                    if !next_allowed {
-                        return attempt.error(std::io::Error::new(
-                            std::io::ErrorKind::PermissionDenied,
-                            "拒绝 CurseForge 接口跨源重定向",
-                        ));
-                    }
+                // 严防 CurseForge REST API 跨源跳转（含多跳链路）泄露 `x-api-key`
+                if !is_curseforge_redirect_allowed(attempt.previous(), attempt.url()) {
+                    return attempt.error(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "拒绝 CurseForge 接口跨源重定向",
+                    ));
                 }
             }
             attempt.follow()
@@ -218,6 +208,18 @@ pub fn expand_official_fallbacks(urls: &[String], doh: Option<&Doh>) -> Vec<Stri
     out
 }
 
+fn is_curseforge_redirect_allowed(previous: &[reqwest::Url], next: &reqwest::Url) -> bool {
+    let touched_cf_api = previous.iter().any(|u| {
+        u.host_str()
+            .is_some_and(|h| h.eq_ignore_ascii_case("api.curseforge.com"))
+    });
+    if !touched_cf_api {
+        return true;
+    }
+    next.host_str()
+        .is_some_and(|h| h.eq_ignore_ascii_case("api.curseforge.com"))
+}
+
 fn is_loopback_origin(url: &reqwest::Url) -> bool {
     let Some(raw) = url.host_str() else {
         return false;
@@ -310,6 +312,23 @@ pub(crate) async fn send_following_safe_redirects(
     range_header: Option<&str>,
     host_header: Option<&HostHeader>,
 ) -> Result<(reqwest::Response, String), RedirectSendError> {
+    send_following_safe_redirects_with_if_range(
+        client,
+        initial_url,
+        range_header,
+        None,
+        host_header,
+    )
+    .await
+}
+
+pub(crate) async fn send_following_safe_redirects_with_if_range(
+    client: &Client,
+    initial_url: &str,
+    range_header: Option<&str>,
+    if_range_header: Option<&str>,
+    host_header: Option<&HostHeader>,
+) -> Result<(reqwest::Response, String), RedirectSendError> {
     let mut current_url = initial_url.to_owned();
     let mut current = reqwest::Url::parse(&current_url)
         .map_err(|e| RedirectSendError::Protocol(format!("无效下载地址 {current_url}：{e}")))?;
@@ -320,6 +339,9 @@ pub(crate) async fn send_following_safe_redirects(
             .header(reqwest::header::USER_AGENT, USER_AGENT);
         if let Some(range) = range_header {
             req = req.header(reqwest::header::RANGE, range);
+        }
+        if let Some(if_range) = if_range_header {
+            req = req.header(reqwest::header::IF_RANGE, if_range);
         }
         if let Some(auth) = host_header.filter(|h| h.applies_to(&current_url)) {
             req = req.header(auth.name, auth.value.expose().as_str());
@@ -633,5 +655,31 @@ mod tests {
         // 3) 合法公网 HTTPS 跳转放行
         let good_cdn = reqwest::Url::parse("https://fastly.example.net/data/a.jar").unwrap();
         assert!(validate_redirect_target(&public_https, &good_cdn).is_ok());
+    }
+
+    #[test]
+    fn curseforge_api_redirect_blocks_one_hop_and_two_hop_cross_origin_leaks() {
+        let cf_api = reqwest::Url::parse("https://api.curseforge.com/v1/mods/1").unwrap();
+        let cf_api_2 = reqwest::Url::parse("https://api.curseforge.com/v1/mods/2").unwrap();
+        let cf_cdn = reqwest::Url::parse("https://edge.forgecdn.net/files/1/a.jar").unwrap();
+        let attacker = reqwest::Url::parse("https://evil.example.net/steal").unwrap();
+
+        assert!(is_curseforge_redirect_allowed(
+            std::slice::from_ref(&cf_api),
+            &cf_api_2
+        ));
+        assert!(!is_curseforge_redirect_allowed(
+            std::slice::from_ref(&cf_api),
+            &cf_cdn
+        ));
+        assert!(!is_curseforge_redirect_allowed(
+            &[cf_api, cf_cdn],
+            &attacker
+        ));
+        assert!(is_curseforge_redirect_allowed(&[public_url()], &attacker));
+    }
+
+    fn public_url() -> reqwest::Url {
+        reqwest::Url::parse("https://api.modrinth.com/v2/project/a").unwrap()
     }
 }

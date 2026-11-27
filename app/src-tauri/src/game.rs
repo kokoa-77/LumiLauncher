@@ -778,7 +778,7 @@ pub fn launch_start(
             job.set_step("核验 Java 版游玩权限");
             tokio::select! {
                 _ = stop.cancelled() => Err(AppError::new("auth.cancelled", "已取消启动")),
-                result = crate::accounts::ready(&state, &selection, &cancel) => result,
+                result = crate::accounts::ready(&app, &state, &selection, &cancel) => result,
             }
         };
         let prepared = async {

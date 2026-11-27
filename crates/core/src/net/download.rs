@@ -36,7 +36,7 @@ use super::doh::{Doh, TransportDnsAction};
 use super::edge_opt::{BatchTailHedger, OfficialEdgeOptimizer, TAIL_HEDGE_MAX_FILE_BYTES};
 use super::http::{
     ClientBundle, HttpError, RedirectSendError, expand_official_fallbacks,
-    send_following_safe_redirects,
+    send_following_safe_redirects_with_if_range,
 };
 use super::hydrator::LocalHydrator;
 use super::metrics::{
@@ -45,7 +45,9 @@ use super::metrics::{
 use super::profile::NetworkProfileStore;
 use super::proxy_watch::ProxyWatcher;
 use super::proxy_watch::SystemProxySnapshot;
-use super::segmented::{self, SegmentedOutcome, can_segment, has_resumable_artifacts};
+use super::segmented::{
+    self, SegmentedOutcome, can_segment, has_resumable_artifacts, header_str, parse_content_range,
+};
 use super::throttle::{DiskMediaDetector, DiskMediaKind, TokenBucket};
 use super::{to_hex, url_host};
 
@@ -81,9 +83,8 @@ pub struct DownloadEngine {
     proxy_watcher: Arc<ProxyWatcher>,
     net_total: RwLock<Arc<Semaphore>>,
     net_batch: RwLock<Arc<Semaphore>>,
-    disk_sem: RwLock<Arc<Semaphore>>,
+    disk_pool: RwLock<(Arc<Semaphore>, u32)>,
     max_net_permits: AtomicU32,
-    max_disk_writers: AtomicU32,
     disk_ewma_ms: Mutex<f64>,
     last_backpressure_event: Mutex<Option<Instant>>,
     mem_budget: Arc<Semaphore>,
@@ -123,11 +124,13 @@ impl DownloadEngine {
             proxy_watcher,
             net_total: RwLock::new(Arc::new(Semaphore::new(DEFAULT_NET_SLOTS))),
             net_batch: RwLock::new(Arc::new(Semaphore::new(BATCH_NET_SLOTS))),
-            disk_sem: RwLock::new(Arc::new(Semaphore::new(
-                usize::try_from(DISK_PERMIT_POOL).unwrap_or(12),
-            ))),
+            disk_pool: RwLock::new((
+                Arc::new(Semaphore::new(
+                    usize::try_from(DISK_PERMIT_POOL).unwrap_or(12),
+                )),
+                DISK_PERMIT_POOL,
+            )),
             max_net_permits: AtomicU32::new(DEFAULT_NET_SLOTS as u32),
-            max_disk_writers: AtomicU32::new(DISK_PERMIT_POOL),
             disk_ewma_ms: Mutex::new(5.0),
             last_backpressure_event: Mutex::new(None),
             mem_budget: Arc::new(Semaphore::new(MEM_BUDGET_MIB)),
@@ -169,11 +172,13 @@ impl DownloadEngine {
             proxy_watcher,
             net_total: RwLock::new(Arc::new(Semaphore::new(DEFAULT_NET_SLOTS))),
             net_batch: RwLock::new(Arc::new(Semaphore::new(BATCH_NET_SLOTS))),
-            disk_sem: RwLock::new(Arc::new(Semaphore::new(
-                usize::try_from(DISK_PERMIT_POOL).unwrap_or(12),
-            ))),
+            disk_pool: RwLock::new((
+                Arc::new(Semaphore::new(
+                    usize::try_from(DISK_PERMIT_POOL).unwrap_or(12),
+                )),
+                DISK_PERMIT_POOL,
+            )),
             max_net_permits: AtomicU32::new(DEFAULT_NET_SLOTS as u32),
-            max_disk_writers: AtomicU32::new(DISK_PERMIT_POOL),
             disk_ewma_ms: Mutex::new(5.0),
             last_backpressure_event: Mutex::new(None),
             mem_budget: Arc::new(Semaphore::new(MEM_BUDGET_MIB)),
@@ -224,10 +229,16 @@ impl DownloadEngine {
             },
             DiskWriteMode::Manual => u32::from(cfg.max_disk_writers.clamp(1, 32)),
         };
-        if self.max_disk_writers.swap(new_disk, Ordering::AcqRel) != new_disk {
-            *self.disk_sem.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(Semaphore::new(
-                usize::try_from(new_disk).unwrap_or(12).max(1),
-            ));
+        {
+            let mut pool = self.disk_pool.write().unwrap_or_else(|e| e.into_inner());
+            if pool.1 != new_disk {
+                *pool = (
+                    Arc::new(Semaphore::new(
+                        usize::try_from(new_disk).unwrap_or(12).max(1),
+                    )),
+                    new_disk,
+                );
+            }
         }
 
         *self.runtime_cfg.write().unwrap_or_else(|e| e.into_inner()) = cfg.clone();
@@ -396,6 +407,11 @@ impl DownloadEngine {
                     (ActiveRouteKind::SystemProxy, "系统代理".to_owned())
                 } else if tun_active {
                     (ActiveRouteKind::TunFakeIp, "TUN 代理接管".to_owned())
+                } else if snap.has_pac_only() {
+                    (
+                        ActiveRouteKind::Direct,
+                        "直连（检测到系统 PAC，暂不支持自动脚本）".to_owned(),
+                    )
                 } else {
                     (ActiveRouteKind::Direct, "直连".to_owned())
                 }
@@ -407,7 +423,7 @@ impl DownloadEngine {
         let metered_throttled = metered && cfg.metered_policy == MeteredPolicy::Throttle;
         let limit_kib = self.effective_speed_limit_kib();
         let disk_kind = self.disk_kind_for_game_root();
-        let disk_limit = self.max_disk_writers.load(Ordering::Acquire);
+        let disk_limit = self.disk_pool.read().unwrap_or_else(|e| e.into_inner()).1;
         let disk_ewma = self.disk_ewma_ms();
         let epoch = u32::try_from(self.proxy_watcher.epoch()).unwrap_or(u32::MAX);
 
@@ -540,18 +556,16 @@ impl DownloadEngine {
         cancel: &CancellationToken,
     ) -> Option<tokio::sync::OwnedSemaphorePermit> {
         let ewma = *self.disk_ewma_ms.lock().unwrap_or_else(|e| e.into_inner());
-        let limit = self.max_disk_writers.load(Ordering::Acquire).max(1);
+        let (disk_sem, limit) = {
+            let pool = self.disk_pool.read().unwrap_or_else(|e| e.into_inner());
+            (pool.0.clone(), pool.1.max(1))
+        };
         let slow_target = 2u32.min(limit);
         let cost = if ewma >= 50.0 {
             (limit / slow_target).clamp(1, limit)
         } else {
             1
         };
-        let disk_sem = self
-            .disk_sem
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
         tokio::select! {
             res = disk_sem.acquire_many_owned(cost) => res.ok(),
             () = cancel.cancelled() => None,
@@ -1055,11 +1069,13 @@ async fn send_attempt_request(
     client: &Client,
     cand: &PlannedCandidate,
     range: Option<&str>,
+    if_range: Option<&str>,
     host_header: Option<&HostHeader>,
     engine: Option<&DownloadEngine>,
 ) -> Result<(reqwest::Response, String), RedirectSendError> {
     let _ = engine;
-    send_following_safe_redirects(client, &cand.url, range, host_header).await
+    send_following_safe_redirects_with_if_range(client, &cand.url, range, if_range, host_header)
+        .await
 }
 
 impl Downloader {
@@ -1086,6 +1102,15 @@ impl Downloader {
         {
             return FileResult::Cancelled;
         }
+        if cancel.is_cancelled() {
+            return FileResult::Cancelled;
+        }
+        // 全程按目标路径加锁，彻底防止同路径并发下载共用 `.part` 互相踩坏（并在存在时直接命中复用）
+        let path_lock = self.engine.as_ref().map(|e| e.lock_for_path(&item.path));
+        let _path_guard = match path_lock.as_ref() {
+            Some(m) => Some(m.lock().await),
+            None => None,
+        };
         if cancel.is_cancelled() {
             return FileResult::Cancelled;
         }
@@ -1247,6 +1272,8 @@ impl Downloader {
                     }
                     continue;
                 }
+                // 分段失败切入单流前清理 `.part.s*` 与 `.part.meta`，防止大文件孤儿分片长期占盘
+                segmented::clean_segment_artifacts(&item.path, cancel).await;
             }
 
             let mut use_spare = false;
@@ -1467,6 +1494,7 @@ impl Downloader {
     ) -> Result<u64, AttemptError> {
         let url = cand.url.as_str();
         let part = part_path(&item.path);
+        let etag_sidecar = part_etag_path(&item.path);
         if let Some(parent) = item.path.parent() {
             fs::create_dir_all(parent)
                 .await
@@ -1483,9 +1511,16 @@ impl Downloader {
             }
             if resume_from > size {
                 remove_quietly(&part, cancel).await;
+                remove_quietly(&etag_sidecar, cancel).await;
                 resume_from = 0;
             }
         }
+        let (saved_etag, saved_lm) = if resume_from > 0 {
+            read_part_validators(&etag_sidecar).await
+        } else {
+            (None, None)
+        };
+        let if_range_val = saved_etag.clone().or_else(|| saved_lm.clone());
 
         if let Some(p) = &self.pause
             && p.is_paused()
@@ -1515,6 +1550,7 @@ impl Downloader {
             &client,
             cand,
             range_val.as_deref(),
+            if_range_val.as_deref(),
             self.host_header.as_ref(),
             self.engine.as_deref(),
         );
@@ -1608,8 +1644,34 @@ impl Downloader {
         }
 
         let resuming = status == StatusCode::PARTIAL_CONTENT && resume_from > 0;
-        if !resuming {
+        let resp_etag = header_str(response.headers(), header::ETAG);
+        let resp_lm = header_str(response.headers(), header::LAST_MODIFIED);
+        if resuming {
+            let range_header = response
+                .headers()
+                .get(header::CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(parse_content_range);
+            let range_ok = matches!(
+                range_header,
+                Some((start, _, total)) if start == resume_from && total.is_none_or(|t| item.size.is_none_or(|exp| t == exp))
+            );
+            let validator_ok = validator_matches(
+                saved_etag.as_deref(),
+                saved_lm.as_deref(),
+                resp_etag.as_deref(),
+                resp_lm.as_deref(),
+            );
+            if !range_ok || !validator_ok {
+                remove_quietly(&part, cancel).await;
+                remove_quietly(&etag_sidecar, cancel).await;
+                return Err(AttemptError::retry(
+                    "续传范围或远端 ETag 校验不一致，重置从头下载",
+                ));
+            }
+        } else {
             resume_from = 0;
+            remove_quietly(&etag_sidecar, cancel).await;
         }
 
         // 首包 HTML 劫持防线（响应头判定）
@@ -1697,7 +1759,7 @@ impl Downloader {
         let mut live_hasher = (!resuming && item.sha1.is_some()).then(Sha1::new);
         let mut written = resume_from;
         let mut sniff_buf = Vec::with_capacity(512);
-        let mut sniff_checked = !is_binary;
+        let mut sniff_checked = !is_binary || resuming;
         let stall_timeout = Duration::from_secs(
             STALL_TIMEOUTS_SECS[stall_strikes.min(STALL_TIMEOUTS_SECS.len() - 1)],
         );
@@ -1709,6 +1771,7 @@ impl Downloader {
                     Ok(item_next) => item_next,
                     Err(_) => {
                         sink.flush_for_resume(&part, self.engine.as_deref()).await;
+                        save_part_validators(&etag_sidecar, resp_etag.as_deref(), resp_lm.as_deref()).await;
                         return Err(AttemptError::Retry {
                             reason: "接收数据长时间停滞，准备重连".to_owned(),
                             delay_override: Some(Duration::from_millis(200)),
@@ -1728,10 +1791,12 @@ impl Downloader {
                     }
                 } => {
                     sink.flush_for_resume(&part, self.engine.as_deref()).await;
+                    save_part_validators(&etag_sidecar, resp_etag.as_deref(), resp_lm.as_deref()).await;
                     return Err(AttemptError::Paused);
                 }
                 () = cancel.cancelled() => {
                     sink.flush_for_resume(&part, self.engine.as_deref()).await;
+                    save_part_validators(&etag_sidecar, resp_etag.as_deref(), resp_lm.as_deref()).await;
                     return Err(AttemptError::Cancelled);
                 }
             };
@@ -1740,6 +1805,8 @@ impl Downloader {
                 None => break,
                 Some(Err(error)) => {
                     sink.flush_for_resume(&part, self.engine.as_deref()).await;
+                    save_part_validators(&etag_sidecar, resp_etag.as_deref(), resp_lm.as_deref())
+                        .await;
                     return Err(AttemptError::retry(format!("下载中断：{error}")));
                 }
                 Some(Ok(chunk)) => {
@@ -1747,6 +1814,12 @@ impl Downloader {
                         && !engine.throttle().consume(chunk.len(), cancel).await
                     {
                         sink.flush_for_resume(&part, self.engine.as_deref()).await;
+                        save_part_validators(
+                            &etag_sidecar,
+                            resp_etag.as_deref(),
+                            resp_lm.as_deref(),
+                        )
+                        .await;
                         return Err(AttemptError::Cancelled);
                     }
                     if !sniff_checked && sniff_buf.len() < 512 {
@@ -2183,6 +2256,7 @@ impl Downloader {
             &client,
             cand,
             None,
+            None,
             self.host_header.as_ref(),
             self.engine.as_deref(),
         )
@@ -2460,11 +2534,6 @@ async fn commit_ram_buffer_to_disk(
     engine: Option<&DownloadEngine>,
     cancel: &CancellationToken,
 ) -> Result<(), AttemptError> {
-    let path_lock = engine.map(|e| e.lock_for_path(&item.path));
-    let _path_guard = match path_lock.as_ref() {
-        Some(m) => Some(m.lock().await),
-        None => None,
-    };
     let mut disk_guard = engine.map(|e| e.metrics().begin_disk_write());
     let _disk_permit = if let Some(eng) = engine {
         Some(
@@ -2506,11 +2575,13 @@ async fn commit_ram_buffer_to_disk(
             http_status: None,
         });
     }
+    remove_quietly(&part_etag_path(&item.path), cancel).await;
     if let Some(eng) = engine {
         eng.record_disk_write_ms(started.elapsed().as_secs_f64() * 1000.0, buf.len() as u64);
         if let Some(sha1) = &item.sha1 {
             eng.hydrator()
-                .record_file(&item.path, sha1, buf.len() as u64);
+                .record_file_async(item.path.clone(), sha1.clone(), buf.len() as u64)
+                .await;
         }
     }
     Ok(())
@@ -2527,16 +2598,12 @@ async fn finish_file(
         Ok(Ok(())) => {}
         Ok(Err(mismatch)) => {
             remove_quietly(part, cancel).await;
+            remove_quietly(&part_etag_path(&item.path), cancel).await;
             return Err(AttemptError::retry(mismatch));
         }
         Err(error) => return Err(AttemptError::retry(format!("无法读取下载的文件：{error}"))),
     }
 
-    let path_lock = engine.map(|e| e.lock_for_path(&item.path));
-    let _path_guard = match path_lock.as_ref() {
-        Some(m) => Some(m.lock().await),
-        None => None,
-    };
     let mut disk_guard = engine.map(|e| e.metrics().begin_disk_write());
     let _disk_permit = if let Some(eng) = engine {
         Some(
@@ -2558,9 +2625,14 @@ async fn finish_file(
         if res.is_ok()
             && let Some(sha1) = &item.sha1
         {
-            let size = std::fs::metadata(&item.path).map_or(0, |m| m.len());
-            eng.hydrator().record_file(&item.path, sha1, size);
+            let size = fs::metadata(&item.path).await.map_or(0, |m| m.len());
+            eng.hydrator()
+                .record_file_async(item.path.clone(), sha1.clone(), size)
+                .await;
         }
+    }
+    if res.is_ok() {
+        remove_quietly(&part_etag_path(&item.path), cancel).await;
     }
     res.map_err(|e| {
         if e.kind() == io::ErrorKind::Interrupted {
@@ -2787,6 +2859,56 @@ fn part_path(path: &Path) -> PathBuf {
         .unwrap_or_default();
     name.push(".part");
     path.with_file_name(name)
+}
+
+fn part_etag_path(path: &Path) -> PathBuf {
+    let mut name = path
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    name.push(".part.etag");
+    path.with_file_name(name)
+}
+
+fn validator_matches(
+    saved_etag: Option<&str>,
+    saved_lm: Option<&str>,
+    resp_etag: Option<&str>,
+    resp_lm: Option<&str>,
+) -> bool {
+    if let (Some(a), Some(b)) = (saved_etag, resp_etag) {
+        return a == b;
+    }
+    if let (Some(a), Some(b)) = (saved_lm, resp_lm) {
+        return a == b;
+    }
+    true
+}
+
+async fn read_part_validators(path: &Path) -> (Option<String>, Option<String>) {
+    let Ok(text) = fs::read_to_string(path).await else {
+        return (None, None);
+    };
+    let mut lines = text.lines();
+    let etag = lines
+        .next()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    let lm = lines
+        .next()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    (etag, lm)
+}
+
+async fn save_part_validators(path: &Path, etag: Option<&str>, lm: Option<&str>) {
+    if etag.is_none() && lm.is_none() {
+        return;
+    }
+    let content = format!("{}\n{}", etag.unwrap_or_default(), lm.unwrap_or_default());
+    let _ = fs::write(path, content).await;
 }
 
 fn is_retryable(status: StatusCode) -> bool {
@@ -3440,5 +3562,156 @@ mod tests {
         assert_eq!(rep_b.downloaded, 5);
         assert_eq!(slow_requests.load(Ordering::Acquire), 2);
         assert_eq!(engine.tail_hedges_launched(), 0);
+    }
+
+    #[tokio::test]
+    async fn disk_pool_hot_update_never_deadlocks_acquire_many() {
+        let doh = Arc::new(Doh::new(false).unwrap());
+        let watcher = Arc::new(ProxyWatcher::new());
+        let engine =
+            Arc::new(DownloadEngine::new(doh, watcher, &ProxySettings::default()).unwrap());
+
+        let mut slow_cfg = DownloadSettings {
+            disk_write_mode: DiskWriteMode::Manual,
+            max_disk_writers: 4,
+            ..DownloadSettings::default()
+        };
+        engine.apply_settings(&slow_cfg);
+        engine.record_disk_write_ms(200.0, 1024);
+
+        slow_cfg.max_disk_writers = 32;
+        engine.apply_settings(&slow_cfg);
+
+        let cancel = CancellationToken::new();
+        let permit = tokio::time::timeout(Duration::from_millis(200), engine.acquire_disk(&cancel))
+            .await
+            .expect("disk pool hot update must not deadlock acquire_many_owned");
+        assert!(permit.is_some());
+    }
+
+    #[tokio::test]
+    async fn concurrent_downloads_to_same_path_serialize_without_corruption() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let mut payload = vec![0u8; 1500 * 1024];
+        for (i, b) in payload.iter_mut().enumerate() {
+            *b = (i % 251) as u8;
+        }
+        let expected_sha1 = {
+            let mut h = Sha1::new();
+            h.update(&payload);
+            to_hex(&h.finalize())
+        };
+        let srv_payload = Arc::new(payload.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let data = srv_payload.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 512];
+                    let _ = sock.read(&mut buf).await;
+                    let hdr = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        data.len()
+                    );
+                    let _ = sock.write_all(hdr.as_bytes()).await;
+                    let _ = sock.write_all(&data).await;
+                });
+            }
+        });
+
+        let doh = Arc::new(Doh::new(false).unwrap());
+        let watcher = Arc::new(ProxyWatcher::new());
+        let engine =
+            Arc::new(DownloadEngine::new(doh, watcher, &ProxySettings::default()).unwrap());
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("shared-lib.jar");
+        let item = DownloadItem {
+            urls: vec![format!("http://{addr}/shared-lib.jar")],
+            path: target.clone(),
+            sha1: Some(expected_sha1),
+            size: Some(payload.len() as u64),
+        };
+        let dl1 = Downloader::from_engine(engine.clone(), DownloadPriority::Interactive, 2);
+        let dl2 = Downloader::from_engine(engine, DownloadPriority::Batch, 2);
+        let c = CancellationToken::new();
+        let (r1, r2) = tokio::join!(
+            dl1.download_all(std::slice::from_ref(&item), &c, |_| {}),
+            dl2.download_all(std::slice::from_ref(&item), &c, |_| {}),
+        );
+        let r1 = r1.unwrap();
+        let r2 = r2.unwrap();
+        assert_eq!(r1.downloaded + r2.downloaded, 1);
+        assert_eq!(r1.skipped + r2.skipped, 1);
+        assert_eq!(std::fs::read(&target).unwrap(), payload);
+        assert!(!part_path(&target).exists());
+    }
+
+    #[tokio::test]
+    async fn single_stream_resume_skips_html_sniff_on_middle_bytes_and_validates_etag() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let mut payload = vec![b'A'; 128];
+        payload.extend_from_slice(b"<!DOCTYPE html>embedded-text-in-mod-jar");
+        payload.resize(2048, b'B');
+        let expected_sha1 = {
+            let mut h = Sha1::new();
+            h.update(&payload);
+            to_hex(&h.finalize())
+        };
+        let srv_payload = Arc::new(payload.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let data = srv_payload.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 1024];
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    let req = String::from_utf8_lossy(&buf[..n]);
+                    let has_range = req.to_ascii_lowercase().contains("range: bytes=128-");
+                    if has_range {
+                        let tail = &data[128..];
+                        let hdr = format!(
+                            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 128-{}/{}\r\nContent-Length: {}\r\nETag: \"v1\"\r\nConnection: close\r\n\r\n",
+                            data.len() - 1,
+                            data.len(),
+                            tail.len()
+                        );
+                        let _ = sock.write_all(hdr.as_bytes()).await;
+                        let _ = sock.write_all(tail).await;
+                    } else {
+                        let hdr = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nETag: \"v1\"\r\nConnection: close\r\n\r\n",
+                            data.len()
+                        );
+                        let _ = sock.write_all(hdr.as_bytes()).await;
+                        let _ = sock.write_all(&data).await;
+                    }
+                });
+            }
+        });
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("mod-with-html-docs.jar");
+        std::fs::write(part_path(&target), &payload[..128]).unwrap();
+        std::fs::write(part_etag_path(&target), "\"v1\"\n").unwrap();
+
+        let client = crate::net::build_client().unwrap();
+        let dl = Downloader::new(client, 1);
+        let item = DownloadItem {
+            urls: vec![format!("http://{addr}/mod.jar")],
+            path: target.clone(),
+            sha1: Some(expected_sha1),
+            size: Some(payload.len() as u64),
+        };
+        let rep = dl
+            .download_all(&[item], &CancellationToken::new(), |_| {})
+            .await
+            .unwrap();
+        assert_eq!(rep.downloaded, 1);
+        assert_eq!(std::fs::read(&target).unwrap(), payload);
+        assert!(!part_etag_path(&target).exists());
     }
 }

@@ -21,6 +21,7 @@ import {
   type TransferMetrics,
 } from "@/lib/bindings";
 import { logError, reportError } from "@/lib/report";
+import { useAppStore } from "@/stores/app";
 import { Button } from "../ui/Button";
 import { TextInput } from "../ui/Field";
 import { Truncated } from "../ui/HoverCard";
@@ -152,6 +153,7 @@ export function DownloadSettings({
   const [proxyTesting, setProxyTesting] = useState(false);
   const [proxyTest, setProxyTest] = useState<ProxyTestResult | null>(null);
 
+  const reduceMotion = useAppStore((s) => s.settings?.appearance.reduceMotion ?? false);
   const speedLimit = download.speedLimitKibPerSec ?? 0;
   const meteredPolicy = download.meteredPolicy ?? "warn";
   const meteredSpeedLimit = download.meteredSpeedLimitKibPerSec ?? 2048;
@@ -206,11 +208,11 @@ export function DownloadSettings({
     }
     const timer = window.setTimeout(() => {
       const el = document.getElementById(`setting-row-${focusSettingId}`);
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
       onFocusConsumed?.();
     }, 60);
     return () => window.clearTimeout(timer);
-  }, [focusSettingId, onFocusConsumed]);
+  }, [focusSettingId, onFocusConsumed, reduceMotion]);
 
   const set = (patch: Partial<Settings["download"]>) =>
     update((s) => ({ ...s, download: { ...s.download, ...patch } }));
@@ -399,7 +401,7 @@ export function DownloadSettings({
             onClick={() => {
               document
                 .getElementById("setting-row-netdiag")
-                ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                ?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
               void runDiagnostics();
             }}
           >

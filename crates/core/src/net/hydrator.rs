@@ -7,17 +7,17 @@
 //!   - Tier 2（复用 `rusqlite 0.41` 惰性倒排索引 `<data_dir>/hydrator-index.sqlite`）：记录 Lumi 自身实例 `mods/` 与下载落盘的历史 `(sha1, size, path, mtime_ms)`；
 //! - **安全物化**：仅对不可变资产（`assets/`、`libraries/`、`.mcl-store/`、`.mcl-java/`）尝试同盘 `std::fs::hard_link`，跨盘或可变 `mods/` 一律走 `write_atomic_from` 复制。
 
-use std::fs::{self, File};
-use std::io::{self, Read};
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::UNIX_EPOCH;
 
 use sha1::{Digest, Sha1};
 use tokio_util::sync::CancellationToken;
 
 use crate::content::store::STORE_DIR;
-use crate::fs::{remove_with_win_retry_sync, rename_with_win_retry_sync, write_atomic_from};
+use crate::fs::{remove_with_win_retry_sync, rename_with_win_retry_sync};
 
 use super::download::DownloadItem;
 use super::to_hex;
@@ -27,7 +27,7 @@ pub struct LocalHydrator {
     game_root: RwLock<PathBuf>,
     external_roots: RwLock<Vec<PathBuf>>,
     db_path: Option<PathBuf>,
-    db: Mutex<Option<rusqlite::Connection>>,
+    db: Arc<Mutex<Option<rusqlite::Connection>>>,
 }
 
 impl LocalHydrator {
@@ -37,7 +37,7 @@ impl LocalHydrator {
             game_root: RwLock::new(game_root),
             external_roots: RwLock::new(Vec::new()),
             db_path,
-            db: Mutex::new(None),
+            db: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -46,7 +46,7 @@ impl LocalHydrator {
             game_root: RwLock::new(game_root),
             external_roots: RwLock::new(Vec::new()),
             db_path: None,
-            db: Mutex::new(None),
+            db: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -88,7 +88,7 @@ impl LocalHydrator {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
 
-        // 先收集候选路径（Tier 1 O(1) + Tier 2 SQLite 查询）
+        // 先收集 Tier 1 (O(1)) 候选；Tier 2 SQLite 查询放到 spawn_blocking 内执行，绝不阻塞 Tokio 线程
         let mut candidates = Vec::new();
 
         // 1) Lumi ContentStore CAS 对象
@@ -120,20 +120,18 @@ impl LocalHydrator {
             }
         }
 
-        // 3) Tier 2 SQLite 倒排索引候选
-        for path in self.query_index(&expected_sha1, expected_size) {
-            let inside_own = path.starts_with(&game_root);
-            candidates.push((path, inside_own));
-        }
-
-        if candidates.is_empty() || cancel.is_cancelled() {
-            return None;
-        }
-
+        let db_path = self.db_path.clone();
+        let db = self.db.clone();
         let target_is_immutable = is_immutable_artifact(&target, &game_root);
         let cancel_inner = cancel.clone();
 
         let matched = tokio::task::spawn_blocking(move || {
+            if let Some(ref db_p) = db_path {
+                for path in query_index_with(db_p, &db, &expected_sha1, expected_size) {
+                    let inside_own = path.starts_with(&game_root);
+                    candidates.push((path, inside_own));
+                }
+            }
             for (src, can_hardlink_src) in candidates {
                 if cancel_inner.is_cancelled() {
                     return None;
@@ -149,16 +147,15 @@ impl LocalHydrator {
                 {
                     continue;
                 }
-                // 100% 强制重算全量 SHA-1，零盲信任何外部元数据或文件大小
-                let Ok(actual_sha1) = compute_sha1_sync(&src) else {
-                    continue;
-                };
-                if !actual_sha1.eq_ignore_ascii_case(&expected_sha1) {
-                    continue;
-                }
                 let allow_hardlink = target_is_immutable && can_hardlink_src;
-                if materialize_verified_file(&src, &target, allow_hardlink).is_ok() {
-                    return Some(meta.len());
+                if let Ok(written) = materialize_verified_file(
+                    &src,
+                    &target,
+                    &expected_sha1,
+                    expected_size,
+                    allow_hardlink,
+                ) {
+                    return Some(written);
                 }
             }
             None
@@ -170,39 +167,24 @@ impl LocalHydrator {
         Some(matched)
     }
 
-    /// 下载完成后登记文件到 Tier 2 倒排索引（异步不阻塞调用者）。
+    /// 异步路径入口：将 SQLite 写入放到 `spawn_blocking` 中执行，避免阻塞 Tokio 工作线程。
+    pub async fn record_file_async(&self, path: PathBuf, sha1: String, size: u64) {
+        let Some(db_path) = self.db_path.clone() else {
+            return;
+        };
+        let db = self.db.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            record_file_with(&db_path, &db, &path, &sha1, size);
+        })
+        .await;
+    }
+
+    /// 下载完成后登记文件到 Tier 2 倒排索引。
     pub fn record_file(&self, path: &Path, sha1: &str, size: u64) {
         let Some(db_path) = &self.db_path else {
             return;
         };
-        let Ok(meta) = fs::metadata(path) else {
-            return;
-        };
-        let mtime_ms = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
-        let path_str = path.to_string_lossy().into_owned();
-        let sha1_lower = sha1.to_ascii_lowercase();
-        let mut guard = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(conn) = ensure_db_conn(&mut guard, db_path) else {
-            return;
-        };
-        let _ = conn.execute(
-            "INSERT INTO files (path, sha1, size, mtime_ms)
-             VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(path) DO UPDATE SET
-               sha1 = excluded.sha1,
-               size = excluded.size,
-               mtime_ms = excluded.mtime_ms",
-            rusqlite::params![
-                path_str,
-                sha1_lower,
-                i64::try_from(size).unwrap_or(i64::MAX),
-                mtime_ms
-            ],
-        );
+        record_file_with(db_path, &self.db, path, sha1, size);
     }
 
     /// 惰性扫描某个实例 `mods/` 目录，仅对新增或 `(size, mtime)` 变化的文件补算 SHA-1。
@@ -251,51 +233,98 @@ impl LocalHydrator {
         }
     }
 
+    #[allow(dead_code)]
     fn query_index(&self, sha1: &str, expected_size: Option<u64>) -> Vec<PathBuf> {
         let Some(db_path) = &self.db_path else {
             return Vec::new();
         };
-        let mut guard = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(conn) = ensure_db_conn(&mut guard, db_path) else {
+        query_index_with(db_path, &self.db, sha1, expected_size)
+    }
+}
+
+fn record_file_with(
+    db_path: &Path,
+    db: &Mutex<Option<rusqlite::Connection>>,
+    path: &Path,
+    sha1: &str,
+    size: u64,
+) {
+    let Ok(meta) = fs::metadata(path) else {
+        return;
+    };
+    let mtime_ms = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+    let path_str = path.to_string_lossy().into_owned();
+    let sha1_lower = sha1.to_ascii_lowercase();
+    let mut guard = db.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(conn) = ensure_db_conn(&mut guard, db_path) else {
+        return;
+    };
+    let _ = conn.execute(
+        "INSERT INTO files (path, sha1, size, mtime_ms)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(path) DO UPDATE SET
+           sha1 = excluded.sha1,
+           size = excluded.size,
+           mtime_ms = excluded.mtime_ms",
+        rusqlite::params![
+            path_str,
+            sha1_lower,
+            i64::try_from(size).unwrap_or(i64::MAX),
+            mtime_ms
+        ],
+    );
+}
+
+fn query_index_with(
+    db_path: &Path,
+    db: &Mutex<Option<rusqlite::Connection>>,
+    sha1: &str,
+    expected_size: Option<u64>,
+) -> Vec<PathBuf> {
+    let mut guard = db.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(conn) = ensure_db_conn(&mut guard, db_path) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut stale = Vec::new();
+    {
+        let Ok(mut stmt) = conn.prepare("SELECT path, size FROM files WHERE sha1 = ?1 LIMIT 8")
+        else {
             return Vec::new();
         };
-        let mut out = Vec::new();
-        let mut stale = Vec::new();
-        {
-            let Ok(mut stmt) = conn.prepare("SELECT path, size FROM files WHERE sha1 = ?1 LIMIT 8")
-            else {
-                return Vec::new();
-            };
-            let rows = stmt
-                .query_map(rusqlite::params![sha1], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-                })
-                .ok();
-            if let Some(iter) = rows {
-                for item in iter.flatten() {
-                    let (p, sz) = item;
-                    let path = PathBuf::from(&p);
-                    if !path.is_file() {
-                        stale.push(p);
-                        continue;
-                    }
-                    if let Some(exp) = expected_size
-                        && u64::try_from(sz).ok() != Some(exp)
-                    {
-                        continue;
-                    }
-                    out.push(path);
+        let rows = stmt
+            .query_map(rusqlite::params![sha1], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .ok();
+        if let Some(iter) = rows {
+            for item in iter.flatten() {
+                let (p, sz) = item;
+                let path = PathBuf::from(&p);
+                if !path.is_file() {
+                    stale.push(p);
+                    continue;
                 }
+                if let Some(exp) = expected_size
+                    && u64::try_from(sz).ok() != Some(exp)
+                {
+                    continue;
+                }
+                out.push(path);
             }
         }
-        for missing in stale {
-            let _ = conn.execute(
-                "DELETE FROM files WHERE path = ?1",
-                rusqlite::params![missing],
-            );
-        }
-        out
     }
+    for missing in stale {
+        let _ = conn.execute(
+            "DELETE FROM files WHERE path = ?1",
+            rusqlite::params![missing],
+        );
+    }
+    out
 }
 
 fn ensure_db_conn<'a>(
@@ -338,7 +367,14 @@ fn compute_sha1_sync(path: &Path) -> io::Result<String> {
     Ok(to_hex(&hasher.finalize()))
 }
 
-fn materialize_verified_file(src: &Path, target: &Path, allow_hardlink: bool) -> io::Result<()> {
+/// 单遍边复制（或硬链接）边核验 SHA-1 与长度后再原子改名，彻底消除先查后拷的 TOCTOU 竞态与双倍读盘。
+fn materialize_verified_file(
+    src: &Path,
+    target: &Path,
+    expected_sha1: &str,
+    expected_size: Option<u64>,
+    allow_hardlink: bool,
+) -> io::Result<u64> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -352,18 +388,64 @@ fn materialize_verified_file(src: &Path, target: &Path, allow_hardlink: bool) ->
     ));
 
     if allow_hardlink && fs::hard_link(src, &tmp).is_ok() {
-        match rename_with_win_retry_sync(&tmp, target) {
-            Ok(()) => return Ok(()),
-            Err(_) => {
-                let _ = remove_with_win_retry_sync(&tmp);
-            }
+        let len_ok = fs::metadata(&tmp)
+            .ok()
+            .filter(|m| expected_size.is_none_or(|exp| m.len() == exp))
+            .map(|m| m.len());
+        let verified = len_ok.filter(|_| {
+            compute_sha1_sync(&tmp).is_ok_and(|actual| actual.eq_ignore_ascii_case(expected_sha1))
+        });
+        if let Some(len) = verified
+            && rename_with_win_retry_sync(&tmp, target).is_ok()
+        {
+            return Ok(len);
         }
+        let _ = remove_with_win_retry_sync(&tmp);
     }
 
-    let mut file = File::open(src)?;
-    write_atomic_from(target, &mut file)
-        .map(|_| ())
-        .map_err(|e| io::Error::other(e.to_string()))
+    let copy_res = (|| -> io::Result<u64> {
+        let mut reader = File::open(src)?;
+        let out = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        let mut writer = BufWriter::with_capacity(256 * 1024, out);
+        let mut hasher = Sha1::new();
+        let mut buf = vec![0u8; 64 * 1024];
+        let mut written = 0u64;
+        loop {
+            let n = reader.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+            writer.write_all(&buf[..n])?;
+            written = written.saturating_add(n as u64);
+        }
+        writer.flush()?;
+        writer.get_ref().sync_all()?;
+        drop(writer);
+
+        if let Some(exp) = expected_size
+            && written != exp
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "hydrated length mismatch",
+            ));
+        }
+        let actual_sha1 = to_hex(&hasher.finalize());
+        if !actual_sha1.eq_ignore_ascii_case(expected_sha1) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "hydrated sha1 mismatch",
+            ));
+        }
+        rename_with_win_retry_sync(&tmp, target)?;
+        Ok(written)
+    })();
+
+    if copy_res.is_err() {
+        let _ = remove_with_win_retry_sync(&tmp);
+    }
+    copy_res
 }
 
 fn is_immutable_artifact(target: &Path, game_root: &Path) -> bool {
