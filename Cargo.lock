@@ -2566,7 +2566,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "launcher-app"
-version = "0.6.4"
+version = "0.7.0"
 dependencies = [
  "launcher-core",
  "reqwest",
@@ -2596,7 +2596,7 @@ dependencies = [
 
 [[package]]
 name = "launcher-cli"
-version = "0.6.4"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2610,7 +2610,7 @@ dependencies = [
 
 [[package]]
 name = "launcher-core"
-version = "0.6.4"
+version = "0.7.0"
 dependencies = [
  "base64 0.23.1",
  "encoding_rs",
@@ -6687,7 +6687,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "winmem"
-version = "0.6.4"
+version = "0.7.0"
 dependencies = [
  "windows-sys 0.61.2",
 ]

@@ -59,12 +59,12 @@
 
 - **Jump Straight Into Your World** — Lumi opens on the world or multiplayer server you played last. World covers are captured from the game automatically, and Quick Play takes you straight in.
 - **An Accent Color per Instance** — Every world and modpack gets its own accent color. Supports the Windows 11 Mica backdrop, light / dark / system themes, reduced motion, a Lite mode for older PCs, and optional interface sounds (off by default).
-- **Undo Any Mod Change** — Every mod change leaves a snapshot you can undo from the change history. Before launch, Lumi checks locally for missing dependencies, duplicate mod IDs, wrong loaders and incompatible Java. Worlds are backed up automatically.
-- **Modrinth & CurseForge Built In** — Search, install and update mods, modpacks (`.mrpack` & CurseForge), shaders, resource packs, worlds and servers in one place, with dependencies filled in automatically. CurseForge files whose authors block third-party downloads open on the official page and are matched by SHA-256 once downloaded.
+- **Undo Any Mod Change** — Every mod change and launch record feeds a visual timeline you can roll back in one click, alongside a reverse dependency graph with orphan-dependency cleanup and per-instance notes. Before launch, Lumi checks locally for missing dependencies, duplicate mod IDs, wrong loaders and incompatible Java. Worlds are backed up automatically.
+- **Full Modpack & Version Lifecycle** — Search, install and update mods, modpacks (`.mrpack`, CurseForge `.zip`, and MultiMC/Prism `.zip` with `patches/*.json` support), shaders, resource packs, worlds and servers in one place. Upgrade instance Minecraft/loader versions in place or on a clone, apply 3-way lossless modpack updates (preserving your added mods and worlds), and export in 4 formats with semantic privacy filters. Supports Release, Snapshot, April Fools, and Beta/Alpha versions plus Fabric, NeoForge, Forge (including Legacy Forge 1.5.2–1.12.2), Quilt, Legacy Fabric, and Babric.
 - **Local Instance Sync** — Sync 6 kinds of content between instances on your PC (`options.txt` with a 9-category visual editor and direct keybind capture, `servers.dat` merged and de-duplicated as NBT, shared resource packs, shared shaders, command history and saved hotbars), with no cloud service or account. The first sync makes a backup automatically, and any instance can opt out per category.
 - **Instance Layout & Migration** — Each instance lives in `instances/<name>/` and shares the vanilla game files. Link existing official / PCL / HMCL `.minecraft` folders in place (nothing is copied), or import from Prism / MultiMC, Modrinth App, CurseForge and ATLauncher.
-- **Downloads** — Concurrent downloads directly from official Mojang, mod loader, Modrinth, and CurseForge endpoints with hash verification, resumable `.part` files, optional DNS-over-HTTPS (DoH), and configurable proxies (System / Direct / HTTP·SOCKS5).
-- **Other Tools** — Java detection and official runtime download, memory suggestions, storage analysis and unused version cleanup, launch hooks, custom game window titles, optional Discord Rich Presence, and log upload to `mclo.gs` after you confirm, with secrets redacted.
+- **High-Speed Official Downloads** — Segmented HTTP Range downloads and adaptive concurrency directly from official Mojang, mod loader, Modrinth, and CurseForge endpoints, with SHA-1/SHA-256 verification, resumable `.part` files, RFC 8484 DNS-over-HTTPS (DoH), live proxy watching (System / Direct / HTTP·SOCKS5), and a real-time Task Center cockpit.
+- **Account Studio & Utilities** — Built-in official 3D Skin & Cape Studio and Account Security Center, automatic Java detection and official runtime download, memory suggestions, storage analysis and unused version cleanup, launch hooks, custom game window titles, optional Discord Rich Presence, and redacted log upload to `mclo.gs` on confirmation.
 
 ## Download & Install
 
@@ -81,7 +81,7 @@ Download the latest version from the **[Official Website](https://lumilauncher.o
 **"Windows protected your PC":** the Windows installer is not code-signed yet, so Microsoft Defender SmartScreen may warn you the first time. Click **More info → Run anyway**. To make sure the file is genuine, verify its checksum first:
 
 ```powershell
-Get-FileHash .\LumiLauncher_0.6.4_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\LumiLauncher_0.7.0_x64-setup.exe -Algorithm SHA256
 ```
 
 The output must match the line for that file in `SHA256SUMS.txt` on the same release page.
