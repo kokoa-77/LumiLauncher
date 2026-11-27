@@ -88,6 +88,10 @@ pub struct PackRollbackRecord {
     pub restored_files: Vec<RollbackFile>,
     /// 本次更新新写入的文件（回滚时从实例移入 ContentStore 以清除且不丢数据）
     pub added_files: Vec<RollbackFile>,
+    /// 事务进行中标记：写盘开始前置为 `true`，全部元数据落盘后置为 `false`。
+    /// 若中途失败或进程异常退出，下次启动或启动游戏前将自动按本记录无损回滚。
+    #[serde(default)]
+    pub in_progress: bool,
 }
 
 /// 供界面展示的回滚摘要信息。
@@ -324,9 +328,42 @@ pub fn load_rollback(instance_dir: &Path) -> Result<Option<PackRollbackRecord>, 
     read_json(&path).map_err(|e| ModpackError::Invalid(format!("读取回滚记录失败：{e}")))
 }
 
-/// 实例是否存在可一键撤销的整合包更新记录。
+/// 是否存在上次中断未完成的整合包更新事务（供启动自愈与启动前检查使用）。
+pub fn has_pending_update(instance_dir: &Path) -> bool {
+    load_rollback(instance_dir)
+        .ok()
+        .flatten()
+        .is_some_and(|record| record.in_progress)
+}
+
+/// 若存在上次中断未完成的整合包更新，自动无损回滚并返回回滚结果；无待恢复事务返回 `Ok(None)`。
+pub async fn recover_pending(
+    game: &GameDir,
+    instance_id: &str,
+) -> Result<Option<PackRollbackOutcome>, ModpackError> {
+    let Some(instance) = instance::load(game, instance_id)? else {
+        return Ok(None);
+    };
+    if instance.config.link.is_some() {
+        return Ok(None);
+    }
+    let inst_dir = instance.game_dir(game)?;
+    let Some(record) = load_rollback(&inst_dir)? else {
+        return Ok(None);
+    };
+    if !record.in_progress {
+        return Ok(None);
+    }
+    let outcome = rollback_with_record(game, instance_id, &inst_dir, &record, true).await?;
+    Ok(Some(outcome))
+}
+
+/// 实例是否存在可一键撤销的整合包更新记录（处于中断待恢复状态时不作为手动回滚项展示）。
 pub fn rollback_summary(instance_dir: &Path) -> Option<PackRollbackSummary> {
     let record = load_rollback(instance_dir).ok()??;
+    if record.in_progress {
+        return None;
+    }
     Some(PackRollbackSummary {
         from_version: record.from_pack_version,
         to_version: record.to_pack_version,
@@ -1357,7 +1394,7 @@ async fn apply_staged_update(
         .map(|s| s.name.clone())
         .unwrap_or_else(|| instance.config.name.clone());
 
-    let rollback_record = PackRollbackRecord {
+    let mut rollback_record = PackRollbackRecord {
         format_version: MANIFEST_FORMAT,
         created_at: crate::now_millis() as f64,
         from_pack_name,
@@ -1372,102 +1409,152 @@ async fn apply_staged_update(
         prev_patches,
         restored_files,
         added_files,
+        in_progress: true,
     };
 
-    // 在改动任何实例文件之前，先原子落盘回滚清单
-    write_json_atomic(
-        &inst_dir.join(META_DIR).join(ROLLBACK_FILE),
-        &rollback_record,
-    )?;
+    // 在改动任何实例文件之前，先原子落盘带 `in_progress: true` 标记的回滚清单
+    let rollback_path = inst_dir.join(META_DIR).join(ROLLBACK_FILE);
+    write_json_atomic(&rollback_path, &rollback_record)?;
 
-    // 第二阶段：执行移除与原子写入
-    let mut removed_done = 0u32;
-    for disk_rel in &removals {
-        let abs = safe_join(&inst_dir, disk_rel)?;
-        if abs.is_file() {
-            tokio::fs::remove_file(&abs)
-                .await
-                .map_err(|source| ModpackError::Io { path: abs, source })?;
-            removed_done += 1;
-        }
-    }
-
-    let mut added_done = 0u32;
-    let mut updated_done = 0u32;
-    let mut overwritten_modified = 0u32;
-    for write in writes {
-        if let Some(old_rel) = &write.disk_path
-            && !old_rel.eq_ignore_ascii_case(&write.rel_path)
-        {
-            let old_abs = safe_join(&inst_dir, old_rel)?;
-            if old_abs.is_file() {
-                let _ = tokio::fs::remove_file(&old_abs).await;
+    // 第二、三阶段包裹在事务块内：任何一步出错立即自动回滚，绝不留半新半旧实例
+    let apply_result: Result<(u32, u32, u32, u32), ModpackError> = async {
+        // 第二阶段：执行移除与原子写入
+        let mut removed_done = 0u32;
+        for disk_rel in &removals {
+            let abs = safe_join(&inst_dir, disk_rel)?;
+            if abs.is_file() {
+                tokio::fs::remove_file(&abs)
+                    .await
+                    .map_err(|source| ModpackError::Io { path: abs, source })?;
+                removed_done += 1;
             }
         }
-        let dest = safe_join(&inst_dir, &write.rel_path)?;
-        if let Some(parent) = dest.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|source| ModpackError::Io {
-                    path: parent.to_path_buf(),
-                    source,
-                })?;
-        }
-        // 同盘直接 rename，失败则原子复制
-        if tokio::fs::rename(&write.staged_file, &dest).await.is_err() {
-            let mut src =
-                std::fs::File::open(&write.staged_file).map_err(|source| ModpackError::Io {
-                    path: write.staged_file.clone(),
-                    source,
-                })?;
-            write_atomic_from(&dest, &mut src)?;
-        }
-        match write.kind {
-            WriteKind::Added => added_done += 1,
-            WriteKind::Updated => updated_done += 1,
-            WriteKind::OverwrittenModified => overwritten_modified += 1,
-        }
-    }
 
-    // 第三阶段：更新基线清单、补丁与 instance.json
-    save_origin(&inst_dir, &plan.target_origin)?;
-    if let Some(bundle) = &plan.target_plan.patches {
-        patches::save_for_instance(&inst_dir, bundle)?;
-    } else {
-        let patches_path = inst_dir.join(META_DIR).join(PATCHES_FILE);
-        if patches_path.is_file() {
-            let _ = tokio::fs::remove_file(&patches_path).await;
+        let mut added_done = 0u32;
+        let mut updated_done = 0u32;
+        let mut overwritten_modified = 0u32;
+        for write in writes {
+            if let Some(old_rel) = &write.disk_path
+                && !old_rel.eq_ignore_ascii_case(&write.rel_path)
+            {
+                let old_abs = safe_join(&inst_dir, old_rel)?;
+                if old_abs.is_file() {
+                    tokio::fs::remove_file(&old_abs)
+                        .await
+                        .map_err(|source| ModpackError::Io {
+                            path: old_abs,
+                            source,
+                        })?;
+                }
+            }
+            let dest = safe_join(&inst_dir, &write.rel_path)?;
+            if let Some(parent) = dest.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|source| ModpackError::Io {
+                        path: parent.to_path_buf(),
+                        source,
+                    })?;
+            }
+            // 同盘直接 rename，失败则原子复制
+            if tokio::fs::rename(&write.staged_file, &dest).await.is_err() {
+                let mut src =
+                    std::fs::File::open(&write.staged_file).map_err(|source| ModpackError::Io {
+                        path: write.staged_file.clone(),
+                        source,
+                    })?;
+                write_atomic_from(&dest, &mut src)?;
+            }
+            match write.kind {
+                WriteKind::Added => added_done += 1,
+                WriteKind::Updated => updated_done += 1,
+                WriteKind::OverwrittenModified => overwritten_modified += 1,
+            }
         }
-    }
 
-    let prev_cover_url = instance
-        .config
-        .source
-        .as_ref()
-        .and_then(|s| s.cover_url.clone());
-    let next_source = PackSource {
-        kind: plan.target_plan.preview.format.source_kind().to_owned(),
-        name: plan.target_plan.preview.name.clone(),
-        version: plan.target_plan.preview.version.clone(),
-        project_id: plan.target_origin.project_id.clone(),
-        version_id: plan.target_origin.version_id.clone(),
-        cover_url: prev_cover_url,
+        // 第三阶段：更新基线清单、补丁与 instance.json
+        save_origin(&inst_dir, &plan.target_origin)?;
+        if let Some(bundle) = &plan.target_plan.patches {
+            patches::save_for_instance(&inst_dir, bundle)?;
+        } else {
+            let patches_path = inst_dir.join(META_DIR).join(PATCHES_FILE);
+            if patches_path.is_file() {
+                tokio::fs::remove_file(&patches_path)
+                    .await
+                    .map_err(|source| ModpackError::Io {
+                        path: patches_path,
+                        source,
+                    })?;
+            }
+        }
+
+        let prev_cover_url = instance
+            .config
+            .source
+            .as_ref()
+            .and_then(|s| s.cover_url.clone());
+        let next_source = PackSource {
+            kind: plan.target_plan.preview.format.source_kind().to_owned(),
+            name: plan.target_plan.preview.name.clone(),
+            version: plan.target_plan.preview.version.clone(),
+            project_id: plan.target_origin.project_id.clone(),
+            version_id: plan.target_origin.version_id.clone(),
+            cover_url: prev_cover_url,
+        };
+        let next_game_version = plan.target_plan.preview.game_version.clone();
+        let next_loader = plan.target_plan.preview.loader.clone();
+        let next_ram = plan
+            .target_plan
+            .preview
+            .recommended_memory_mb
+            .or(instance.config.recommended_memory_mb);
+
+        instance::update(game, &instance.id, |config| {
+            config.game_version = next_game_version;
+            config.loader = next_loader;
+            config.version_id = version_id;
+            config.source = Some(next_source);
+            config.recommended_memory_mb = next_ram;
+        })?;
+
+        Ok((removed_done, added_done, updated_done, overwritten_modified))
+    }
+    .await;
+
+    let (removed_done, added_done, updated_done, overwritten_modified) = match apply_result {
+        Ok(counts) => {
+            // 全部落盘成功后清除事务进行中标记，保留记录供玩家手动一键回滚
+            rollback_record.in_progress = false;
+            write_json_atomic(&rollback_path, &rollback_record)?;
+            counts
+        }
+        Err(apply_err) => {
+            tracing::warn!(
+                instance = %instance.id,
+                error = %apply_err,
+                "整合包更新写盘阶段失败，正在自动回滚至更新前状态"
+            );
+            match rollback_with_record(game, &instance.id, &inst_dir, &rollback_record, false).await
+            {
+                Ok(_) => {
+                    return Err(ModpackError::Invalid(format!(
+                        "整合包更新中途失败，已自动恢复到更新前状态：{apply_err}"
+                    )));
+                }
+                Err(rb_err) => {
+                    tracing::error!(
+                        instance = %instance.id,
+                        apply_error = %apply_err,
+                        rollback_error = %rb_err,
+                        "自动回滚也未完成，保留事务标记待下次启动自动重试"
+                    );
+                    return Err(ModpackError::Invalid(format!(
+                        "整合包更新中途失败（{apply_err}），自动恢复时也遇到问题（{rb_err}），下次打开启动器会自动重试恢复"
+                    )));
+                }
+            }
+        }
     };
-    let next_game_version = plan.target_plan.preview.game_version.clone();
-    let next_loader = plan.target_plan.preview.loader.clone();
-    let next_ram = plan
-        .target_plan
-        .preview
-        .recommended_memory_mb
-        .or(instance.config.recommended_memory_mb);
-
-    instance::update(game, &instance.id, |config| {
-        config.game_version = next_game_version;
-        config.loader = next_loader;
-        config.version_id = version_id;
-        config.source = Some(next_source);
-        config.recommended_memory_mb = next_ram;
-    })?;
 
     content_mgr
         .finish_timeline_change(
@@ -1516,14 +1603,27 @@ pub async fn rollback(
     let inst_dir = instance.game_dir(game)?;
     let record = load_rollback(&inst_dir)?
         .ok_or_else(|| ModpackError::Invalid("这个实例没有可回滚的整合包更新记录".to_owned()))?;
+    rollback_with_record(game, instance_id, &inst_dir, &record, true).await
+}
 
+async fn rollback_with_record(
+    game: &GameDir,
+    instance_id: &str,
+    inst_dir: &Path,
+    record: &PackRollbackRecord,
+    record_timeline: bool,
+) -> Result<PackRollbackOutcome, ModpackError> {
     let store = ContentStore::new(game.root().join(STORE_DIR));
-    let content_mgr = InstanceContent::for_game(game, &inst_dir);
-    let tl_guard = content_mgr.begin_timeline_change().await;
+    let content_mgr = InstanceContent::for_game(game, inst_dir);
+    let tl_guard = if record_timeline {
+        Some(content_mgr.begin_timeline_change().await)
+    } else {
+        None
+    };
 
     // 先验证所有待恢复对象都在 ContentStore 中完好无损，避免回滚到一半失败
     for file in &record.restored_files {
-        safe_join(&inst_dir, &file.path)?;
+        safe_join(inst_dir, &file.path)?;
         if !store.contains(&file.sha1) {
             return Err(ModpackError::Invalid(format!(
                 "回滚所需的旧文件缓存已缺失（{}），无法完整回滚",
@@ -1532,13 +1632,13 @@ pub async fn rollback(
         }
     }
     for file in &record.added_files {
-        safe_join(&inst_dir, &file.path)?;
+        safe_join(inst_dir, &file.path)?;
     }
 
     // 1. 先移除本次更新新增的文件（移进 ContentStore，即便玩家之后改过也不丢字节）
     let mut removed_count = 0u32;
     for file in &record.added_files {
-        let abs = safe_join(&inst_dir, &file.path)?;
+        let abs = safe_join(inst_dir, &file.path)?;
         if abs.is_file() {
             store
                 .take(&abs)
@@ -1551,7 +1651,7 @@ pub async fn rollback(
     // 2. 从 ContentStore 恢复所有更新前被覆盖或移除的旧文件
     let mut restored_count = 0u32;
     for file in &record.restored_files {
-        let dest = safe_join(&inst_dir, &file.path)?;
+        let dest = safe_join(inst_dir, &file.path)?;
         store
             .restore(&file.sha1, &dest)
             .await
@@ -1562,10 +1662,15 @@ pub async fn rollback(
     // 3. 恢复 Lumi/pack-origin.json
     let origin_path = inst_dir.join(META_DIR).join(ORIGIN_FILE);
     match &record.prev_origin {
-        Some(prev) => save_origin(&inst_dir, prev)?,
+        Some(prev) => save_origin(inst_dir, prev)?,
         None => {
             if origin_path.is_file() {
-                let _ = tokio::fs::remove_file(&origin_path).await;
+                tokio::fs::remove_file(&origin_path)
+                    .await
+                    .map_err(|source| ModpackError::Io {
+                        path: origin_path,
+                        source,
+                    })?;
             }
         }
     }
@@ -1573,10 +1678,15 @@ pub async fn rollback(
     // 4. 恢复 Lumi/patches.json
     let patches_path = inst_dir.join(META_DIR).join(PATCHES_FILE);
     match &record.prev_patches {
-        Some(prev) => patches::save_for_instance(&inst_dir, prev)?,
+        Some(prev) => patches::save_for_instance(inst_dir, prev)?,
         None => {
             if patches_path.is_file() {
-                let _ = tokio::fs::remove_file(&patches_path).await;
+                tokio::fs::remove_file(&patches_path)
+                    .await
+                    .map_err(|source| ModpackError::Io {
+                        path: patches_path,
+                        source,
+                    })?;
             }
         }
     }
@@ -1598,14 +1708,21 @@ pub async fn rollback(
     // 6. 删除已消费的回滚记录，并将回滚后状态记入时间线
     let rollback_path = inst_dir.join(META_DIR).join(ROLLBACK_FILE);
     if rollback_path.is_file() {
-        let _ = tokio::fs::remove_file(&rollback_path).await;
+        tokio::fs::remove_file(&rollback_path)
+            .await
+            .map_err(|source| ModpackError::Io {
+                path: rollback_path,
+                source,
+            })?;
     }
-    content_mgr
-        .finish_timeline_change(
-            tl_guard,
-            format!("回滚整合包至 {}", record.from_pack_version),
-        )
-        .await;
+    if let Some(guard) = tl_guard {
+        let label = if record.in_progress {
+            format!("自动恢复中断的整合包更新至 {}", record.from_pack_version)
+        } else {
+            format!("回滚整合包至 {}", record.from_pack_version)
+        };
+        content_mgr.finish_timeline_change(guard, label).await;
+    }
 
     tracing::info!(
         instance = %instance_id,
@@ -1613,13 +1730,14 @@ pub async fn rollback(
         reverted_from = %record.to_pack_version,
         restored_files = restored_count,
         removed_files = removed_count,
-        "整合包更新已一键无损回滚"
+        auto_recovery = record.in_progress,
+        "整合包更新已无损回滚"
     );
 
     Ok(PackRollbackOutcome {
         instance_id: instance_id.to_owned(),
-        restored_version: record.from_pack_version,
-        reverted_from: record.to_pack_version,
+        restored_version: record.from_pack_version.clone(),
+        reverted_from: record.to_pack_version.clone(),
         restored_files: restored_count,
         removed_files: removed_count,
     })
@@ -2008,5 +2126,74 @@ mod tests {
         assert!(is_mc_downgrade("1.21.1", "1.20.4"));
         assert!(!is_mc_downgrade("1.21.1", "1.21.4"));
         assert!(!is_mc_downgrade("1.21.1", "1.21.1"));
+    }
+
+    #[tokio::test]
+    async fn interrupted_pack_update_recovers_cleanly_on_startup() {
+        let root = tempfile::tempdir().unwrap();
+        let game = GameDir::new(root.path());
+        let mut config = InstanceConfig::new("Crash Pack", "1.21.1", None);
+        config.source = Some(PackSource {
+            kind: "mrpack".to_owned(),
+            name: "Crash Pack".to_owned(),
+            version: "1.0.0".to_owned(),
+            project_id: Some("proj".to_owned()),
+            version_id: Some("v1".to_owned()),
+            cover_url: None,
+        });
+        let inst = instance::register(&game, "crash-pack", &config).unwrap();
+        let inst_dir = inst.game_dir(&game).unwrap();
+        std::fs::create_dir_all(inst_dir.join("mods")).unwrap();
+        std::fs::create_dir_all(inst_dir.join(META_DIR)).unwrap();
+
+        let old_mod_bytes = b"old-mod-v1";
+        let old_mod_path = inst_dir.join("mods/core-1.0.jar");
+        std::fs::write(&old_mod_path, old_mod_bytes).unwrap();
+        let old_sha1 = sha1_file(&old_mod_path).await.unwrap();
+
+        let store = ContentStore::new(game.root().join(STORE_DIR));
+        store.add_copy(&old_mod_path, &old_sha1).await.unwrap();
+
+        // 模拟写盘到一半崩溃：旧文件已被删除、新文件已写入、pack-rollback.json 仍标记 in_progress = true
+        std::fs::remove_file(&old_mod_path).unwrap();
+        std::fs::write(inst_dir.join("mods/core-2.0.jar"), b"partial-v2").unwrap();
+
+        let record = PackRollbackRecord {
+            format_version: MANIFEST_FORMAT,
+            created_at: 1_700_000_000_000.0,
+            from_pack_name: "Crash Pack".to_owned(),
+            from_pack_version: "1.0.0".to_owned(),
+            to_pack_version: "2.0.0".to_owned(),
+            prev_game_version: "1.21.1".to_owned(),
+            prev_loader: None,
+            prev_version_id: "1.21.1".to_owned(),
+            prev_source: config.source.clone(),
+            prev_recommended_memory_mb: None,
+            prev_origin: None,
+            prev_patches: None,
+            restored_files: vec![RollbackFile {
+                path: "mods/core-1.0.jar".to_owned(),
+                sha1: old_sha1,
+            }],
+            added_files: vec![RollbackFile {
+                path: "mods/core-2.0.jar".to_owned(),
+                sha1: "0000000000000000000000000000000000000000".to_owned(),
+            }],
+            in_progress: true,
+        };
+        write_json_atomic(&inst_dir.join(META_DIR).join(ROLLBACK_FILE), &record).unwrap();
+
+        assert!(has_pending_update(&inst_dir));
+        assert!(rollback_summary(&inst_dir).is_none());
+
+        let recovered = recover_pending(&game, "crash-pack").await.unwrap().unwrap();
+        assert_eq!(recovered.restored_version, "1.0.0");
+        assert_eq!(recovered.reverted_from, "2.0.0");
+        assert_eq!(recovered.restored_files, 1);
+        assert_eq!(recovered.removed_files, 1);
+
+        assert!(!has_pending_update(&inst_dir));
+        assert!(!inst_dir.join("mods/core-2.0.jar").exists());
+        assert_eq!(std::fs::read(&old_mod_path).unwrap(), old_mod_bytes);
     }
 }

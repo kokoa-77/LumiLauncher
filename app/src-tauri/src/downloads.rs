@@ -20,7 +20,7 @@ use launcher_core::modpack;
 use launcher_core::net::http::USER_AGENT;
 use launcher_core::net::proxy_watch::apply_proxy_settings;
 use launcher_core::net::{
-    DnsProbe, DownloadError, DownloadPriority, QuickFixAction, TransferTelemetry,
+    DnsProbe, DownloadError, DownloadPriority, QuickFixAction, TransferMetrics,
 };
 use launcher_core::paths::GameDir;
 use serde::{Deserialize, Serialize};
@@ -150,10 +150,10 @@ pub fn jobs_clear_history(app: AppHandle, state: State<'_, AppState>) {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clear();
-    state.engine.telemetry().set_diagnosis(None);
+    state.engine.metrics().set_diagnosis(None);
     crate::events::emit(
         &app,
-        crate::events::TransferTelemetryUpdated(state.engine.runtime_telemetry()),
+        crate::events::TransferMetricsUpdated(state.engine.runtime_metrics()),
     );
     let game = state.game();
     let keep = kept_staging(&state.jobs);
@@ -228,10 +228,10 @@ fn strip_partial_retry_prefix(mut title: &str) -> &str {
     title
 }
 
-fn emit_telemetry_snapshot(app: &AppHandle, state: &AppState) {
+fn emit_metrics_snapshot(app: &AppHandle, state: &AppState) {
     crate::events::emit(
         app,
-        crate::events::TransferTelemetryUpdated(state.engine.runtime_telemetry()),
+        crate::events::TransferMetricsUpdated(state.engine.runtime_metrics()),
     );
 }
 
@@ -264,8 +264,8 @@ pub async fn jobs_retry(app: AppHandle, id: String) -> Result<String, AppError> 
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(&id);
-    state.engine.telemetry().set_diagnosis(None);
-    emit_telemetry_snapshot(&app, &state);
+    state.engine.metrics().set_diagnosis(None);
+    emit_metrics_snapshot(&app, &state);
     Ok(new_id)
 }
 
@@ -286,8 +286,8 @@ pub fn jobs_remove(app: AppHandle, state: State<'_, AppState>, id: String) -> bo
             .iter()
             .any(|j| j.state == JobState::Failed && j.diagnosis.is_some());
         if !has_remaining_diagnosis {
-            state.engine.telemetry().set_diagnosis(None);
-            emit_telemetry_snapshot(&app, &state);
+            state.engine.metrics().set_diagnosis(None);
+            emit_metrics_snapshot(&app, &state);
         }
     }
     removed
@@ -357,8 +357,8 @@ pub async fn jobs_retry_failed(app: AppHandle, id: String) -> Result<String, App
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .remove(&id);
-    state.engine.telemetry().set_diagnosis(None);
-    emit_telemetry_snapshot(&app, &state);
+    state.engine.metrics().set_diagnosis(None);
+    emit_metrics_snapshot(&app, &state);
 
     let step_label = if receipt.step_label.is_empty() {
         "补齐失败文件".to_owned()
@@ -405,8 +405,8 @@ pub async fn jobs_retry_failed(app: AppHandle, id: String) -> Result<String, App
 /// 读取当前运行期网络、磁盘与限速实时状态摘要（供设置页与驾驶舱首帧显示）。
 #[tauri::command]
 #[specta::specta]
-pub fn net_runtime_status(state: State<'_, AppState>) -> TransferTelemetry {
-    state.engine.runtime_telemetry()
+pub fn net_runtime_status(state: State<'_, AppState>) -> TransferMetrics {
+    state.engine.runtime_metrics()
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -488,7 +488,7 @@ pub async fn net_apply_quick_fix(
             settings.download.doh_enabled = true;
             let saved = state.settings.set(settings)?;
             state.apply_download_settings(&saved.download);
-            state.engine.telemetry().set_diagnosis(None);
+            state.engine.metrics().set_diagnosis(None);
             should_retry = true;
             message = "已开启 DoH 防污染解析并准备重试".to_owned();
         }
@@ -499,12 +499,12 @@ pub async fn net_apply_quick_fix(
                 .map_err(|e| AppError::new("network.invalid_proxy", e.to_string()))?;
             let saved = state.settings.set(settings)?;
             state.apply_download_settings(&saved.download);
-            state.engine.telemetry().set_diagnosis(None);
+            state.engine.metrics().set_diagnosis(None);
             should_retry = true;
             message = "已切换为直连并重建连接池".to_owned();
         }
         QuickFixAction::SwitchOfficialCdnAndRetry => {
-            state.engine.telemetry().set_diagnosis(None);
+            state.engine.metrics().set_diagnosis(None);
             should_retry = true;
             message = "已标记故障节点避让并重试下载".to_owned();
         }
@@ -514,7 +514,7 @@ pub async fn net_apply_quick_fix(
             settings.download.segment_mode = SegmentMode::Off;
             let saved = state.settings.set(settings)?;
             state.apply_download_settings(&saved.download);
-            state.engine.telemetry().set_diagnosis(None);
+            state.engine.metrics().set_diagnosis(None);
             should_retry = true;
             message = "已将并发磁盘写入降至 2 路并关闭大文件分段".to_owned();
         }
@@ -526,7 +526,7 @@ pub async fn net_apply_quick_fix(
                 settings.download.max_segments_per_file.min(4);
             let saved = state.settings.set(settings)?;
             state.apply_download_settings(&saved.download);
-            state.engine.telemetry().set_diagnosis(None);
+            state.engine.metrics().set_diagnosis(None);
             should_retry = true;
             message = "已收敛全局并发与分段数，避开限流阈值".to_owned();
         }
@@ -551,20 +551,6 @@ pub async fn net_apply_quick_fix(
             focus = Some("netdiag".to_owned());
             message = "已定位到网络连通性诊断".to_owned();
         }
-        #[cfg(feature = "community-mirrors")]
-        QuickFixAction::EnableMirrorFallbackRetry => {
-            if settings.download.source_policy
-                == launcher_core::config::DownloadSourcePolicy::OfficialOnly
-            {
-                settings.download.source_policy = launcher_core::config::DownloadSourcePolicy::Auto;
-            }
-            let saved = state.settings.set(settings)?;
-            state.apply_download_settings(&saved.download);
-            state.engine.telemetry().set_diagnosis(None);
-            should_retry = true;
-            message = "已开启智能多源策略并准备重试下载".to_owned();
-        }
-        #[cfg(not(feature = "community-mirrors"))]
         QuickFixAction::EnableMirrorFallbackRetry => {
             section = Some("download".to_owned());
             focus = Some("netdiag".to_owned());
@@ -578,7 +564,7 @@ pub async fn net_apply_quick_fix(
         None
     };
 
-    emit_telemetry_snapshot(&app, &state);
+    emit_metrics_snapshot(&app, &state);
 
     Ok(QuickFixResult {
         applied: true,

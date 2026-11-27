@@ -218,7 +218,7 @@ pub enum ThemeMode {
     Dark,
 }
 
-/// 下载源策略（审核版固定为 `OfficialOnly`；V1.1 `community-mirrors` 启用后支持多源）
+/// 下载源策略（固定直连官方源 `OfficialOnly`）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -879,17 +879,9 @@ impl Settings {
             .custom_doh_url
             .take()
             .and_then(|u| validate_public_https_url(&u));
-        self.download.custom_mirror_root = self
-            .download
-            .custom_mirror_root
-            .take()
-            .and_then(|u| validate_public_https_url(&u));
-        #[cfg(not(feature = "community-mirrors"))]
-        {
-            self.download.source_policy = DownloadSourcePolicy::OfficialOnly;
-            self.download.custom_mirror_root = None;
-            self.download.modrinth_fallback_mirror = false;
-        }
+        self.download.source_policy = DownloadSourcePolicy::OfficialOnly;
+        self.download.custom_mirror_root = None;
+        self.download.modrinth_fallback_mirror = false;
         self.game.max_memory_mb = clamp_memory_mb(self.game.max_memory_mb);
         self.game.directory = self
             .game

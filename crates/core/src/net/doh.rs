@@ -76,15 +76,7 @@ const GLOBAL_ANYCAST_OFFICIAL: &[&str] = &[
     "xboxlive.com",
 ];
 
-const DOMESTIC_OR_MIRROR: &[&str] = &[
-    "cn",
-    "aliyuncs.com",
-    "aliyun.com",
-    #[cfg(feature = "community-mirrors")]
-    "bangbang93.com",
-    #[cfg(feature = "community-mirrors")]
-    "mcimirror.top",
-];
+const DOMESTIC_OR_MIRROR: &[&str] = &["cn", "aliyuncs.com", "aliyun.com"];
 
 const SYSTEM_PEEK_TIMEOUT: Duration = Duration::from_millis(400);
 const QUERY_CONNECT_TIMEOUT: Duration = Duration::from_millis(1200);
@@ -1740,11 +1732,6 @@ mod tests {
         }
         let domestic = doh.candidate_providers("mirrors.tuna.tsinghua.edu.cn");
         assert!(matches!(domestic[0].id, "dnspod" | "alidns"));
-        #[cfg(feature = "community-mirrors")]
-        {
-            let mirror = doh.candidate_providers("bmclapi2.bangbang93.com");
-            assert!(matches!(mirror[0].id, "dnspod" | "alidns"));
-        }
     }
 
     #[test]

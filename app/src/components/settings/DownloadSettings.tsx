@@ -10,7 +10,6 @@ import {
   commands,
   type DiskWriteMode,
   type DnsProbe,
-  type DownloadSourcePolicy,
   type EndpointProbe,
   type MeteredPolicy,
   type Platform,
@@ -19,10 +18,9 @@ import {
   type ProxyTestResult,
   type SegmentMode,
   type Settings,
-  type TransferTelemetry,
+  type TransferMetrics,
 } from "@/lib/bindings";
 import { logError, reportError } from "@/lib/report";
-import { useAppStore } from "@/stores/app";
 import { Button } from "../ui/Button";
 import { TextInput } from "../ui/Field";
 import { Truncated } from "../ui/HoverCard";
@@ -107,8 +105,6 @@ const ADVANCED_IDS = new Set([
   "speedLimit",
   "localReuse",
   "doh",
-  "customMirror",
-  "modrinthFallback",
 ]);
 
 function parsePort(text: string, fallback: number): number {
@@ -139,10 +135,9 @@ export function DownloadSettings({
 }) {
   const { t, i18n } = useTranslation();
   const isZh = i18n.language.toLowerCase().startsWith("zh");
-  const communityMirrorsEnabled = useAppStore((s) => s.info?.communityMirrorsEnabled ?? false);
   const download = settings.download;
 
-  const [runtime, setRuntime] = useState<TransferTelemetry | null>(null);
+  const [runtime, setRuntime] = useState<TransferMetrics | null>(null);
   const [dns, setDns] = useState<DnsProbe[] | null>(null);
   const [dnsBusy, setDnsBusy] = useState(false);
   const [probes, setProbes] = useState<EndpointProbe[] | null>(null);
@@ -166,11 +161,8 @@ export function DownloadSettings({
   const diskWriteMode = download.diskWriteMode ?? "auto";
   const maxDiskWriters = download.maxDiskWriters ?? 12;
   const localReuse = download.localReuseEnabled ?? true;
-  const sourcePolicy = download.sourcePolicy ?? "officialOnly";
-  const modrinthFallbackMirror = download.modrinthFallbackMirror ?? false;
 
   const [customDohDraft, setCustomDohDraft] = useState(download.customDohUrl ?? "");
-  const [customMirrorDraft, setCustomMirrorDraft] = useState(download.customMirrorRoot ?? "");
   const [customConcurrencyText, setCustomConcurrencyText] = useState(
     String(download.maxConcurrency),
   );
@@ -188,10 +180,6 @@ export function DownloadSettings({
   useEffect(() => {
     setCustomDohDraft(download.customDohUrl ?? "");
   }, [download.customDohUrl]);
-
-  useEffect(() => {
-    setCustomMirrorDraft(download.customMirrorRoot ?? "");
-  }, [download.customMirrorRoot]);
 
   useEffect(() => {
     setCustomConcurrencyText(String(download.maxConcurrency));
@@ -285,20 +273,6 @@ export function DownloadSettings({
     }
     set({ customDohUrl: trimmed });
     toast.success(t("settings.customDohSaved"));
-  };
-
-  const applyCustomMirror = () => {
-    const trimmed = customMirrorDraft.trim().replace(/\/+$/, "");
-    if (!trimmed) {
-      set({ customMirrorRoot: null });
-      return;
-    }
-    if (!isPublicHttps443Url(trimmed)) {
-      toast.error(t("settings.customMirrorInvalid"));
-      return;
-    }
-    set({ customMirrorRoot: trimmed });
-    toast.success(t("settings.customMirrorSaved"));
   };
 
   const applySpeedCustom = () => {
@@ -468,32 +442,6 @@ export function DownloadSettings({
       </Group>
 
       <Group title={t("settings.downloadGroup")}>
-        {communityMirrorsEnabled && (
-          <div id="setting-row-sourcePolicy">
-            <Row
-              label={t("settings.sourcePolicy")}
-              hint={t("settings.sourcePolicyHint")}
-              control={
-                <Segmented<DownloadSourcePolicy>
-                  label={t("settings.sourcePolicy")}
-                  value={sourcePolicy}
-                  options={[
-                    {
-                      value: "officialOnly",
-                      label: t("settings.sourcePolicyMode.officialOnly"),
-                    },
-                    { value: "auto", label: t("settings.sourcePolicyMode.auto") },
-                    {
-                      value: "mirrorFirst",
-                      label: t("settings.sourcePolicyMode.mirrorFirst"),
-                    },
-                  ]}
-                  onChange={(nextPolicy) => set({ sourcePolicy: nextPolicy })}
-                />
-              }
-            />
-          </div>
-        )}
         <div id="setting-row-proxy">
           <Row
             label={t("settings.proxy")}
@@ -861,46 +809,6 @@ export function DownloadSettings({
                 </ul>
               )}
             </div>
-            {communityMirrorsEnabled && (
-              <>
-                <div id="setting-row-customMirror">
-                  <Row
-                    label={t("settings.customMirrorLabel")}
-                    hint={t("settings.customMirrorHint")}
-                    control={<span className="text-2xs text-fg-muted">HTTPS · 443</span>}
-                  />
-                  <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
-                    <div className="min-w-52 flex-1">
-                      <TextInput
-                        value={customMirrorDraft}
-                        onChange={(e) => setCustomMirrorDraft(e.target.value)}
-                        placeholder={t("settings.customMirrorPlaceholder")}
-                        aria-label={t("settings.customMirrorLabel")}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") applyCustomMirror();
-                        }}
-                      />
-                    </div>
-                    <Button variant="secondary" size="sm" onClick={applyCustomMirror}>
-                      {t("settings.proxyApply")}
-                    </Button>
-                  </div>
-                </div>
-                <div id="setting-row-modrinthFallback">
-                  <Row
-                    label={t("settings.modrinthFallback")}
-                    hint={t("settings.modrinthFallbackHint")}
-                    control={
-                      <Switch
-                        label={t("settings.modrinthFallback")}
-                        checked={modrinthFallbackMirror}
-                        onChange={(nextFallback) => set({ modrinthFallbackMirror: nextFallback })}
-                      />
-                    }
-                  />
-                </div>
-              </>
-            )}
           </>
         )}
       </Group>

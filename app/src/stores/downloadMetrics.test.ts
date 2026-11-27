@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { TransferTelemetry } from "@/lib/bindings";
-import { seedTelemetry, useTelemetryStore } from "@/stores/telemetry";
+import type { TransferMetrics } from "@/lib/bindings";
+import { seedDownloadMetrics, useDownloadMetricsStore } from "@/stores/downloadMetrics";
 
-function makeSnapshot(overrides: Partial<TransferTelemetry> = {}): TransferTelemetry {
+function makeSnapshot(overrides: Partial<TransferMetrics> = {}): TransferMetrics {
   return {
     seq: 1,
     timestampMs: 1_700_000_000_000,
@@ -35,8 +35,8 @@ function makeSnapshot(overrides: Partial<TransferTelemetry> = {}): TransferTelem
   };
 }
 
-describe("telemetry store", () => {
-  it("refreshes snapshot on repeated seedTelemetry calls even after a snapshot already exists", () => {
+describe("downloadMetrics store", () => {
+  it("refreshes snapshot on repeated seedDownloadMetrics calls even after a snapshot already exists", () => {
     const stale = makeSnapshot({
       seq: 10,
       effectiveSpeedLimitKib: 5120,
@@ -49,9 +49,9 @@ describe("telemetry store", () => {
         secondaryFix: null,
       },
     });
-    seedTelemetry(stale);
-    expect(useTelemetryStore.getState().current?.effectiveSpeedLimitKib).toBe(5120);
-    expect(useTelemetryStore.getState().current?.activeDiagnosis).not.toBeNull();
+    seedDownloadMetrics(stale);
+    expect(useDownloadMetricsStore.getState().current?.effectiveSpeedLimitKib).toBe(5120);
+    expect(useDownloadMetricsStore.getState().current?.activeDiagnosis).not.toBeNull();
 
     const updated = makeSnapshot({
       seq: 11,
@@ -60,9 +60,9 @@ describe("telemetry store", () => {
       routeKind: "systemProxy",
       routeLabel: "系统代理",
     });
-    seedTelemetry(updated);
+    seedDownloadMetrics(updated);
 
-    const current = useTelemetryStore.getState().current;
+    const current = useDownloadMetricsStore.getState().current;
     expect(current?.seq).toBe(11);
     expect(current?.effectiveSpeedLimitKib).toBe(0);
     expect(current?.activeDiagnosis).toBeNull();

@@ -246,11 +246,11 @@ impl AppState {
             guard.insert(job_id.to_owned(), (receipt, top_diag.clone(), count));
         }
         if let Some(ref d) = top_diag {
-            self.engine.telemetry().set_diagnosis(Some(d.clone()));
+            self.engine.metrics().set_diagnosis(Some(d.clone()));
         } else if let Some(first) = failures.first()
             && first.cause != RootCauseKind::Unknown
         {
-            let fallback_diag = self.engine.runtime_telemetry().active_diagnosis;
+            let fallback_diag = self.engine.runtime_metrics().active_diagnosis;
             return (
                 u32::try_from(failures.len()).unwrap_or(u32::MAX),
                 fallback_diag,

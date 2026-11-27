@@ -87,10 +87,9 @@ const settings: Settings = {
 };
 useAppStore.setState({
   info: {
-    version: "0.6.2（展示页）",
+    version: "0.7.1（展示页）",
     backdrop: "solid",
     memoryMb: 32768,
-    communityMirrorsEnabled: false,
   },
   settings,
   gameDir: { path: String.raw`C:\Games\Lumi\.minecraft`, locked: true },

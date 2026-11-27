@@ -106,7 +106,7 @@ export const commands = {
 	/**  设置里的「网络连通性检测」：并行探测核心官方服务端点 */
 	netDiagnostics: () => typedError<EndpointProbe[], AppError>(__TAURI_INVOKE("net_diagnostics")),
 	/**  读取当前运行期网络、磁盘与限速实时状态摘要（供设置页与驾驶舱首帧显示）。 */
-	netRuntimeStatus: () => __TAURI_INVOKE<TransferTelemetry>("net_runtime_status"),
+	netRuntimeStatus: () => __TAURI_INVOKE<TransferMetrics>("net_runtime_status"),
 	/**  5 秒超时实测当前输入/选择的代理配置是否可连通官方 Mojang 端点。 */
 	netTestProxy: (proxy: ProxySettings) => typedError<ProxyTestResult, AppError>(__TAURI_INVOKE("net_test_proxy", { proxy })),
 	/**  驾驶舱诊断卡一键自愈执行器：自动调优配置，并在有可恢复失败任务时直接重跑失败项。 */
@@ -467,7 +467,7 @@ export const events = {
 	launchRecordSaved: makeEvent<LaunchRecordSaved, LaunchRecordSaved>("launch-record-saved"),
 	sessionUpdated: makeEvent<SessionUpdated, SessionUpdated>("session-updated"),
 	shortcutPlay: makeEvent<ShortcutPlay, ShortcutPlay>("shortcut-play"),
-	transferTelemetryUpdated: makeEvent<TransferTelemetryUpdated, TransferTelemetryUpdated>("transfer-telemetry-updated"),
+	transferMetricsUpdated: makeEvent<TransferMetricsUpdated, TransferMetricsUpdated>("transfer-metrics-updated"),
 	updateProgress: makeEvent<UpdateProgress, UpdateProgress>("update-progress"),
 };
 
@@ -539,8 +539,6 @@ export type AppInfo = {
 	backdrop: Backdrop,
 	/**  电脑总内存（MB），界面判断要不要自动用「流畅」画面效果；读不到为空 */
 	memoryMb: number | null,
-	/**  本构建是否包含 V1.1 社区合规加速特性（默认审核版为 `false`） */
-	communityMirrorsEnabled: boolean,
 };
 
 export type Appearance = {
@@ -852,7 +850,7 @@ export type DownloadSettings = {
 	modrinthFallbackMirror?: boolean,
 };
 
-/**  下载源策略（审核版固定为 `OfficialOnly`；V1.1 `community-mirrors` 启用后支持多源） */
+/**  下载源策略（固定直连官方源 `OfficialOnly`） */
 export type DownloadSourcePolicy = "officialOnly" | "auto" | "mirrorFirst";
 
 /**  拖进来的东西和这个实例对不对得上 */
@@ -2385,15 +2383,6 @@ export type SyncStrategy =
 /**  从指定实例采集设置与服务器更新共享库，再同步给其余参与实例 */
 "pullFromInstance";
 
-export type TelemetryEvent = {
-	atMs: number | null,
-	kind: TelemetryEventKind,
-	/**  已脱敏简短中文事件，绝不含本机路径与凭据 */
-	message: string,
-};
-
-export type TelemetryEventKind = "routeSwitched" | "rampUp" | "rampRollback" | "workStolen" | "sourceFallback" | "sniBypass" | "diskBackpressure" | "watchdogRecovery" | "rateLimitCooldown" | "localReused";
-
 export type ThemeMode = "system" | "light" | "dark";
 
 export type TimelineEntry = { kind: "snapshot"; id: string; at: number | null; trigger: TimelineTrigger; summary: string; 
@@ -2451,7 +2440,16 @@ export type Todo = {
 	done?: boolean,
 };
 
-export type TransferTelemetry = {
+export type TransferMetricEvent = {
+	atMs: number | null,
+	kind: TransferMetricEventKind,
+	/**  已脱敏简短中文事件，绝不含本机路径与凭据 */
+	message: string,
+};
+
+export type TransferMetricEventKind = "routeSwitched" | "rampUp" | "rampRollback" | "workStolen" | "sourceFallback" | "sniBypass" | "diskBackpressure" | "watchdogRecovery" | "rateLimitCooldown" | "localReused";
+
+export type TransferMetrics = {
 	seq: number,
 	timestampMs: number | null,
 	/**  仅计真从网卡收到的字节（B/s） */
@@ -2478,14 +2476,14 @@ export type TransferTelemetry = {
 	metered: boolean,
 	meteredThrottled: boolean,
 	effectiveSpeedLimitKib: number,
-	recentEvents: TelemetryEvent[],
+	recentEvents: TransferMetricEvent[],
 	activeDiagnosis: FailureDiagnosis | null,
 	/**  当前运行态 DoH 简要摘要（如 "阿里 DoH 32ms"），供设置页状态条展示 */
 	dohSummary: string | null,
 };
 
-/**  10 Hz 独立实时传输遥测事件（仅在有活跃传输或任务时推送，空闲时 0 Hz 零唤醒）。 */
-export type TransferTelemetryUpdated = TransferTelemetry;
+/**  10 Hz 独立实时传输指标事件（仅在有活跃传输或任务时推送，空闲时 0 Hz 零唤醒）。 */
+export type TransferMetricsUpdated = TransferMetrics;
 
 export type TransportProtocol = "idle" | "h2" | "h1Segmented" | "mixed";
 

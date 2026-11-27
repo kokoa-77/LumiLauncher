@@ -24,8 +24,6 @@ pub struct AppInfo {
     pub backdrop: Backdrop,
     /// 电脑总内存（MB），界面判断要不要自动用「流畅」画面效果；读不到为空
     pub memory_mb: Option<u32>,
-    /// 本构建是否包含 V1.1 社区合规加速特性（默认审核版为 `false`）
-    pub community_mirrors_enabled: bool,
 }
 
 #[tauri::command]
@@ -39,7 +37,6 @@ pub fn app_info(app: AppHandle, state: State<'_, AppState>) -> AppInfo {
             .unwrap_or_else(std::sync::PoisonError::into_inner),
         memory_mb: launcher_core::launch::memory::system_memory()
             .map(|m| u32::try_from(m.total_mb).unwrap_or(u32::MAX)),
-        community_mirrors_enabled: cfg!(feature = "community-mirrors"),
     }
 }
 
@@ -123,7 +120,7 @@ pub fn settings_set(
     state.apply_download_settings(&saved.download);
     crate::events::emit(
         &app,
-        crate::events::TransferTelemetryUpdated(state.engine.runtime_telemetry()),
+        crate::events::TransferMetricsUpdated(state.engine.runtime_metrics()),
     );
     // 关掉「高性能显卡」：撤回我们写过的 Windows 显卡设置
     if gpu_was_on && !saved.game.high_performance_gpu {
@@ -215,7 +212,7 @@ pub async fn settings_import(
     state.apply_download_settings(&saved.download);
     crate::events::emit(
         &app,
-        crate::events::TransferTelemetryUpdated(state.engine.runtime_telemetry()),
+        crate::events::TransferMetricsUpdated(state.engine.runtime_metrics()),
     );
     Ok(Some(saved))
 }

@@ -1704,13 +1704,23 @@ pub async fn content_set_many_enabled(
     Ok(changed)
 }
 
-/// 在启动持有目录锁时，先收尾上次中断的世界恢复及模组改动。
+/// 在启动持有目录锁时，先收尾上次中断的世界恢复、整合包更新及模组改动。
 async fn settle_before_launch(
     game: &GameDir,
     instance: &Instance,
     directory: PathBuf,
 ) -> Result<(), AppError> {
     let content = InstanceContent::for_game(game, &directory);
+    if launcher_core::modpack::update::has_pending_update(&directory)
+        && let Some(recovered) =
+            launcher_core::modpack::update::recover_pending(game, &instance.id).await?
+    {
+        tracing::warn!(
+            instance = %instance.id,
+            restored = %recovered.restored_version,
+            "启动前退回了上次中断的整合包更新"
+        );
+    }
     crate::backups::settle(directory).await?;
     if !content.has_pending() {
         return Ok(());

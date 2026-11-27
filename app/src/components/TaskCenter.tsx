@@ -6,8 +6,8 @@ import { formatSize } from "@/lib/format";
 import { jobTitle } from "@/lib/jobLabels";
 import { overallFraction, recentDownloadJobs } from "@/lib/jobs";
 import { duration, ease } from "@/lib/motion";
+import { useDownloadMetricsStore } from "@/stores/downloadMetrics";
 import { useGameStore } from "@/stores/game";
-import { useTelemetryStore } from "@/stores/telemetry";
 import { Tooltip } from "./ui/Tooltip";
 
 const TaskCenterCockpit = lazy(() => import("./downloads/TaskCenterCockpit"));
@@ -27,7 +27,7 @@ export function TaskCenter() {
   const open = useGameStore((s) => s.tasksOpen);
   const setOpen = useGameStore((s) => s.setTasksOpen);
   const autoJob = useGameStore((s) => s.tasksAutoJob);
-  const speedBps = useTelemetryStore((s) => s.current?.speedBytesPerSec ?? 0);
+  const speedBps = useDownloadMetricsStore((s) => s.current?.speedBytesPerSec ?? 0);
   const autoState = autoJob ? jobs[autoJob]?.state : undefined;
   const [hovered, setHovered] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);

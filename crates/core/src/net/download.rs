@@ -39,16 +39,13 @@ use super::http::{
     send_following_safe_redirects,
 };
 use super::hydrator::LocalHydrator;
-#[cfg(feature = "community-mirrors")]
-use super::mirror::{
-    AssetClass, MirrorRouter, SourceId, node_key_from_url_str,
-    send_following_safe_redirects_with_mirror,
+use super::metrics::{
+    ActiveRouteKind, TransferMetricEventKind, TransferMetrics, TransferMetricsHub,
 };
 use super::profile::NetworkProfileStore;
 use super::proxy_watch::ProxyWatcher;
 use super::proxy_watch::SystemProxySnapshot;
 use super::segmented::{self, SegmentedOutcome, can_segment, has_resumable_artifacts};
-use super::telemetry::{ActiveRouteKind, TelemetryEventKind, TelemetryHub, TransferTelemetry};
 use super::throttle::{DiskMediaDetector, DiskMediaKind, TokenBucket};
 use super::{to_hex, url_host};
 
@@ -92,13 +89,11 @@ pub struct DownloadEngine {
     mem_budget: Arc<Semaphore>,
     path_locks: Mutex<HashMap<PathBuf, Weak<AsyncMutex<()>>>>,
     throttle: Arc<TokenBucket>,
-    telemetry: Arc<TelemetryHub>,
+    metrics: Arc<TransferMetricsHub>,
     disk_detector: Arc<DiskMediaDetector>,
     profiles: Arc<NetworkProfileStore>,
     hydrator: Arc<LocalHydrator>,
     edge_optimizer: Arc<OfficialEdgeOptimizer>,
-    #[cfg(feature = "community-mirrors")]
-    mirror_router: Arc<MirrorRouter>,
     game_root: RwLock<PathBuf>,
     metered: AtomicBool,
     h2_shard_rr: AtomicUsize,
@@ -138,13 +133,11 @@ impl DownloadEngine {
             mem_budget: Arc::new(Semaphore::new(MEM_BUDGET_MIB)),
             path_locks: Mutex::new(HashMap::new()),
             throttle: Arc::new(TokenBucket::new(0)),
-            telemetry: Arc::new(TelemetryHub::new()),
+            metrics: Arc::new(TransferMetricsHub::new()),
             disk_detector: Arc::new(DiskMediaDetector::new()),
             profiles: Arc::new(NetworkProfileStore::in_memory()),
             hydrator: Arc::new(LocalHydrator::in_memory(std::env::temp_dir())),
             edge_optimizer: Arc::new(OfficialEdgeOptimizer::new()),
-            #[cfg(feature = "community-mirrors")]
-            mirror_router: Arc::new(MirrorRouter::new()),
             game_root: RwLock::new(std::env::temp_dir()),
             metered: AtomicBool::new(false),
             h2_shard_rr: AtomicUsize::new(0),
@@ -186,15 +179,13 @@ impl DownloadEngine {
             mem_budget: Arc::new(Semaphore::new(MEM_BUDGET_MIB)),
             path_locks: Mutex::new(HashMap::new()),
             throttle: Arc::new(TokenBucket::new(0)),
-            telemetry: Arc::new(TelemetryHub::new()),
+            metrics: Arc::new(TransferMetricsHub::new()),
             disk_detector: Arc::new(DiskMediaDetector::new()),
             profiles: Arc::new(NetworkProfileStore::open(
                 data_dir.join("network-profiles.json"),
             )),
             hydrator: Arc::new(LocalHydrator::new(game_root.clone(), Some(data_dir))),
             edge_optimizer: Arc::new(OfficialEdgeOptimizer::new()),
-            #[cfg(feature = "community-mirrors")]
-            mirror_router: Arc::new(MirrorRouter::new()),
             game_root: RwLock::new(game_root),
             metered: AtomicBool::new(false),
             h2_shard_rr: AtomicUsize::new(0),
@@ -304,8 +295,8 @@ impl DownloadEngine {
         &self.throttle
     }
 
-    pub fn telemetry(&self) -> &Arc<TelemetryHub> {
-        &self.telemetry
+    pub fn metrics(&self) -> &Arc<TransferMetricsHub> {
+        &self.metrics
     }
 
     pub fn profiles(&self) -> &Arc<NetworkProfileStore> {
@@ -334,11 +325,6 @@ impl DownloadEngine {
             .tail_hedge_delay_override
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = delay;
-    }
-
-    #[cfg(feature = "community-mirrors")]
-    pub fn mirror_router(&self) -> &Arc<MirrorRouter> {
-        &self.mirror_router
     }
 
     pub fn max_net_permits(&self) -> u32 {
@@ -385,7 +371,7 @@ impl DownloadEngine {
         *self.disk_ewma_ms.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub fn runtime_telemetry(&self) -> TransferTelemetry {
+    pub fn runtime_metrics(&self) -> TransferMetrics {
         let proxy = self
             .user_proxy
             .read()
@@ -425,7 +411,7 @@ impl DownloadEngine {
         let disk_ewma = self.disk_ewma_ms();
         let epoch = u32::try_from(self.proxy_watcher.epoch()).unwrap_or(u32::MAX);
 
-        self.telemetry.snapshot(
+        self.metrics.snapshot(
             route_kind,
             route_label,
             epoch,
@@ -451,8 +437,6 @@ impl DownloadEngine {
         *self.user_proxy.write().unwrap_or_else(|e| e.into_inner()) = proxy.clone();
         *self.bundle.write().unwrap_or_else(|e| e.into_inner()) = bundle;
         self.edge_optimizer.on_network_epoch_change();
-        #[cfg(feature = "community-mirrors")]
-        self.mirror_router.on_network_epoch_change();
         Ok(h2)
     }
 
@@ -477,8 +461,8 @@ impl DownloadEngine {
             sys_enabled = snap.enabled,
             "建连失败触发即时代理复查：检测到网络变更，立即热重建连接池"
         );
-        self.telemetry.push_event(
-            TelemetryEventKind::RouteSwitched,
+        self.metrics.push_event(
+            TransferMetricEventKind::RouteSwitched,
             "检测到系统代理/网络变化，已热切换连接池",
         );
         let _ = self.doh.sync_proxy_with_snapshot(&proxy, Some(&snap));
@@ -595,8 +579,8 @@ impl DownloadEngine {
             if should_emit {
                 *last = Some(Instant::now());
                 drop(last);
-                self.telemetry.push_event(
-                    TelemetryEventKind::DiskBackpressure,
+                self.metrics.push_event(
+                    TransferMetricEventKind::DiskBackpressure,
                     "磁盘写入延迟升高，自动降档并发保护流畅度",
                 );
             }
@@ -976,9 +960,9 @@ impl Downloader {
         let tail_hedger = Arc::new(BatchTailHedger::new(items.len() as u64, hedge_override));
 
         if let Some(engine) = &self.engine {
-            engine.telemetry().set_diagnosis(None);
-            if !engine.telemetry().is_active() {
-                engine.telemetry().reset_batch_reuse();
+            engine.metrics().set_diagnosis(None);
+            if !engine.metrics().is_active() {
+                engine.metrics().reset_batch_reuse();
             }
         }
 
@@ -1065,50 +1049,6 @@ impl Downloader {
 #[derive(Clone)]
 struct PlannedCandidate {
     url: String,
-    #[cfg(feature = "community-mirrors")]
-    source: SourceId,
-    #[cfg(feature = "community-mirrors")]
-    asset_class: AssetClass,
-    #[cfg(feature = "community-mirrors")]
-    is_bmclapi_like: bool,
-}
-
-#[cfg(feature = "community-mirrors")]
-fn is_integrity_reason(reason: &str) -> bool {
-    reason.starts_with(SIZE_MISMATCH)
-        || reason.starts_with(SHA1_MISMATCH)
-        || reason.starts_with(STRUCTURE_MISMATCH)
-}
-
-#[cfg(feature = "community-mirrors")]
-fn record_mirror_integrity_fallback(
-    engine: Option<&DownloadEngine>,
-    source: SourceId,
-    node_key: Option<&str>,
-) {
-    if let Some(eng) = engine
-        && source.is_mirror()
-    {
-        eng.mirror_router()
-            .record_integrity_violation(source, node_key);
-        eng.telemetry().push_event(
-            TelemetryEventKind::SourceFallback,
-            "镜像返回异常内容，已 10 分钟避让并回源官方",
-        );
-    }
-}
-
-#[cfg(feature = "community-mirrors")]
-fn record_mirror_failure(
-    engine: Option<&DownloadEngine>,
-    source: SourceId,
-    node_key: Option<&str>,
-) {
-    if let Some(eng) = engine
-        && source.is_mirror()
-    {
-        eng.mirror_router().record_failure(source, node_key);
-    }
 }
 
 async fn send_attempt_request(
@@ -1117,80 +1057,21 @@ async fn send_attempt_request(
     range: Option<&str>,
     host_header: Option<&HostHeader>,
     engine: Option<&DownloadEngine>,
-) -> Result<(reqwest::Response, String, Option<String>), RedirectSendError> {
-    #[cfg(feature = "community-mirrors")]
-    if let Some(eng) = engine
-        && cand.is_bmclapi_like
-    {
-        return send_following_safe_redirects_with_mirror(
-            client,
-            &cand.url,
-            range,
-            host_header,
-            true,
-            eng.mirror_router(),
-        )
-        .await;
-    }
+) -> Result<(reqwest::Response, String), RedirectSendError> {
     let _ = engine;
-    let (resp, final_url) =
-        send_following_safe_redirects(client, &cand.url, range, host_header).await?;
-    #[cfg(feature = "community-mirrors")]
-    let node_key = node_key_from_url_str(&final_url);
-    #[cfg(not(feature = "community-mirrors"))]
-    let node_key = None;
-    Ok((resp, final_url, node_key))
+    send_following_safe_redirects(client, &cand.url, range, host_header).await
 }
 
 impl Downloader {
     fn plan_download_candidates(&self, item: &DownloadItem) -> Vec<PlannedCandidate> {
         let doh = self.engine.as_ref().map(|e| e.doh().as_ref());
-        #[cfg(feature = "community-mirrors")]
-        {
-            if let Some(engine) = &self.engine {
-                return engine
-                    .mirror_router()
-                    .plan_candidates(
-                        item,
-                        &engine.settings_snapshot(),
-                        doh,
-                        engine.is_metered(),
-                        engine.effective_speed_limit_kib() > 0,
-                    )
-                    .into_iter()
-                    .map(|c| PlannedCandidate {
-                        url: c.url,
-                        source: c.source,
-                        asset_class: c.asset_class,
-                        is_bmclapi_like: c.is_bmclapi_like,
-                    })
-                    .collect();
-            }
-            expand_official_fallbacks(&item.urls, doh)
-                .into_iter()
-                .enumerate()
-                .map(|(i, url)| PlannedCandidate {
-                    url,
-                    source: if i == 0 {
-                        SourceId::Official
-                    } else {
-                        SourceId::OfficialAlt
-                    },
-                    asset_class: AssetClass::OfficialOnly,
-                    is_bmclapi_like: false,
-                })
-                .collect()
+        let mut urls = expand_official_fallbacks(&item.urls, doh);
+        if let Some(d) = doh {
+            urls.sort_by_key(|u| u8::from(url_host(u).is_some_and(|h| d.is_host_degraded(&h))));
         }
-        #[cfg(not(feature = "community-mirrors"))]
-        {
-            let mut urls = expand_official_fallbacks(&item.urls, doh);
-            if let Some(d) = doh {
-                urls.sort_by_key(|u| u8::from(url_host(u).is_some_and(|h| d.is_host_degraded(&h))));
-            }
-            urls.into_iter()
-                .map(|url| PlannedCandidate { url })
-                .collect()
-        }
+        urls.into_iter()
+            .map(|url| PlannedCandidate { url })
+            .collect()
     }
 
     async fn download_one(
@@ -1231,7 +1112,7 @@ impl Downloader {
                 .reused_bytes
                 .fetch_add(reused_bytes, Ordering::Relaxed);
             counters.reused_files.fetch_add(1, Ordering::Relaxed);
-            engine.telemetry().record_reuse(reused_bytes, 1);
+            engine.metrics().record_reuse(reused_bytes, 1);
             counters.mark_dirty();
             return FileResult::Skipped;
         }
@@ -1262,20 +1143,6 @@ impl Downloader {
             let has_other_candidate =
                 index + 1 < candidate_urls.len() || !tried_degraded_deferred.is_empty();
 
-            #[cfg(feature = "community-mirrors")]
-            let attempt_guard = if let Some(engine) = &self.engine {
-                let Some(guard) = engine.mirror_router().try_begin_attempt(cand.source) else {
-                    index += 1;
-                    if index == candidate_urls.len() && !tried_degraded_deferred.is_empty() {
-                        candidate_urls.append(&mut tried_degraded_deferred);
-                    }
-                    continue;
-                };
-                Some(guard)
-            } else {
-                None
-            };
-
             // 大文件 (>=4 MiB) 满足六重准入门控时优先走 Zero-HEAD 净增益分段引擎
             if let Some(engine) = &self.engine
                 && can_segment(
@@ -1293,9 +1160,6 @@ impl Downloader {
                 let mut credit = Credit { counters, bytes: 0 };
                 while seg_attempt < ATTEMPTS_PER_URL {
                     total_attempts += 1;
-                    let seg_started = Instant::now();
-                    #[cfg(feature = "community-mirrors")]
-                    let mut seg_node_key: Option<String> = None;
                     match segmented::download_segmented(
                         &cand.url,
                         item,
@@ -1306,36 +1170,17 @@ impl Downloader {
                         self.pause.as_ref(),
                         &mut credit,
                         counters,
-                        #[cfg(feature = "community-mirrors")]
-                        cand.is_bmclapi_like,
-                        #[cfg(feature = "community-mirrors")]
-                        &mut seg_node_key,
                     )
                     .await
                     {
                         SegmentedOutcome::Done { received } => {
-                            let _ = seg_started;
-                            #[cfg(feature = "community-mirrors")]
-                            {
-                                engine.mirror_router().record_success(
-                                    cand.source,
-                                    cand.asset_class,
-                                    item.size,
-                                    80.0,
-                                    received,
-                                    seg_started.elapsed().as_secs_f64(),
-                                );
-                                if let Some(g) = &attempt_guard {
-                                    g.mark_settled();
-                                }
-                            }
                             if let Some(expected) = item.size {
                                 credit.sync_to(expected);
                             }
                             counters.done_files.fetch_add(1, Ordering::Relaxed);
                             if index > 0 {
                                 counters.fallbacks.fetch_add(1, Ordering::Relaxed);
-                                engine.telemetry().record_fallback();
+                                engine.metrics().record_fallback();
                             }
                             counters
                                 .received_bytes
@@ -1359,23 +1204,6 @@ impl Downloader {
                         }
                         SegmentedOutcome::NextUrl(reason) => {
                             credit.rollback();
-                            #[cfg(feature = "community-mirrors")]
-                            {
-                                if cand.source.is_mirror() && is_integrity_reason(&reason) {
-                                    record_mirror_integrity_fallback(
-                                        Some(engine),
-                                        cand.source,
-                                        seg_node_key.as_deref(),
-                                    );
-                                } else {
-                                    engine
-                                        .mirror_router()
-                                        .record_failure(cand.source, seg_node_key.as_deref());
-                                }
-                                if let Some(g) = &attempt_guard {
-                                    g.mark_settled();
-                                }
-                            }
                             last_reason = reason;
                             seg_fall_to_next_url = true;
                             break;
@@ -1386,45 +1214,13 @@ impl Downloader {
                             connect_failed,
                         } => {
                             credit.rollback();
-                            #[cfg(feature = "community-mirrors")]
-                            if cand.source.is_mirror() && is_integrity_reason(&reason) {
-                                record_mirror_integrity_fallback(
-                                    Some(engine),
-                                    cand.source,
-                                    seg_node_key.as_deref(),
-                                );
-                                if let Some(g) = &attempt_guard {
-                                    g.mark_settled();
-                                }
-                                last_reason = reason;
-                                seg_fall_to_next_url = true;
-                                break;
-                            }
                             last_reason = reason;
                             seg_attempt += 1;
                             if connect_failed && has_other_candidate {
-                                #[cfg(feature = "community-mirrors")]
-                                {
-                                    engine
-                                        .mirror_router()
-                                        .record_failure(cand.source, seg_node_key.as_deref());
-                                    if let Some(g) = &attempt_guard {
-                                        g.mark_settled();
-                                    }
-                                }
                                 seg_fall_to_next_url = true;
                                 break;
                             }
                             if seg_attempt >= ATTEMPTS_PER_URL {
-                                #[cfg(feature = "community-mirrors")]
-                                {
-                                    engine
-                                        .mirror_router()
-                                        .record_failure(cand.source, seg_node_key.as_deref());
-                                    if let Some(g) = &attempt_guard {
-                                        g.mark_settled();
-                                    }
-                                }
                                 // 若分段异常（例如非 Range 异常），让单流引擎最后兜底试一次
                                 seg_fall_to_single_stream = !has_other_candidate;
                                 break;
@@ -1459,19 +1255,9 @@ impl Downloader {
             while attempt < ATTEMPTS_PER_URL {
                 total_attempts += 1;
                 let attempt_started = Instant::now();
-                let is_bmclapi = {
-                    #[cfg(feature = "community-mirrors")]
-                    {
-                        cand.is_bmclapi_like
-                    }
-                    #[cfg(not(feature = "community-mirrors"))]
-                    {
-                        false
-                    }
-                };
                 let host_sni_blocked =
                     url_host(&cand.url).is_some_and(|h| doh.is_some_and(|d| d.is_sni_blocked(&h)));
-                let hedge_delay = if attempt == 0 && !use_spare && !is_bmclapi {
+                let hedge_delay = if attempt == 0 && !use_spare {
                     self.engine.as_ref().and_then(|eng| {
                         tail_hedger.eligible_delay(
                             eng.is_metered(),
@@ -1543,10 +1329,6 @@ impl Downloader {
                                 None,
                             );
                         }
-                        #[cfg(feature = "community-mirrors")]
-                        if let Some(g) = &attempt_guard {
-                            g.mark_settled();
-                        }
                         if let Some(expected) = item.size {
                             credit.sync_to(expected);
                         }
@@ -1554,7 +1336,7 @@ impl Downloader {
                         if index > 0 {
                             counters.fallbacks.fetch_add(1, Ordering::Relaxed);
                             if let Some(e) = &self.engine {
-                                e.telemetry().record_fallback();
+                                e.metrics().record_fallback();
                             }
                         }
                         counters
@@ -1584,17 +1366,6 @@ impl Downloader {
                         http_status,
                     }) => {
                         credit.rollback();
-                        #[cfg(feature = "community-mirrors")]
-                        {
-                            if let Some(engine) = &self.engine
-                                && !cand.source.is_mirror()
-                            {
-                                engine.mirror_router().record_failure(cand.source, None);
-                            }
-                            if let Some(g) = &attempt_guard {
-                                g.mark_settled();
-                            }
-                        }
                         tracing::debug!(url = %cand.url, reason, "换下一个下载地址");
                         last_reason = reason;
                         if diagnosis.is_some() {
@@ -1629,17 +1400,6 @@ impl Downloader {
                         }
                         // 有备选源且当前源连 TCP/TLS 都建连失败时，绝不在死源上浪费第二次 5s 超时，立刻切换备选源
                         if connect_failed && has_other_candidate {
-                            #[cfg(feature = "community-mirrors")]
-                            {
-                                if let Some(engine) = &self.engine
-                                    && !cand.source.is_mirror()
-                                {
-                                    engine.mirror_router().record_failure(cand.source, None);
-                                }
-                                if let Some(g) = &attempt_guard {
-                                    g.mark_settled();
-                                }
-                            }
                             break;
                         }
                         attempt += 1;
@@ -1649,18 +1409,6 @@ impl Downloader {
                             tokio::select! {
                                 () = tokio::time::sleep(delay) => {}
                                 () = cancel.cancelled() => return FileResult::Cancelled,
-                            }
-                        } else {
-                            #[cfg(feature = "community-mirrors")]
-                            {
-                                if let Some(engine) = &self.engine
-                                    && !cand.source.is_mirror()
-                                {
-                                    engine.mirror_router().record_failure(cand.source, None);
-                                }
-                                if let Some(g) = &attempt_guard {
-                                    g.mark_settled();
-                                }
                             }
                         }
                     }
@@ -1673,7 +1421,7 @@ impl Downloader {
         }
 
         if let (Some(engine), Some(diag)) = (&self.engine, last_diag.as_ref()) {
-            engine.telemetry().set_diagnosis(Some(diag.clone()));
+            engine.metrics().set_diagnosis(Some(diag.clone()));
         }
         let cause = last_diag
             .as_ref()
@@ -1745,7 +1493,7 @@ impl Downloader {
             return Err(AttemptError::Paused);
         }
 
-        let _transfer_guard = self.engine.as_ref().map(|e| e.telemetry().begin_transfer());
+        let _transfer_guard = self.engine.as_ref().map(|e| e.metrics().begin_transfer());
         let _net_permit = if let Some(engine) = &self.engine {
             Some(
                 engine
@@ -1756,10 +1504,7 @@ impl Downloader {
         } else {
             None
         };
-        let _h2_guard = self
-            .engine
-            .as_ref()
-            .map(|e| e.telemetry().begin_h2_stream());
+        let _h2_guard = self.engine.as_ref().map(|e| e.metrics().begin_h2_stream());
 
         let client = self.select_client(item, use_spare);
         let range_val = (resume_from > 0).then(|| format!("bytes={resume_from}-"));
@@ -1773,7 +1518,7 @@ impl Downloader {
             self.host_header.as_ref(),
             self.engine.as_deref(),
         );
-        let (response, final_url, node_key) = tokio::select! {
+        let (response, final_url) = tokio::select! {
             res = send_fut => match res {
                 Ok(ok) => ok,
                 Err(err) => {
@@ -1795,10 +1540,7 @@ impl Downloader {
             () = cancel.cancelled() => return Err(AttemptError::Cancelled),
         };
 
-        #[cfg(feature = "community-mirrors")]
-        let ttfb_ms = req_started.elapsed().as_secs_f64() * 1000.0;
-        #[cfg(not(feature = "community-mirrors"))]
-        let _ = (&node_key, req_started, allow_slow_reroll);
+        let _ = (req_started, allow_slow_reroll);
 
         if let Some(engine) = &self.engine
             && let Some(h) = url_host(&final_url).or(req_host.clone())
@@ -1813,11 +1555,9 @@ impl Downloader {
         if status == StatusCode::TOO_MANY_REQUESTS {
             let wait = parse_retry_after(response.headers());
             let host_str = req_host.as_deref().unwrap_or("下载源");
-            #[cfg(feature = "community-mirrors")]
-            record_mirror_failure(self.engine.as_deref(), cand.source, node_key.as_deref());
             if let Some(e) = &self.engine {
-                e.telemetry().push_event(
-                    TelemetryEventKind::RateLimitCooldown,
+                e.metrics().push_event(
+                    TransferMetricEventKind::RateLimitCooldown,
                     format!("{host_str} 触发 429 限流，等待退避"),
                 );
             }
@@ -1836,8 +1576,6 @@ impl Downloader {
             return Err(AttemptError::retry("续传位置无效，改为从头下载"));
         }
         if !(status == StatusCode::PARTIAL_CONTENT && resume_from > 0) && !status.is_success() {
-            #[cfg(feature = "community-mirrors")]
-            record_mirror_failure(self.engine.as_deref(), cand.source, node_key.as_deref());
             if is_retryable(status) {
                 return Err(AttemptError::Retry {
                     reason: format!("服务器返回 {status}"),
@@ -1887,12 +1625,6 @@ impl Downloader {
                         .starts_with("text/html")
                 })
         {
-            #[cfg(feature = "community-mirrors")]
-            record_mirror_integrity_fallback(
-                self.engine.as_deref(),
-                cand.source,
-                node_key.as_deref(),
-            );
             return Err(AttemptError::next_url(format!(
                 "{STRUCTURE_MISMATCH}下载源返回了 HTML 网页而非目标文件"
             )));
@@ -1927,7 +1659,7 @@ impl Downloader {
                 match self {
                     Self::Ram(buf, _permit) => {
                         if let Some(e) = engine {
-                            e.telemetry().sub_mem_bytes(buf.len());
+                            e.metrics().sub_mem_bytes(buf.len());
                         }
                         if !buf.is_empty() {
                             let _ = fs::write(part, &buf).await;
@@ -1969,8 +1701,6 @@ impl Downloader {
         let stall_timeout = Duration::from_secs(
             STALL_TIMEOUTS_SECS[stall_strikes.min(STALL_TIMEOUTS_SECS.len() - 1)],
         );
-        #[cfg(feature = "community-mirrors")]
-        let stream_started = Instant::now();
 
         let mut body = response.bytes_stream();
         loop {
@@ -1979,8 +1709,6 @@ impl Downloader {
                     Ok(item_next) => item_next,
                     Err(_) => {
                         sink.flush_for_resume(&part, self.engine.as_deref()).await;
-                        #[cfg(feature = "community-mirrors")]
-                        record_mirror_failure(self.engine.as_deref(), cand.source, node_key.as_deref());
                         return Err(AttemptError::Retry {
                             reason: "接收数据长时间停滞，准备重连".to_owned(),
                             delay_override: Some(Duration::from_millis(200)),
@@ -2012,8 +1740,6 @@ impl Downloader {
                 None => break,
                 Some(Err(error)) => {
                     sink.flush_for_resume(&part, self.engine.as_deref()).await;
-                    #[cfg(feature = "community-mirrors")]
-                    record_mirror_failure(self.engine.as_deref(), cand.source, node_key.as_deref());
                     return Err(AttemptError::retry(format!("下载中断：{error}")));
                 }
                 Some(Ok(chunk)) => {
@@ -2029,12 +1755,6 @@ impl Downloader {
                         if looks_like_html_payload(&sniff_buf) {
                             drop(sink);
                             remove_quietly(&part, cancel).await;
-                            #[cfg(feature = "community-mirrors")]
-                            record_mirror_integrity_fallback(
-                                self.engine.as_deref(),
-                                cand.source,
-                                node_key.as_deref(),
-                            );
                             let reason = format!("{STRUCTURE_MISMATCH}下载源返回了 HTML 劫持页面");
                             return Err(AttemptError::NextUrl {
                                 diagnosis: Some(FailureDiagnosis::integrity_mismatch(
@@ -2059,13 +1779,13 @@ impl Downloader {
                         Sink::Ram(mut buf, mem_p) => {
                             if buf.len().saturating_add(chunk.len()) <= SMALL_FILE_THRESHOLD {
                                 if let Some(engine) = &self.engine {
-                                    engine.telemetry().add_mem_bytes(chunk.len());
+                                    engine.metrics().add_mem_bytes(chunk.len());
                                 }
                                 buf.extend_from_slice(&chunk);
                                 Sink::Ram(buf, mem_p)
                             } else {
                                 if let Some(engine) = &self.engine {
-                                    engine.telemetry().sub_mem_bytes(buf.len());
+                                    engine.metrics().sub_mem_bytes(buf.len());
                                 }
                                 let file = fs::File::create(&part).await.map_err(|e| {
                                     AttemptError::retry(format!("无法写入临时文件：{e}"))
@@ -2100,60 +1820,13 @@ impl Downloader {
                         .live_received
                         .fetch_add(len, Ordering::Relaxed);
                     if let Some(engine) = &self.engine {
-                        engine.telemetry().record_rx(len);
+                        engine.metrics().record_rx(len);
                     }
                     if item.size.is_some_and(|size| written > size) {
                         drop(sink);
                         remove_quietly(&part, cancel).await;
                         let reason = "收到的内容比预期大，可能不是正确的文件".to_owned();
-                        #[cfg(feature = "community-mirrors")]
-                        if cand.source.is_mirror() {
-                            record_mirror_integrity_fallback(
-                                self.engine.as_deref(),
-                                cand.source,
-                                node_key.as_deref(),
-                            );
-                            return Err(AttemptError::NextUrl {
-                                diagnosis: Some(FailureDiagnosis::integrity_mismatch(
-                                    req_host.clone(),
-                                    reason.clone(),
-                                )),
-                                reason,
-                                http_status: None,
-                            });
-                        }
                         return Err(AttemptError::retry(reason));
-                    }
-                    #[cfg(feature = "community-mirrors")]
-                    if cand.is_bmclapi_like
-                        && let Some(engine) = &self.engine
-                    {
-                        let elapsed = stream_started.elapsed().as_secs_f64();
-                        let cur_bps =
-                            written.saturating_sub(resume_from) as f64 / elapsed.max(0.05);
-                        if engine.mirror_router().should_reroll_slow_mirror(
-                            cand.source,
-                            cand.asset_class,
-                            item.size,
-                            elapsed,
-                            cur_bps,
-                        ) {
-                            engine
-                                .mirror_router()
-                                .record_failure(cand.source, node_key.as_deref());
-                            drop(sink);
-                            remove_quietly(&part, cancel).await;
-                            if allow_slow_reroll
-                                && engine.mirror_router().try_acquire_reroll_quota()
-                            {
-                                return Err(AttemptError::retry("镜像节点偏慢，尝试重摇切换"));
-                            }
-                            engine.telemetry().push_event(
-                                TelemetryEventKind::SourceFallback,
-                                "镜像节点偏慢，已最优停止并回源官方",
-                            );
-                            return Err(AttemptError::next_url("镜像节点持续偏慢，已回源官方"));
-                        }
                     }
                 }
             }
@@ -2166,17 +1839,11 @@ impl Downloader {
                 let ram_len = buf.len();
                 let cleanup_ram = || {
                     if let Some(engine) = &self.engine {
-                        engine.telemetry().sub_mem_bytes(ram_len);
+                        engine.metrics().sub_mem_bytes(ram_len);
                     }
                 };
                 if !sniff_checked && looks_like_html_payload(&buf) {
                     cleanup_ram();
-                    #[cfg(feature = "community-mirrors")]
-                    record_mirror_integrity_fallback(
-                        self.engine.as_deref(),
-                        cand.source,
-                        node_key.as_deref(),
-                    );
                     let reason = format!("{STRUCTURE_MISMATCH}下载源返回了 HTML 劫持页面");
                     return Err(AttemptError::NextUrl {
                         diagnosis: Some(FailureDiagnosis::integrity_mismatch(
@@ -2195,22 +1862,6 @@ impl Downloader {
                         "{SIZE_MISMATCH}应为 {expected} 字节，实际 {} 字节",
                         buf.len()
                     );
-                    #[cfg(feature = "community-mirrors")]
-                    if cand.source.is_mirror() {
-                        record_mirror_integrity_fallback(
-                            self.engine.as_deref(),
-                            cand.source,
-                            node_key.as_deref(),
-                        );
-                        return Err(AttemptError::NextUrl {
-                            diagnosis: Some(FailureDiagnosis::integrity_mismatch(
-                                req_host.clone(),
-                                reason.clone(),
-                            )),
-                            reason,
-                            http_status: None,
-                        });
-                    }
                     return Err(AttemptError::retry(reason));
                 }
                 if let (Some(expected), Some(actual)) = (&item.sha1, &live_sha1)
@@ -2218,44 +1869,12 @@ impl Downloader {
                 {
                     cleanup_ram();
                     let reason = format!("{SHA1_MISMATCH}应为 {expected}，实际 {actual}");
-                    #[cfg(feature = "community-mirrors")]
-                    if cand.source.is_mirror() {
-                        record_mirror_integrity_fallback(
-                            self.engine.as_deref(),
-                            cand.source,
-                            node_key.as_deref(),
-                        );
-                        return Err(AttemptError::NextUrl {
-                            diagnosis: Some(FailureDiagnosis::integrity_mismatch(
-                                req_host.clone(),
-                                reason.clone(),
-                            )),
-                            reason,
-                            http_status: None,
-                        });
-                    }
                     return Err(AttemptError::retry(reason));
                 }
                 if item.sha1.is_none()
                     && let Err(reason) = verify_structure_bytes(&buf, &item.path)
                 {
                     cleanup_ram();
-                    #[cfg(feature = "community-mirrors")]
-                    if cand.source.is_mirror() {
-                        record_mirror_integrity_fallback(
-                            self.engine.as_deref(),
-                            cand.source,
-                            node_key.as_deref(),
-                        );
-                        return Err(AttemptError::NextUrl {
-                            diagnosis: Some(FailureDiagnosis::integrity_mismatch(
-                                req_host.clone(),
-                                reason.clone(),
-                            )),
-                            reason,
-                            http_status: None,
-                        });
-                    }
                     return Err(AttemptError::retry(reason));
                 }
 
@@ -2275,56 +1894,8 @@ impl Downloader {
                     remove_quietly(&part, cancel).await;
                     let reason =
                         format!("{SIZE_MISMATCH}应为 {expected} 字节，实际 {written} 字节");
-                    #[cfg(feature = "community-mirrors")]
-                    if cand.source.is_mirror() {
-                        record_mirror_integrity_fallback(
-                            self.engine.as_deref(),
-                            cand.source,
-                            node_key.as_deref(),
-                        );
-                        return Err(AttemptError::NextUrl {
-                            diagnosis: Some(FailureDiagnosis::integrity_mismatch(
-                                req_host.clone(),
-                                reason.clone(),
-                            )),
-                            reason,
-                            http_status: None,
-                        });
-                    }
                     return Err(AttemptError::retry(reason));
                 }
-                #[cfg(feature = "community-mirrors")]
-                finish_file(
-                    &part,
-                    item,
-                    live_sha1.as_deref(),
-                    self.engine.as_deref(),
-                    cancel,
-                )
-                .await
-                .map_err(|err| {
-                    if cand.source.is_mirror()
-                        && let AttemptError::Retry { reason, .. } = &err
-                        && is_integrity_reason(reason)
-                    {
-                        record_mirror_integrity_fallback(
-                            self.engine.as_deref(),
-                            cand.source,
-                            node_key.as_deref(),
-                        );
-                        let cloned = reason.clone();
-                        return AttemptError::NextUrl {
-                            diagnosis: Some(FailureDiagnosis::integrity_mismatch(
-                                req_host.clone(),
-                                cloned.clone(),
-                            )),
-                            reason: cloned,
-                            http_status: None,
-                        };
-                    }
-                    err
-                })?;
-                #[cfg(not(feature = "community-mirrors"))]
                 finish_file(
                     &part,
                     item,
@@ -2337,17 +1908,6 @@ impl Downloader {
         }
 
         let received = written - resume_from;
-        #[cfg(feature = "community-mirrors")]
-        if let Some(engine) = &self.engine {
-            engine.mirror_router().record_success(
-                cand.source,
-                cand.asset_class,
-                item.size,
-                ttfb_ms,
-                received,
-                stream_started.elapsed().as_secs_f64(),
-            );
-        }
         Ok(received)
     }
 
@@ -2393,7 +1953,7 @@ impl Downloader {
             return Some(Err(AttemptError::Cancelled));
         }
 
-        let _transfer_guard = engine.telemetry().begin_transfer();
+        let _transfer_guard = engine.metrics().begin_transfer();
         let _net_permit = match engine.acquire_net(self.priority, cancel).await {
             Some(p) => p,
             None => return Some(Err(AttemptError::Cancelled)),
@@ -2519,8 +2079,8 @@ impl Downloader {
                 Branch::Hedge(Ok(ok)) => {
                     tail_hedger.record_hedge_win();
                     engine.tail_hedges_won.fetch_add(1, Ordering::Relaxed);
-                    engine.telemetry().push_event(
-                        TelemetryEventKind::WatchdogRecovery,
+                    engine.metrics().push_event(
+                        TransferMetricEventKind::WatchdogRecovery,
                         "批尾小文件对冲命中，已绕过慢连接",
                     );
                     Ok(ok)
@@ -2544,8 +2104,8 @@ impl Downloader {
                             Ok(ok) => {
                                 tail_hedger.record_hedge_win();
                                 engine.tail_hedges_won.fetch_add(1, Ordering::Relaxed);
-                                engine.telemetry().push_event(
-                                    TelemetryEventKind::WatchdogRecovery,
+                                engine.metrics().push_event(
+                                    TransferMetricEventKind::WatchdogRecovery,
                                     "批尾小文件对冲命中，已绕过慢连接",
                                 );
                                 Ok(ok)
@@ -2588,16 +2148,6 @@ impl Downloader {
             return Some(Err(e));
         }
         credit.sync_to(ram_len);
-        #[cfg(feature = "community-mirrors")]
-        engine.mirror_router().record_success(
-            cand.source,
-            cand.asset_class,
-            item.size,
-            fetched.ttfb_ms,
-            fetched.received,
-            fetched.elapsed_secs,
-        );
-        #[cfg(not(feature = "community-mirrors"))]
         let _ = (&fetched.ttfb_ms, &fetched.elapsed_secs);
         Some(Ok(fetched.received))
     }
@@ -2619,7 +2169,7 @@ impl Downloader {
                 if self.0 > 0
                     && let Some(e) = self.1
                 {
-                    e.telemetry().sub_mem_bytes(self.0);
+                    e.metrics().sub_mem_bytes(self.0);
                 }
             }
         }
@@ -2627,12 +2177,9 @@ impl Downloader {
         let url = cand.url.as_str();
         let req_host = url_host(url);
         let req_started = Instant::now();
-        let _h2_guard = self
-            .engine
-            .as_ref()
-            .map(|e| e.telemetry().begin_h2_stream());
+        let _h2_guard = self.engine.as_ref().map(|e| e.metrics().begin_h2_stream());
 
-        let (response, final_url, node_key) = send_attempt_request(
+        let (response, final_url) = send_attempt_request(
             &client,
             cand,
             None,
@@ -2657,11 +2204,9 @@ impl Downloader {
         if status == StatusCode::TOO_MANY_REQUESTS {
             let wait = parse_retry_after(response.headers());
             let host_str = req_host.as_deref().unwrap_or("下载源");
-            #[cfg(feature = "community-mirrors")]
-            record_mirror_failure(self.engine.as_deref(), cand.source, node_key.as_deref());
             if let Some(e) = &self.engine {
-                e.telemetry().push_event(
-                    TelemetryEventKind::RateLimitCooldown,
+                e.metrics().push_event(
+                    TransferMetricEventKind::RateLimitCooldown,
                     format!("{host_str} 触发 429 限流，等待退避"),
                 );
             }
@@ -2676,8 +2221,6 @@ impl Downloader {
             });
         }
         if !status.is_success() {
-            #[cfg(feature = "community-mirrors")]
-            record_mirror_failure(self.engine.as_deref(), cand.source, node_key.as_deref());
             if is_retryable(status) {
                 return Err(AttemptError::Retry {
                     reason: format!("服务器返回 {status}"),
@@ -2721,12 +2264,6 @@ impl Downloader {
                         .starts_with("text/html")
                 })
         {
-            #[cfg(feature = "community-mirrors")]
-            record_mirror_integrity_fallback(
-                self.engine.as_deref(),
-                cand.source,
-                node_key.as_deref(),
-            );
             return Err(AttemptError::next_url(format!(
                 "{STRUCTURE_MISMATCH}下载源返回了 HTML 网页而非目标文件"
             )));
@@ -2741,25 +2278,17 @@ impl Downloader {
 
         while let Some(step) = tokio::time::timeout(stall_timeout, body.next())
             .await
-            .map_err(|_| {
-                #[cfg(feature = "community-mirrors")]
-                record_mirror_failure(self.engine.as_deref(), cand.source, node_key.as_deref());
-                AttemptError::Retry {
-                    reason: "接收数据长时间停滞，准备重连".to_owned(),
-                    delay_override: Some(Duration::from_millis(200)),
-                    use_spare_next: true,
-                    stall_bump: true,
-                    connect_failed: false,
-                    diagnosis: None,
-                    http_status: None,
-                }
+            .map_err(|_| AttemptError::Retry {
+                reason: "接收数据长时间停滞，准备重连".to_owned(),
+                delay_override: Some(Duration::from_millis(200)),
+                use_spare_next: true,
+                stall_bump: true,
+                connect_failed: false,
+                diagnosis: None,
+                http_status: None,
             })?
         {
-            let chunk = step.map_err(|e| {
-                #[cfg(feature = "community-mirrors")]
-                record_mirror_failure(self.engine.as_deref(), cand.source, node_key.as_deref());
-                AttemptError::retry(format!("下载中断：{e}"))
-            })?;
+            let chunk = step.map_err(|e| AttemptError::retry(format!("下载中断：{e}")))?;
             if let Some(engine) = &self.engine
                 && !engine.throttle().consume(chunk.len(), cancel).await
             {
@@ -2779,18 +2308,12 @@ impl Downloader {
             branch_rx.fetch_add(len_u64, Ordering::Release);
             counters.live_received.fetch_add(len_u64, Ordering::Relaxed);
             if let Some(engine) = &self.engine {
-                engine.telemetry().add_mem_bytes(chunk.len());
-                engine.telemetry().record_rx(len_u64);
+                engine.metrics().add_mem_bytes(chunk.len());
+                engine.metrics().record_rx(len_u64);
             }
         }
 
         if is_binary && looks_like_html_payload(&buf) {
-            #[cfg(feature = "community-mirrors")]
-            record_mirror_integrity_fallback(
-                self.engine.as_deref(),
-                cand.source,
-                node_key.as_deref(),
-            );
             return Err(AttemptError::next_url(format!(
                 "{STRUCTURE_MISMATCH}下载源返回了 HTML 劫持页面"
             )));
@@ -2804,17 +2327,6 @@ impl Downloader {
         if let (Some(expected), Some(h)) = (&item.sha1, hasher) {
             let actual = to_hex(&h.finalize());
             if !actual.eq_ignore_ascii_case(expected) {
-                #[cfg(feature = "community-mirrors")]
-                if cand.source.is_mirror() {
-                    record_mirror_integrity_fallback(
-                        self.engine.as_deref(),
-                        cand.source,
-                        node_key.as_deref(),
-                    );
-                    return Err(AttemptError::next_url(format!(
-                        "{SHA1_MISMATCH}应为 {expected}，实际 {actual}"
-                    )));
-                }
                 return Err(AttemptError::retry(format!(
                     "{SHA1_MISMATCH}应为 {expected}，实际 {actual}"
                 )));
@@ -2825,7 +2337,6 @@ impl Downloader {
             return Err(AttemptError::retry(reason));
         }
 
-        let _ = node_key;
         let received = buf.len() as u64;
         let elapsed_secs = stream_started.elapsed().as_secs_f64();
         drop(ram_meter);
@@ -2853,9 +2364,6 @@ fn classify_send_request_error(
 ) -> AttemptError {
     match err {
         RedirectSendError::Protocol(msg) => {
-            #[cfg(feature = "community-mirrors")]
-            record_mirror_failure(engine, cand.source, None);
-            #[cfg(not(feature = "community-mirrors"))]
             let _ = cand;
             AttemptError::next_url(msg)
         }
@@ -2864,9 +2372,6 @@ fn classify_send_request_error(
             source,
         } => {
             let failed_host = url_host(&failed_url).or_else(|| req_host.map(str::to_owned));
-            #[cfg(feature = "community-mirrors")]
-            let failed_edge = node_key_from_url_str(&failed_url)
-                .or_else(|| failed_host.as_deref().map(|h| format!("{h}:443")));
             if let Some(eng) = engine {
                 // 快切代理 0ms 自愈：建连出错立刻复查一次系统代理，若刚变更则用新池瞬间重试
                 if source.is_connect() && eng.refresh_proxy_if_changed().is_some() {
@@ -2883,16 +2388,14 @@ fn classify_send_request_error(
                 if let Some(h) = failed_host.as_deref() {
                     match eng.doh().report_connect_failure(h, &source) {
                         TransportDnsAction::SniBlockedSwitchSource => {
-                            #[cfg(feature = "community-mirrors")]
-                            record_mirror_failure(Some(eng), cand.source, failed_edge.as_deref());
                             let diag = classify_reqwest_error(
                                 &source,
                                 Some(h),
                                 Some(eng.doh()),
                                 eng.proxy_mode(),
                             );
-                            eng.telemetry().push_event(
-                                TelemetryEventKind::SniBypass,
+                            eng.metrics().push_event(
+                                TransferMetricEventKind::SniBypass,
                                 format!("{h} 握手重置，自动切换备选源"),
                             );
                             return AttemptError::NextUrl {
@@ -2902,8 +2405,6 @@ fn classify_send_request_error(
                             };
                         }
                         TransportDnsAction::RetryOnceSingleStream => {
-                            #[cfg(feature = "community-mirrors")]
-                            record_mirror_failure(Some(eng), cand.source, failed_edge.as_deref());
                             let diag = classify_reqwest_error(
                                 &source,
                                 Some(h),
@@ -2923,8 +2424,6 @@ fn classify_send_request_error(
                         TransportDnsAction::None => {}
                     }
                 }
-                #[cfg(feature = "community-mirrors")]
-                record_mirror_failure(Some(eng), cand.source, failed_edge.as_deref());
                 let diag = classify_reqwest_error(
                     &source,
                     failed_host.as_deref(),
@@ -2966,7 +2465,7 @@ async fn commit_ram_buffer_to_disk(
         Some(m) => Some(m.lock().await),
         None => None,
     };
-    let mut disk_guard = engine.map(|e| e.telemetry().begin_disk_write());
+    let mut disk_guard = engine.map(|e| e.metrics().begin_disk_write());
     let _disk_permit = if let Some(eng) = engine {
         Some(
             eng.acquire_disk(cancel)
@@ -3038,7 +2537,7 @@ async fn finish_file(
         Some(m) => Some(m.lock().await),
         None => None,
     };
-    let mut disk_guard = engine.map(|e| e.telemetry().begin_disk_write());
+    let mut disk_guard = engine.map(|e| e.metrics().begin_disk_write());
     let _disk_permit = if let Some(eng) = engine {
         Some(
             eng.acquire_disk(cancel)
@@ -3461,12 +2960,12 @@ mod tests {
             engine.record_disk_write_ms(200.0, 64 * 1024 * 1024);
         }
         assert!(engine.disk_ewma_ms() < 10.0);
-        let snap_fast = engine.runtime_telemetry();
+        let snap_fast = engine.runtime_metrics();
         assert!(
             !snap_fast
                 .recent_events
                 .iter()
-                .any(|e| e.kind == TelemetryEventKind::DiskBackpressure)
+                .any(|e| e.kind == TransferMetricEventKind::DiskBackpressure)
         );
 
         // 真正慢盘（20 MiB 耗时 3000ms = 150 ms/MiB）跨过阈值，10s 冷却期内只推一条事件
@@ -3474,11 +2973,11 @@ mod tests {
             engine.record_disk_write_ms(3000.0, 20 * 1024 * 1024);
         }
         assert!(engine.disk_ewma_ms() >= 50.0);
-        let snap_slow = engine.runtime_telemetry();
+        let snap_slow = engine.runtime_metrics();
         let count = snap_slow
             .recent_events
             .iter()
-            .filter(|e| e.kind == TelemetryEventKind::DiskBackpressure)
+            .filter(|e| e.kind == TransferMetricEventKind::DiskBackpressure)
             .count();
         assert_eq!(count, 1);
     }
@@ -3644,9 +3143,8 @@ mod tests {
         assert_eq!(std::fs::read(&big_path).unwrap(), big_data);
     }
 
-    #[cfg(feature = "community-mirrors")]
     #[tokio::test]
-    async fn tampered_mirror_and_ssrf_redirect_are_blocked_and_fallback_to_official() {
+    async fn tampered_source_and_ssrf_redirect_are_blocked_and_fallback() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
         let good_payload = b"PK\x03\x04valid_official_jar_payload".to_vec();
@@ -3737,7 +3235,7 @@ mod tests {
             .unwrap();
         assert_eq!(report.downloaded, 1);
         assert_eq!(std::fs::read(&out1).unwrap(), good_payload);
-        assert!(engine.runtime_telemetry().fallbacks >= 1);
+        assert!(engine.runtime_metrics().fallbacks >= 1);
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-//! 独立 10 Hz 实时传输遥测与环形自愈事件总线（零锁热路径 + `specta` 全兼容）。
+//! 独立 10 Hz 实时传输指标与环形自愈事件总线（零锁热路径 + `specta` 全兼容）。
 //!
 //! - 热路径只做 `AtomicU64::fetch_add(..., Relaxed)`（~2 ns），消除回调锁争抢；
 //! - 空闲时由上层推送器自动降频为 0 Hz 零唤醒；
@@ -45,7 +45,7 @@ pub enum TransportProtocol {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
-pub enum TelemetryEventKind {
+pub enum TransferMetricEventKind {
     RouteSwitched,
     RampUp,
     RampRollback,
@@ -61,9 +61,9 @@ pub enum TelemetryEventKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
-pub struct TelemetryEvent {
+pub struct TransferMetricEvent {
     pub at_ms: f64,
-    pub kind: TelemetryEventKind,
+    pub kind: TransferMetricEventKind,
     /// 已脱敏简短中文事件，绝不含本机路径与凭据
     pub message: String,
 }
@@ -71,7 +71,7 @@ pub struct TelemetryEvent {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
-pub struct TransferTelemetry {
+pub struct TransferMetrics {
     pub seq: u32,
     pub timestamp_ms: f64,
     /// 仅计真从网卡收到的字节（B/s）
@@ -98,14 +98,14 @@ pub struct TransferTelemetry {
     pub metered: bool,
     pub metered_throttled: bool,
     pub effective_speed_limit_kib: u32,
-    pub recent_events: Vec<TelemetryEvent>,
+    pub recent_events: Vec<TransferMetricEvent>,
     pub active_diagnosis: Option<FailureDiagnosis>,
     /// 当前运行态 DoH 简要摘要（如 "阿里 DoH 32ms"），供设置页状态条展示
     pub doh_summary: Option<String>,
 }
 
-/// 进程内实时传输遥测中心。
-pub struct TelemetryHub {
+/// 进程内实时传输指标中心（纯本地内存统计，不向任何外部服务器上报）。
+pub struct TransferMetricsHub {
     seq: AtomicU32,
     active_transfers: AtomicU32,
     active_h2_streams: AtomicU32,
@@ -119,11 +119,11 @@ pub struct TelemetryHub {
     work_steals: AtomicU32,
     fallbacks: AtomicU32,
     speed_window: Mutex<VecDeque<(Instant, u64)>>,
-    recent_events: Mutex<VecDeque<TelemetryEvent>>,
+    recent_events: Mutex<VecDeque<TransferMetricEvent>>,
     active_diagnosis: Mutex<Option<FailureDiagnosis>>,
 }
 
-impl TelemetryHub {
+impl TransferMetricsHub {
     pub fn new() -> Self {
         Self {
             seq: AtomicU32::new(0),
@@ -210,9 +210,9 @@ impl TelemetryHub {
                 });
     }
 
-    pub fn push_event(&self, kind: TelemetryEventKind, message: impl Into<String>) {
+    pub fn push_event(&self, kind: TransferMetricEventKind, message: impl Into<String>) {
         let mut guard = self.recent_events.lock().unwrap_or_else(|e| e.into_inner());
-        let event = TelemetryEvent {
+        let event = TransferMetricEvent {
             at_ms: now_millis() as f64,
             kind,
             message: message.into(),
@@ -251,7 +251,7 @@ impl TelemetryHub {
         metered_throttled: bool,
         effective_speed_limit_kib: u32,
         doh_summary: Option<String>,
-    ) -> TransferTelemetry {
+    ) -> TransferMetrics {
         let h2 = self.active_h2_streams.load(Ordering::Acquire);
         let h1 = self.active_h1_segments.load(Ordering::Acquire);
         let active_connections = h2.saturating_add(h1);
@@ -295,7 +295,7 @@ impl TelemetryHub {
             }
         };
 
-        let recent_events: Vec<TelemetryEvent> = self
+        let recent_events: Vec<TransferMetricEvent> = self
             .recent_events
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -308,7 +308,7 @@ impl TelemetryHub {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
 
-        TransferTelemetry {
+        TransferMetrics {
             seq: self.seq.fetch_add(1, Ordering::Relaxed),
             timestamp_ms: now_millis() as f64,
             speed_bytes_per_sec,
@@ -340,7 +340,7 @@ impl TelemetryHub {
     }
 }
 
-impl Default for TelemetryHub {
+impl Default for TransferMetricsHub {
     fn default() -> Self {
         Self::new()
     }

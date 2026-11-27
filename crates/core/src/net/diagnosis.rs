@@ -146,13 +146,6 @@ pub fn classify_reqwest_error(
         && let Some(d) = doh
         && d.is_sni_blocked(h)
     {
-        #[cfg(feature = "community-mirrors")]
-        let secondary_fix = if super::mirror::is_mirrorable_host(h) {
-            Some(QuickFixAction::EnableMirrorFallbackRetry)
-        } else {
-            Some(QuickFixAction::OpenProxySettings)
-        };
-        #[cfg(not(feature = "community-mirrors"))]
         let secondary_fix = Some(QuickFixAction::OpenProxySettings);
 
         return FailureDiagnosis {
@@ -226,12 +219,6 @@ pub fn classify_reqwest_error(
     }
 
     if has_reset_eof {
-        #[cfg(feature = "community-mirrors")]
-        let secondary_fix = host
-            .filter(|h| super::mirror::is_mirrorable_host(h))
-            .map(|_| QuickFixAction::EnableMirrorFallbackRetry)
-            .or(Some(QuickFixAction::OpenProxySettings));
-        #[cfg(not(feature = "community-mirrors"))]
         let secondary_fix = Some(QuickFixAction::OpenProxySettings);
 
         return FailureDiagnosis {

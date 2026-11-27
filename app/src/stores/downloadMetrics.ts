@@ -1,17 +1,17 @@
 import { create } from "zustand";
-import { events, type TransferTelemetry } from "@/lib/bindings";
+import { events, type TransferMetrics } from "@/lib/bindings";
 
 const MAX_SAMPLES = 60;
 
-interface TelemetryStore {
-  current: TransferTelemetry | null;
+interface DownloadMetricsStore {
+  current: TransferMetrics | null;
   samples: number[];
   peakSpeed: number;
 }
 
 const initialSamples = () => new Array<number>(MAX_SAMPLES).fill(0);
 
-export const useTelemetryStore = create<TelemetryStore>(() => ({
+export const useDownloadMetricsStore = create<DownloadMetricsStore>(() => ({
   current: null,
   samples: initialSamples(),
   peakSpeed: 0,
@@ -20,7 +20,7 @@ export const useTelemetryStore = create<TelemetryStore>(() => ({
 // 模块级环形缓冲与 rAF 帧合并状态，避免 50 MB/s 突发时每帧多次触发 React 重绘
 let ring = initialSamples();
 let ringPeak = 0;
-let latestFrame: TransferTelemetry | null = null;
+let latestFrame: TransferMetrics | null = null;
 let rafId: number | null = null;
 let lastActiveEventAt = 0;
 
@@ -38,7 +38,7 @@ function flushToStore() {
   rafId = null;
   if (!latestFrame) return;
   const frame = latestFrame;
-  useTelemetryStore.setState({
+  useDownloadMetricsStore.setState({
     current: frame,
     samples: ring,
     peakSpeed: ringPeak,
@@ -58,13 +58,13 @@ function scheduleFlush() {
 }
 
 /** 用主动查询的运行时快照刷新状态（每次打开驾驶舱同步最新限速、路由与诊断）。 */
-export function seedTelemetry(frame: TransferTelemetry): void {
+export function seedDownloadMetrics(frame: TransferMetrics): void {
   latestFrame = frame;
-  useTelemetryStore.setState({ current: frame });
+  useDownloadMetricsStore.setState({ current: frame });
 }
 
-/** 订阅后端 10 Hz `TransferTelemetryUpdated` 事件（空闲 0 Hz，页面隐藏跳过 DOM 重绘）。 */
-export async function initTelemetryEvents(): Promise<() => void> {
+/** 订阅后端 10 Hz `TransferMetricsUpdated` 事件（空闲 0 Hz，页面隐藏跳过 DOM 重绘）。 */
+export async function initDownloadMetricsEvents(): Promise<() => void> {
   const onVisibility = () => {
     if (typeof document !== "undefined" && !document.hidden && latestFrame) {
       scheduleFlush();
@@ -74,7 +74,7 @@ export async function initTelemetryEvents(): Promise<() => void> {
     document.addEventListener("visibilitychange", onVisibility);
   }
 
-  const unlisten = await events.transferTelemetryUpdated.listen(({ payload }) => {
+  const unlisten = await events.transferMetricsUpdated.listen(({ payload }) => {
     const isActivePayload =
       (payload.speedBytesPerSec ?? 0) > 0 || (payload.activeConnections ?? 0) > 0;
     const isNonIdlePulse = payload.protocol !== "idle" || isActivePayload;

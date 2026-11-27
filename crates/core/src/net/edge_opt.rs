@@ -21,7 +21,7 @@ use super::dns_wire::is_strictly_global_unicast;
 use super::doh::Doh;
 use super::download::{DownloadEngine, looks_like_html_payload};
 use super::http::USER_AGENT;
-use super::telemetry::{TelemetryEventKind, TelemetryHub};
+use super::metrics::{TransferMetricEventKind, TransferMetricsHub};
 
 /// 允许执行官方多 `/24` POP 优选的 100% 官方 CDN 域名白名单（绝不含认证/皮肤/API 域名）。
 pub const OFFICIAL_CDN_POP_HOSTS: &[&str] = &[
@@ -258,7 +258,7 @@ impl OfficialEdgeOptimizer {
         observed_bps: f64,
         now: Instant,
         doh: &Doh,
-        telemetry: &TelemetryHub,
+        metrics: &TransferMetricsHub,
     ) -> PopWindowOutcome {
         if observed_bps <= 0.0 || !observed_bps.is_finite() {
             return if self.has_active_selection(host) {
@@ -303,8 +303,8 @@ impl OfficialEdgeOptimizer {
 
         if let Some(bad_ip) = rollback_target {
             doh.clear_preferred_pop_ip(&key, Some((bad_ip, DEMOTED_POP_TTL)));
-            telemetry.push_event(
-                TelemetryEventKind::RampRollback,
+            metrics.push_event(
+                TransferMetricEventKind::RampRollback,
                 "官方 CDN 新边缘节点连续两窗口低于预期，已自动回滚",
             );
             PopWindowOutcome::RolledBack
@@ -376,7 +376,7 @@ impl OfficialEdgeOptimizer {
         samples: &[EdgeProbeSample],
         now: Instant,
         doh: &Doh,
-        telemetry: &TelemetryHub,
+        metrics: &TransferMetricsHub,
     ) -> Option<IpAddr> {
         let key = normalize_host(host);
         let current_probe_bps = current_ip
@@ -412,8 +412,8 @@ impl OfficialEdgeOptimizer {
                 },
             );
         }
-        telemetry.push_event(
-            TelemetryEventKind::RouteSwitched,
+        metrics.push_event(
+            TransferMetricEventKind::RouteSwitched,
             "检测到更快的官方 CDN 边缘节点，已自动优选切换",
         );
         Some(best.ip)
@@ -544,7 +544,7 @@ impl OfficialEdgeOptimizer {
                 &samples,
                 Instant::now(),
                 engine_arc.doh(),
-                engine_arc.telemetry(),
+                engine_arc.metrics(),
             );
         });
     }
@@ -566,7 +566,7 @@ impl OfficialEdgeOptimizer {
             observed_bps,
             Instant::now(),
             engine.doh(),
-            engine.telemetry(),
+            engine.metrics(),
         );
         if matches!(outcome, PopWindowOutcome::NoActiveSelection) {
             self.maybe_spawn_probe(engine, host, probe_url, observed_bps, historical_peak_bps);
@@ -888,7 +888,7 @@ mod tests {
     fn promotes_faster_pop_and_rolls_back_after_two_slow_windows() {
         let opt = OfficialEdgeOptimizer::new();
         let doh = Doh::new(true).unwrap();
-        let telemetry = TelemetryHub::new();
+        let metrics = TransferMetricsHub::new();
         let t0 = Instant::now();
 
         let old_ip: IpAddr = "151.101.1.10".parse().unwrap();
@@ -915,7 +915,7 @@ mod tests {
             ],
             t0,
             &doh,
-            &telemetry,
+            &metrics,
         );
         assert_eq!(promoted, Some(new_ip));
         assert_eq!(doh.preferred_pop_ip("cdn.modrinth.com"), Some(new_ip));
@@ -928,7 +928,7 @@ mod tests {
                 1.4 * 1024.0 * 1024.0,
                 t0 + Duration::from_secs(2),
                 &doh,
-                &telemetry,
+                &metrics,
             ),
             PopWindowOutcome::Underperforming
         );
@@ -941,7 +941,7 @@ mod tests {
                 3.0 * 1024.0 * 1024.0,
                 t0 + Duration::from_secs(4),
                 &doh,
-                &telemetry,
+                &metrics,
             ),
             PopWindowOutcome::Healthy
         );
@@ -953,7 +953,7 @@ mod tests {
                 1.2 * 1024.0 * 1024.0,
                 t0 + Duration::from_secs(6),
                 &doh,
-                &telemetry,
+                &metrics,
             ),
             PopWindowOutcome::Underperforming
         );
@@ -963,15 +963,15 @@ mod tests {
                 1.1 * 1024.0 * 1024.0,
                 t0 + Duration::from_secs(8),
                 &doh,
-                &telemetry,
+                &metrics,
             ),
             PopWindowOutcome::RolledBack
         );
         assert_eq!(doh.preferred_pop_ip("cdn.modrinth.com"), None);
         assert!(!opt.has_active_selection("cdn.modrinth.com"));
 
-        let snap = telemetry.snapshot(
-            super::super::telemetry::ActiveRouteKind::Direct,
+        let snap = metrics.snapshot(
+            super::super::metrics::ActiveRouteKind::Direct,
             "直连".to_owned(),
             1,
             64,
@@ -986,12 +986,12 @@ mod tests {
         assert!(
             snap.recent_events
                 .iter()
-                .any(|e| e.kind == TelemetryEventKind::RouteSwitched)
+                .any(|e| e.kind == TransferMetricEventKind::RouteSwitched)
         );
         assert!(
             snap.recent_events
                 .iter()
-                .any(|e| e.kind == TelemetryEventKind::RampRollback)
+                .any(|e| e.kind == TransferMetricEventKind::RampRollback)
         );
     }
 
@@ -1039,7 +1039,7 @@ mod tests {
     fn stale_active_selection_clears_after_ttl_or_doh_eviction() {
         let opt = OfficialEdgeOptimizer::new();
         let doh = Doh::new(true).unwrap();
-        let telemetry = TelemetryHub::new();
+        let metrics = TransferMetricsHub::new();
         let t0 = Instant::now();
 
         let old_ip: IpAddr = "151.101.1.10".parse().unwrap();
@@ -1056,7 +1056,7 @@ mod tests {
             }],
             t0,
             &doh,
-            &telemetry,
+            &metrics,
         );
         assert_eq!(promoted, Some(new_ip));
         assert!(opt.has_active_selection("cdn.modrinth.com"));
@@ -1069,7 +1069,7 @@ mod tests {
                 1.0 * 1024.0 * 1024.0,
                 t0 + Duration::from_secs(2),
                 &doh,
-                &telemetry,
+                &metrics,
             ),
             PopWindowOutcome::NoActiveSelection
         );
@@ -1089,7 +1089,7 @@ mod tests {
             }],
             t1,
             &doh,
-            &telemetry,
+            &metrics,
         );
         assert_eq!(promoted2, Some(new_ip));
         let t_expired = t1 + PREFERRED_POP_TTL + Duration::from_secs(1);
@@ -1099,7 +1099,7 @@ mod tests {
                 1.0 * 1024.0 * 1024.0,
                 t_expired,
                 &doh,
-                &telemetry,
+                &metrics,
             ),
             PopWindowOutcome::NoActiveSelection
         );

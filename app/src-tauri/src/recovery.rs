@@ -67,6 +67,41 @@ pub fn spawn(app: &AppHandle) {
                 continue;
             };
             let _turn = state.turns.take(&dir).await;
+            if launcher_core::modpack::update::has_pending_update(&dir) {
+                let pack_note = match launcher_core::modpack::update::recover_pending(
+                    &game,
+                    &instance.id,
+                )
+                .await
+                {
+                    Ok(Some(outcome)) => Some(RecoveryNote {
+                        instance_id: instance.id.clone(),
+                        instance_name: instance.config.name.clone(),
+                        summary: format!("更新整合包至 {}", outcome.reverted_from),
+                        ok: true,
+                        message: None,
+                    }),
+                    Ok(None) => None,
+                    Err(error) => {
+                        let error = AppError::from(error);
+                        Some(RecoveryNote {
+                            instance_id: instance.id.clone(),
+                            instance_name: instance.config.name.clone(),
+                            summary: "中断的整合包更新".to_owned(),
+                            ok: false,
+                            message: Some(error.message),
+                        })
+                    }
+                };
+                if let Some(note) = pack_note {
+                    tracing::info!(
+                        instance = %note.instance_name,
+                        ok = note.ok,
+                        "启动时处理了中断的整合包更新"
+                    );
+                    notes.push(note);
+                }
+            }
             let note = match content.recover().await {
                 Ok(Some(recovered)) => RecoveryNote {
                     instance_id: instance.id,
@@ -93,13 +128,15 @@ pub fn spawn(app: &AppHandle) {
     });
 }
 
-/// 有改动日志留着的实例
+/// 有改动日志或中断整合包更新留着的实例
 fn pending(game: &GameDir) -> Vec<(Instance, InstanceContent)> {
     instance::list(game)
         .into_iter()
         .filter_map(|instance| {
-            let content = InstanceContent::for_game(game, instance.game_dir(game).ok()?);
-            content.has_pending().then_some((instance, content))
+            let dir = instance.game_dir(game).ok()?;
+            let content = InstanceContent::for_game(game, &dir);
+            let has_pack = launcher_core::modpack::update::has_pending_update(&dir);
+            (content.has_pending() || has_pack).then_some((instance, content))
         })
         .collect()
 }

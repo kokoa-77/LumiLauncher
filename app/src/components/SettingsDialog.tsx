@@ -297,28 +297,6 @@ export function SettingsDialog() {
         label: t("settings.doh"),
         keywords: "dns doh custom url 域名解析",
       },
-      ...(info?.communityMirrorsEnabled
-        ? [
-            {
-              id: "sourcePolicy",
-              section: "download" as SettingsSection,
-              label: t("settings.sourcePolicy"),
-              keywords: "mirror source official 下载源 镜像 加速 路由",
-            },
-            {
-              id: "customMirror",
-              section: "download" as SettingsSection,
-              label: t("settings.customMirrorLabel"),
-              keywords: "custom mirror root 自定义 镜像",
-            },
-            {
-              id: "modrinthFallback",
-              section: "download" as SettingsSection,
-              label: t("settings.modrinthFallback"),
-              keywords: "modrinth mirror fallback 镜像 回退",
-            },
-          ]
-        : []),
       {
         id: "netdiag",
         section: "download",
@@ -362,7 +340,7 @@ export function SettingsDialog() {
         keywords: "onboarding setup 引导 初始设置",
       },
     ],
-    [info?.communityMirrorsEnabled, t],
+    [t],
   );
 
   const detected = resolveEffects("auto", lowEnd ?? false);

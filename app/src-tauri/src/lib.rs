@@ -42,7 +42,7 @@ use launcher_core::content::favorites::Favorites;
 use launcher_core::java::JavaPrefsStore;
 use launcher_core::jobs::JobRegistry;
 use launcher_core::net::{
-    Doh, DownloadEngine, ProxyWatcher, TelemetryEventKind, clean_orphan_part_files,
+    Doh, DownloadEngine, ProxyWatcher, TransferMetricEventKind, clean_orphan_part_files,
     is_metered_network,
 };
 use launcher_core::paths::GameDir;
@@ -282,7 +282,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         ])
         .events(collect_events![
             events::JobUpdated,
-            events::TransferTelemetryUpdated,
+            events::TransferMetricsUpdated,
             events::SessionUpdated,
             events::GameLogBatch,
             events::ClaimUpdated,
@@ -489,7 +489,7 @@ pub fn run() {
             engine.set_metered(is_metered_network());
             let linked = linked::Linked::open(data_dir.join("linked-roots.json"));
             engine.set_external_roots(linked.root_paths());
-            events::spawn_telemetry_emitter(app.handle().clone(), engine.clone(), jobs.clone());
+            events::spawn_metrics_emitter(app.handle().clone(), engine.clone(), jobs.clone());
             // 启动 15s 后低优先级清理超过 72h 的孤儿分段碎片
             {
                 let gc_root = game_root.clone();
@@ -598,8 +598,8 @@ pub fn run() {
                             sys_enabled = snap.enabled,
                             "检测到网络或系统代理变更，热重建连接池并重置 DoH"
                         );
-                        state.engine.telemetry().push_event(
-                            TelemetryEventKind::RouteSwitched,
+                        state.engine.metrics().push_event(
+                            TransferMetricEventKind::RouteSwitched,
                             if woke {
                                 "系统休眠唤醒，已丢弃老化连接并重建连接池"
                             } else {

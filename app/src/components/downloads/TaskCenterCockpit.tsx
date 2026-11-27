@@ -42,8 +42,8 @@ import {
 import { reportError } from "@/lib/report";
 import { type SettingsSection, useAppStore } from "@/stores/app";
 import { isComplete, settledCount, useClaimStore } from "@/stores/claims";
+import { seedDownloadMetrics, useDownloadMetricsStore } from "@/stores/downloadMetrics";
 import { isActive, useGameStore } from "@/stores/game";
-import { seedTelemetry, useTelemetryStore } from "@/stores/telemetry";
 import { DownloadRestArt } from "../art/DownloadRestArt";
 import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
@@ -326,9 +326,9 @@ export default function TaskCenterCockpit({
   const openHistory = useGameStore((s) => s.setHistoryOpen);
   const pauseJob = useGameStore((s) => s.pauseJob);
   const resumeJob = useGameStore((s) => s.resumeJob);
-  const telemetry = useTelemetryStore((s) => s.current);
-  const samples = useTelemetryStore((s) => s.samples);
-  const peakSpeed = useTelemetryStore((s) => s.peakSpeed);
+  const metrics = useDownloadMetricsStore((s) => s.current);
+  const samples = useDownloadMetricsStore((s) => s.samples);
+  const peakSpeed = useDownloadMetricsStore((s) => s.peakSpeed);
   const settings = useAppStore((s) => s.settings);
   const saveSettings = useAppStore((s) => s.saveSettings);
   const [eventsOpen, setEventsOpen] = useState(false);
@@ -338,7 +338,7 @@ export default function TaskCenterCockpit({
     commands
       .netRuntimeStatus()
       .then((snap) => {
-        if (alive) seedTelemetry(snap);
+        if (alive) seedDownloadMetrics(snap);
       })
       .catch(() => {});
     return () => {
@@ -359,14 +359,14 @@ export default function TaskCenterCockpit({
     () => list.find((j) => j.state === "failed" && (j.diagnosis || (j.failedCount ?? 0) > 0)),
     [list],
   );
-  const diagnosis = telemetry?.activeDiagnosis ?? failedWithDiag?.diagnosis ?? null;
+  const diagnosis = metrics?.activeDiagnosis ?? failedWithDiag?.diagnosis ?? null;
 
-  const speedBps = telemetry?.speedBytesPerSec ?? 0;
-  const limitKib = telemetry?.effectiveSpeedLimitKib ?? 0;
+  const speedBps = metrics?.speedBytesPerSec ?? 0;
+  const limitKib = metrics?.effectiveSpeedLimitKib ?? 0;
   const limitBps = limitKib * 1024;
-  const recentEvents = telemetry?.recentEvents ?? [];
+  const recentEvents = metrics?.recentEvents ?? [];
   const latestEvent = recentEvents.length > 0 ? recentEvents[recentEvents.length - 1] : null;
-  const showTelemetryBlock = runningCount > 0 || pausedCount > 0 || speedBps > 0;
+  const showMetricsBlock = runningCount > 0 || pausedCount > 0 || speedBps > 0;
 
   const enableMeteredThrottle = () => {
     if (!settings) return;
@@ -415,7 +415,7 @@ export default function TaskCenterCockpit({
         </div>
       </div>
 
-      {telemetry?.metered && settings?.download.meteredPolicy === "warn" && (
+      {metrics?.metered && settings?.download.meteredPolicy === "warn" && (
         <div className="mx-3 mt-2 flex items-center justify-between gap-2 rounded-control border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
           <span className="flex min-w-0 items-center gap-1.5 text-fg">
             <Wifi className="size-3.5 shrink-0 text-warning" aria-hidden />
@@ -427,7 +427,7 @@ export default function TaskCenterCockpit({
         </div>
       )}
 
-      {showTelemetryBlock && telemetry && (
+      {showMetricsBlock && metrics && (
         <div className="flex flex-col gap-2 border-line border-b px-4 py-2.5">
           <div className="flex items-baseline justify-between gap-2 text-xs">
             <div className="flex items-baseline gap-2 tabular-nums">
@@ -452,27 +452,27 @@ export default function TaskCenterCockpit({
           <div className="flex flex-wrap gap-1.5 text-2xs text-fg-muted tabular-nums">
             <span className="inline-flex items-center gap-1 rounded-tag bg-surface-2 px-2 py-0.5">
               <Gauge className="size-3 text-accent" aria-hidden />
-              {telemetry.routeLabel}
+              {metrics.routeLabel}
             </span>
             <span className="inline-flex items-center gap-1 rounded-tag bg-surface-2 px-2 py-0.5">
               <Activity className="size-3 text-accent" aria-hidden />
-              {t(`tasks.proto.${telemetry.protocol}`)} · {telemetry.activeConnections}/
-              {telemetry.maxConnections}
+              {t(`tasks.proto.${metrics.protocol}`)} · {metrics.activeConnections}/
+              {metrics.maxConnections}
             </span>
             <span className="inline-flex items-center gap-1 rounded-tag bg-surface-2 px-2 py-0.5">
               <HardDrive className="size-3 text-accent" aria-hidden />
-              {telemetry.diskKind.toUpperCase()} · {telemetry.diskWritersActive}/
-              {telemetry.diskWritersLimit} · {Math.round(telemetry.diskWriteEwmaMs ?? 0)}ms
+              {metrics.diskKind.toUpperCase()} · {metrics.diskWritersActive}/
+              {metrics.diskWritersLimit} · {Math.round(metrics.diskWriteEwmaMs ?? 0)}ms
             </span>
           </div>
 
-          {(telemetry.reusedBytes ?? 0) > 0 && (
+          {(metrics.reusedBytes ?? 0) > 0 && (
             <div className="flex items-center gap-1.5 rounded-control bg-accent-soft px-2.5 py-1 text-2xs text-accent tabular-nums">
               <Sparkles className="size-3.5 shrink-0" aria-hidden />
               <span>
                 {t("tasks.reusedBanner", {
-                  size: formatSize(telemetry.reusedBytes ?? 0),
-                  n: telemetry.reusedFiles,
+                  size: formatSize(metrics.reusedBytes ?? 0),
+                  n: metrics.reusedFiles,
                 })}
               </span>
             </div>

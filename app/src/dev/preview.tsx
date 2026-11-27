@@ -1903,10 +1903,9 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   drops_shell_ready: () => null,
   modpack_discard: () => null,
   app_info: () => ({
-    version: "0.6.2（预览）",
+    version: "0.7.1（预览）",
     backdrop: "solid",
     memoryMb: 32768,
-    communityMirrorsEnabled: false,
   }),
   memory_status: () => {
     // 像真的一样每次读都有一点起伏

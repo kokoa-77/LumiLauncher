@@ -81,7 +81,7 @@ Download the latest version from the **[Official Website](https://lumilauncher.o
 **"Windows protected your PC":** the Windows installer is not code-signed yet, so Microsoft Defender SmartScreen may warn you the first time. Click **More info → Run anyway**. To make sure the file is genuine, verify its checksum first:
 
 ```powershell
-Get-FileHash .\LumiLauncher_0.7.0_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\LumiLauncher_0.7.1_x64-setup.exe -Algorithm SHA256
 ```
 
 The output must match the line for that file in `SHA256SUMS.txt` on the same release page.

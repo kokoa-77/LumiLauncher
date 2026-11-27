@@ -11,14 +11,12 @@ pub mod edge_opt;
 pub mod http;
 pub mod hydrator;
 pub mod mclogs;
-#[cfg(feature = "community-mirrors")]
-pub mod mirror;
+pub mod metrics;
 pub mod profile;
 pub mod proxy_watch;
 pub mod segmented;
 pub mod srv;
 pub mod status;
-pub mod telemetry;
 pub mod throttle;
 
 pub use diagnosis::{FailureDiagnosis, QuickFixAction, RootCauseKind};
@@ -35,13 +33,13 @@ pub use http::{
 };
 pub use hydrator::LocalHydrator;
 pub use mclogs::{MclogsError, MclogsUpload, sanitize_for_upload, upload_log};
+pub use metrics::{
+    ActiveRouteKind, TransferMetricEvent, TransferMetricEventKind, TransferMetrics,
+    TransferMetricsHub, TransportProtocol,
+};
 pub use profile::{HostPerfProfile, NetworkProfileStore, compute_network_signature};
 pub use proxy_watch::ProxyWatcher;
 pub use segmented::{clean_orphan_part_files, has_resumable_artifacts, scan_orphan_part_files};
-pub use telemetry::{
-    ActiveRouteKind, TelemetryEvent, TelemetryEventKind, TelemetryHub, TransferTelemetry,
-    TransportProtocol,
-};
 pub use throttle::{DiskMediaDetector, DiskMediaKind, TokenBucket, is_metered_network};
 
 /// `https://` 地址的主机名（小写，去掉用户名和端口）。不是 https 的返回 `None`。

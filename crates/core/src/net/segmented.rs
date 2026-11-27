@@ -31,9 +31,9 @@ use super::download::{
     parse_retry_after, verify_structure_bytes,
 };
 use super::http::{RedirectSendError, send_following_safe_redirects};
+use super::metrics::{TransferMetricEventKind, TransferMetricsHub};
 use super::profile::compute_network_signature;
 use super::proxy_watch::classify_proxy_tag;
-use super::telemetry::{TelemetryEventKind, TelemetryHub};
 use super::throttle::{DiskMediaKind, TokenBucket};
 use super::{to_hex, url_host};
 
@@ -450,8 +450,6 @@ pub(crate) async fn download_segmented(
     pause: Option<&PauseControl>,
     credit: &mut Credit<'_>,
     counters: &Arc<Counters>,
-    #[cfg(feature = "community-mirrors")] is_bmclapi_like: bool,
-    #[cfg(feature = "community-mirrors")] out_node_key: &mut Option<String>,
 ) -> SegmentedOutcome {
     let total_expected = item.size.unwrap_or(0);
     if total_expected < MIN_SEGMENT_FILE_SIZE {
@@ -524,40 +522,10 @@ pub(crate) async fn download_segmented(
     };
 
     let req_host = url_host(url);
-    #[cfg(feature = "community-mirrors")]
-    let probe_fut = async {
-        if is_bmclapi_like {
-            super::mirror::send_following_safe_redirects_with_mirror(
-                &bundle.h1_segmented,
-                url,
-                Some(&probe_range),
-                host_header,
-                true,
-                engine.mirror_router(),
-            )
-            .await
-        } else {
-            send_following_safe_redirects(
-                &bundle.h1_segmented,
-                url,
-                Some(&probe_range),
-                host_header,
-            )
-            .await
-            .map(|(resp, final_url)| {
-                let nk = super::mirror::node_key_from_url_str(&final_url);
-                (resp, final_url, nk)
-            })
-        }
-    };
-    #[cfg(not(feature = "community-mirrors"))]
-    let probe_fut = async {
-        send_following_safe_redirects(&bundle.h1_segmented, url, Some(&probe_range), host_header)
-            .await
-            .map(|(resp, final_url)| (resp, final_url, Option::<String>::None))
-    };
+    let probe_fut =
+        send_following_safe_redirects(&bundle.h1_segmented, url, Some(&probe_range), host_header);
 
-    let (response, final_url, probe_node_key) = match tokio::select! {
+    let (response, final_url) = match tokio::select! {
         res = probe_fut => res,
         () = async {
             if let Some(p) = pause {
@@ -577,20 +545,10 @@ pub(crate) async fn download_segmented(
             url: failed_url,
             source,
         }) => {
-            #[cfg(feature = "community-mirrors")]
-            {
-                *out_node_key = super::mirror::node_key_from_url_str(&failed_url);
-            }
             drop(net_permit);
             return handle_connect_error(engine, req_host.as_deref(), &failed_url, &source);
         }
     };
-    #[cfg(feature = "community-mirrors")]
-    {
-        *out_node_key = probe_node_key;
-    }
-    #[cfg(not(feature = "community-mirrors"))]
-    let _ = probe_node_key;
 
     if let Some(h) = url_host(&final_url).or(req_host.clone()) {
         engine.doh().report_connect_ok(&h);
@@ -601,8 +559,8 @@ pub(crate) async fn download_segmented(
 
     if status == StatusCode::TOO_MANY_REQUESTS {
         let wait = parse_retry_after(response.headers());
-        engine.telemetry().push_event(
-            TelemetryEventKind::RateLimitCooldown,
+        engine.metrics().push_event(
+            TransferMetricEventKind::RateLimitCooldown,
             "触发下载源 429 限流，等待退避恢复",
         );
         return SegmentedOutcome::Retry {
@@ -902,7 +860,7 @@ pub(crate) async fn download_segmented(
                         v_n,
                         Instant::now(),
                         engine.doh(),
-                        engine.telemetry(),
+                        engine.metrics(),
                     );
                     if matches!(outcome, super::edge_opt::PopWindowOutcome::NoActiveSelection) {
                         engine.edge_optimizer().maybe_spawn_probe(
@@ -931,8 +889,8 @@ pub(crate) async fn download_segmented(
                             ramp_k = 2;
                             k_opt_recorded = 2;
                             active_workers += 1;
-                            engine.telemetry().push_event(
-                                TelemetryEventKind::RampUp,
+                            engine.metrics().push_event(
+                                TransferMetricEventKind::RampUp,
                                 "并发爬坡试探 2 条分段连接",
                             );
                             handles.push(spawn_new_segment_worker(
@@ -962,8 +920,8 @@ pub(crate) async fn download_segmented(
                         if ratio < 0.92 || engine.disk_ewma_ms() >= 50.0 {
                             steady = true;
                             k_opt_recorded = previous_rung(rungs, ramp_k);
-                            engine.telemetry().push_event(
-                                TelemetryEventKind::RampRollback,
+                            engine.metrics().push_event(
+                                TransferMetricEventKind::RampRollback,
                                 format!("并发增益不足，稳态锁定 {k_opt_recorded} 条连接"),
                             );
                         } else if ratio < gamma {
@@ -1011,8 +969,8 @@ pub(crate) async fn download_segmented(
                                 }
                                 if spawned > 0 {
                                     k_opt_recorded = ramp_k;
-                                    engine.telemetry().push_event(
-                                        TelemetryEventKind::RampUp,
+                                    engine.metrics().push_event(
+                                        TransferMetricEventKind::RampUp,
                                         format!("净增益达标，并发爬坡至 {ramp_k} 条分段连接"),
                                     );
                                 }
@@ -1067,11 +1025,11 @@ pub(crate) async fn download_segmented(
                                     last_modified.clone(),
                                     total_expected,
                                 ));
-                                engine.telemetry().record_work_steal();
+                                engine.metrics().record_work_steal();
                                 if steal_events_emitted < 2 {
                                     steal_events_emitted += 1;
-                                    engine.telemetry().push_event(
-                                        TelemetryEventKind::WorkStolen,
+                                    engine.metrics().push_event(
+                                        TransferMetricEventKind::WorkStolen,
                                         "快连接已接管慢分段尾部，保持满速收尾",
                                     );
                                 }
@@ -1169,7 +1127,7 @@ pub(crate) async fn download_segmented(
         let _ = write_json_atomic(&meta_path, &meta);
         return SegmentedOutcome::Cancelled;
     };
-    let mut disk_guard = engine.telemetry().begin_disk_write();
+    let mut disk_guard = engine.metrics().begin_disk_write();
     disk_guard.mark_active();
 
     let live_hasher = if seg0_live_hash_valid.load(Ordering::Acquire) {
@@ -1223,7 +1181,7 @@ pub(crate) async fn download_segmented(
                 },
                 MergeError::Io(io_err) => {
                     let diag = classify_io_error(&io_err);
-                    engine.telemetry().set_diagnosis(Some(diag.clone()));
+                    engine.metrics().set_diagnosis(Some(diag.clone()));
                     SegmentedOutcome::Retry {
                         reason: format!("{}（{io_err}）", diag.summary),
                         delay_override: None,
@@ -1391,7 +1349,7 @@ enum MergeError {
 struct EngineMetricsCtx {
     bundle: super::http::ClientBundle,
     throttle: Arc<TokenBucket>,
-    telemetry: Arc<TelemetryHub>,
+    metrics: Arc<TransferMetricsHub>,
     net_total: Arc<tokio::sync::Semaphore>,
     net_batch: Arc<tokio::sync::Semaphore>,
     doh: Arc<Doh>,
@@ -1425,7 +1383,7 @@ impl DownloadEngine {
         EngineMetricsCtx {
             bundle: self.bundle(),
             throttle: self.throttle().clone(),
-            telemetry: self.telemetry().clone(),
+            metrics: self.metrics().clone(),
             net_total: self.net_total_sem(),
             net_batch: self.net_batch_sem(),
             doh: self.doh().clone(),
@@ -1507,9 +1465,9 @@ fn spawn_existing_segment_worker(
         // 首段完成后同样参与 ETA 工作窃取，最大化吃满尾段带宽
         let thief_speed = seg.speed_bps.load(Ordering::Acquire);
         if let Some((stolen, spare_next)) = coord.try_steal(thief_speed) {
-            ctx.telemetry.record_work_steal();
-            ctx.telemetry.push_event(
-                TelemetryEventKind::WorkStolen,
+            ctx.metrics.record_work_steal();
+            ctx.metrics.push_event(
+                TransferMetricEventKind::WorkStolen,
                 "首段完成，主动协同分担慢连接剩余分片",
             );
             run_worker_steal_loop(
@@ -1773,9 +1731,9 @@ async fn run_worker_steal_loop(
         current_seg.done.store(true, Ordering::Release);
         let thief_speed = current_seg.speed_bps.load(Ordering::Acquire);
         if let Some((stolen, spare_next)) = coord.try_steal(thief_speed) {
-            ctx.telemetry.record_work_steal();
-            ctx.telemetry.push_event(
-                TelemetryEventKind::WorkStolen,
+            ctx.metrics.record_work_steal();
+            ctx.metrics.push_event(
+                TransferMetricEventKind::WorkStolen,
                 "快连接完成分片，已主动分担慢连接剩余区间",
             );
             current_seg = stolen;
@@ -1829,7 +1787,7 @@ async fn stream_segment_body(
     let mut ewma_bps = 0.0f64;
     let mut last_sample_t = Instant::now();
     let mut bytes_since_sample = 0u64;
-    let _seg_guard = ctx.telemetry.begin_h1_segment();
+    let _seg_guard = ctx.metrics.begin_h1_segment();
     let is_binary = is_binary_target(target_path);
     let mut sniff_checked = !is_binary || written > 0;
     let mut sniff_buf = Vec::new();
@@ -1939,7 +1897,7 @@ async fn stream_segment_body(
                 counters.live_received.fetch_add(len, Ordering::Relaxed);
                 counters.mark_dirty();
                 newly_received.fetch_add(len, Ordering::Relaxed);
-                ctx.telemetry.record_rx(len);
+                ctx.metrics.record_rx(len);
 
                 bytes_since_sample = bytes_since_sample.saturating_add(len);
                 let dt = last_sample_t.elapsed();
@@ -2009,7 +1967,7 @@ async fn finish_unranged_200_stream(
     let mut hasher = item.sha1.as_ref().map(|_| Sha1::new());
     let mut written = 0u64;
     let mut body = response.bytes_stream();
-    let _h1_guard = engine.telemetry().begin_h1_segment();
+    let _h1_guard = engine.metrics().begin_h1_segment();
     let is_binary = is_binary_target(&item.path);
     let mut sniff_checked = !is_binary;
     let mut sniff_buf = Vec::new();
@@ -2091,7 +2049,7 @@ async fn finish_unranged_200_stream(
                 written = written.saturating_add(len);
                 credit.add(len);
                 counters.live_received.fetch_add(len, Ordering::Relaxed);
-                engine.telemetry().record_rx(len);
+                engine.metrics().record_rx(len);
             }
         }
     }
@@ -2141,7 +2099,7 @@ async fn finish_unranged_200_stream(
     let Some(_disk_permit) = engine.acquire_disk(cancel).await else {
         return SegmentedOutcome::Cancelled;
     };
-    let mut disk_guard = engine.telemetry().begin_disk_write();
+    let mut disk_guard = engine.metrics().begin_disk_write();
     disk_guard.mark_active();
 
     let started = Instant::now();
@@ -2301,7 +2259,7 @@ fn handle_connect_error(
             == TransportDnsAction::SniBlockedSwitchSource
     {
         let diag = classify_reqwest_error(source, Some(h), Some(engine.doh()), engine.proxy_mode());
-        engine.telemetry().set_diagnosis(Some(diag.clone()));
+        engine.metrics().set_diagnosis(Some(diag.clone()));
         return SegmentedOutcome::NextUrl(format!("{}（已切换备选源）", diag.summary));
     }
     let diag = classify_reqwest_error(

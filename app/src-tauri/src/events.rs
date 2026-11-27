@@ -7,7 +7,7 @@ use launcher_core::auth::microsoft::AuthStage;
 use launcher_core::content::claim::ClaimSnapshot;
 use launcher_core::jobs::{JobRegistry, JobSnapshot};
 use launcher_core::launch::LogLine;
-use launcher_core::net::{DownloadEngine, TransferTelemetry};
+use launcher_core::net::{DownloadEngine, TransferMetrics};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri_specta::Event;
@@ -91,9 +91,9 @@ pub struct FilesDropped {
     pub rests: Vec<crate::drops::BundleRest>,
 }
 
-/// 10 Hz 独立实时传输遥测事件（仅在有活跃传输或任务时推送，空闲时 0 Hz 零唤醒）。
+/// 10 Hz 独立实时传输指标事件（仅在有活跃传输或任务时推送，空闲时 0 Hz 零唤醒）。
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
-pub struct TransferTelemetryUpdated(pub TransferTelemetry);
+pub struct TransferMetricsUpdated(pub TransferMetrics);
 
 /// 实例列表在后台变了（重新扫挂上的别家目录时加了、改了、移除了实例），界面重新拿一次。
 #[derive(Debug, Clone, Serialize, specta::Type, tauri_specta::Event)]
@@ -122,22 +122,22 @@ pub fn forward_job_events(handle: AppHandle, jobs: &JobRegistry) {
     });
 }
 
-/// 启动 10 Hz `TransferTelemetryUpdated` 遥测脉冲推送（严格只在活跃传输期间触发，空闲 0 Hz）。
-pub fn spawn_telemetry_emitter(handle: AppHandle, engine: Arc<DownloadEngine>, jobs: JobRegistry) {
+/// 启动 10 Hz `TransferMetricsUpdated` 实时传输指标脉冲推送（严格只在活跃传输期间触发，空闲 0 Hz）。
+pub fn spawn_metrics_emitter(handle: AppHandle, engine: Arc<DownloadEngine>, jobs: JobRegistry) {
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(100));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut was_active = false;
         loop {
             interval.tick().await;
-            let active = engine.telemetry().is_active() || jobs.has_active_jobs();
+            let active = engine.metrics().is_active() || jobs.has_active_jobs();
             if active {
-                let snap = engine.runtime_telemetry();
-                emit(&handle, TransferTelemetryUpdated(snap));
+                let snap = engine.runtime_metrics();
+                emit(&handle, TransferMetricsUpdated(snap));
                 was_active = true;
             } else if was_active {
-                let snap = engine.runtime_telemetry();
-                emit(&handle, TransferTelemetryUpdated(snap));
+                let snap = engine.runtime_metrics();
+                emit(&handle, TransferMetricsUpdated(snap));
                 was_active = false;
             }
         }
