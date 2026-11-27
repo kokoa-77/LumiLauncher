@@ -7,7 +7,7 @@
   <p>Open the launcher and jump straight back into your world.</p>
 
   <p>
-    <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a> · <a href="https://lumilauncher.pages.dev">Official Website</a> · <a href="https://lumilauncher.pages.dev/demo">Live Browser Demo</a>
+    <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a> · <a href="https://lumilauncher.org">Official Website</a> · <a href="https://lumilauncher.org/demo">Live Browser Demo</a>
   </p>
 
   <p>
@@ -68,11 +68,11 @@
 
 ## Download & Install
 
-Download the latest version from the **[Official Website](https://lumilauncher.pages.dev/#download)** or **[GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases)**, the only official download sources.
+Download the latest version from the **[Official Website](https://lumilauncher.org/#download)** or **[GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases)**, the only official download sources.
 
 | File | What it is |
 |---|---|
-| `LumiLauncher_<version>_x64-setup.exe` | **Installer (recommended).** Installs for the current user, adds Start menu shortcuts and receives signed automatic updates (pre-review builds don't include automatic updates). |
+| `LumiLauncher_<version>_x64-setup.exe` | **Installer (recommended).** Installs for the current user, adds Start menu shortcuts and receives signed automatic updates. |
 | `LumiLauncher_<version>_x64-portable.zip` | **Portable.** Extract to any writable folder and run `Lumi.exe`. Settings and the default game directory are stored in the `LumiData` folder next to it. Updates are manual. |
 | `SHA256SUMS.txt` | Checksums for verifying the files above. |
 
@@ -86,30 +86,24 @@ Get-FileHash .\LumiLauncher_0.6.4_x64-setup.exe -Algorithm SHA256
 
 The output must match the line for that file in `SHA256SUMS.txt` on the same release page.
 
-> **Beware of counterfeits.** Lumi is only published on the [Official Website](https://lumilauncher.pages.dev) and [GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases). Copies from other download sites, "cracked" or "premium" builds and anything asking for your Microsoft password are not official. See [TRADEMARK.md](TRADEMARK.md) for the list of official channels.
+> **Beware of counterfeits.** Lumi is only published on the [Official Website](https://lumilauncher.org) and [GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases). Copies from other download sites, "cracked" or "premium" builds and anything asking for your Microsoft password are not official. See [TRADEMARK.md](TRADEMARK.md) for the list of official channels.
 
-## Account Authentication & Release Status
+## Account Authentication & Ownership Verification
 
-- **Official Ownership Verification**: Lumi uses **OAuth 2.0 Authorization Code + PKCE** in the user's system browser via Lumi's own Microsoft Entra public client registration (`732fc771-cf09-4ec5-b899-ee92fd012d57`). Before launching Minecraft, Lumi verifies current **Minecraft: Java Edition play entitlement** and the matching official Java profile through official Microsoft, Xbox Live, and Minecraft services.
+- **Official Ownership Verification**: Lumi's Microsoft Entra application is approved on Mojang's official AppID allowlist. Sign-in runs in the user's system browser using **OAuth 2.1 Authorization Code + PKCE (`S256`) + `form_post`** (supporting native Passkeys / Windows Hello with device-code public client flows disabled). Before launching Minecraft, Lumi verifies active **Minecraft: Java Edition play entitlement** and the matching official Java profile directly against official Microsoft, Xbox Live, and Minecraft services.
 - **No Bypass / No Unofficial Auth**: Lumi does not provide offline username gameplay, external skin-site authentication, authentication injectors, or unofficial capes.
-- **Pre-review Build Notice**: Official pre-review builds include Lumi's Microsoft Entra Client ID (`732fc771-cf09-4ec5-b899-ee92fd012d57`) and open the official Microsoft sign-in flow in your system browser; until Mojang adds the AppID to the Minecraft Services allowlist, sign-in stops at the expected `403` verification gate while instances, saves, mods, and settings remain available to explore. (Custom source builds compiled without `LUMI_MICROSOFT_CLIENT_ID` keep Microsoft sign-in disabled.)
+- **Custom Source Builds**: Official release builds inject Lumi's approved Microsoft Entra Client ID at build time and sign in out of the box. Custom source builds compiled without `LUMI_MICROSOFT_CLIENT_ID` keep Microsoft sign-in disabled until you supply your own approved AppID.
 
 ## Privacy & Security
 
 Lumi has **no telemetry, no analytics and no ads**.
 
-- Refresh tokens are stored per account in **Windows Credential Manager** (or session memory only if the system credential store is unavailable).
+- Refresh tokens are stored per account in **Windows Credential Manager** (DPAPI user isolation; or session memory only if the system credential store is unavailable).
 - Verified Minecraft game session credentials are passed to the Java game process over its **standard input (`stdin`) pipe** (`SessionPipe.java`) rather than process command-line arguments, environment variables, or temporary argument files.
 - All logs, crash reports, and exported diagnostics automatically pass through secret redaction (`<redacted>`).
 - Full details: [PRIVACY.md](PRIVACY.md) · [SECURITY.md](SECURITY.md)
 
 ## FAQ
-
-<details>
-<summary><strong>Why can't I sign in yet?</strong></summary>
-
-New launchers must be approved on Mojang's AppID allowlist before `api.minecraftservices.com` accepts sign-in tokens from their Microsoft Entra application (`732fc771-cf09-4ec5-b899-ee92fd012d57`). While Lumi's request is under review, clicking Sign in opens the official Microsoft OAuth 2.0 + PKCE flow in your browser and stops at the expected `403` gate. You can already explore instances, worlds, mods and settings; gameplay launch unlocks automatically once Mojang approves the AppID.
-</details>
 
 <details>
 <summary><strong>Does Lumi support offline or non-premium accounts?</strong></summary>
@@ -211,7 +205,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the codebase layout, [docs/DESIGN.md]
 
 - Official builds are produced from this repository by the [Windows release workflow](.github/workflows/windows-release.yml) on GitHub Actions, and every release includes `SHA256SUMS.txt`.
 - **The Windows installer and executable are not code-signed yet.** Windows may show a SmartScreen warning; verify the checksum as described in [Download & Install](#download--install).
-- **Automatic updates are signed.** The installed version only accepts update packages signed with Lumi's updater key, and verifies the signature before installing. Pre-review builds don't include automatic updates.
+- **Automatic updates are signed.** The installed version only accepts update packages signed with Lumi's updater key, and verifies the signature before installing.
 
 ## Forks, Redistribution & Brand
 

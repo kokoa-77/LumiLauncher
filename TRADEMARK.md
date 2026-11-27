@@ -55,7 +55,7 @@ Only these are run by the Lumi project:
 
 | Channel | Link |
 |---|---|
-| Official website | <https://lumilauncher.pages.dev> |
+| Official website | <https://lumilauncher.org> |
 | Source code & downloads | <https://github.com/kokoa-77/LumiLauncher> (official downloads only from [Releases](https://github.com/kokoa-77/LumiLauncher/releases) and the official website above) |
 | Discord | <https://discord.gg/vrAQ7HwUCw> |
 | QQ group | [Lumi Launcher 官方交流 1 群](https://qm.qq.com/q/vSHOPvOKt2) |
@@ -126,7 +126,7 @@ Lumi 的源代码是自由软件，以 `GPL-3.0-only` 发布，你可以学习�
 
 | 渠道 | 链接 |
 |---|---|
-| 官方网站 | <https://lumilauncher.pages.dev/zh/> |
+| 官方网站 | <https://lumilauncher.org/zh/> |
 | 源代码与下载 | <https://github.com/kokoa-77/LumiLauncher>（官方下载仅通过上方官网与 [Releases](https://github.com/kokoa-77/LumiLauncher/releases) 提供） |
 | Discord | <https://discord.gg/vrAQ7HwUCw> |
 | QQ 群 | [Lumi Launcher 官方交流 1 群](https://qm.qq.com/q/vSHOPvOKt2) |

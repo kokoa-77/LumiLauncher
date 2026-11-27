@@ -7,7 +7,7 @@
   <p>点亮你的世界 · 打开就有游戏可以点</p>
 
   <p>
-    <a href="README.md">English</a> · <strong>简体中文</strong> · <a href="https://lumilauncher.pages.dev/zh/">官方网站</a> · <a href="https://lumilauncher.pages.dev/zh/demo">浏览器在线试玩</a>
+    <a href="README.md">English</a> · <strong>简体中文</strong> · <a href="https://lumilauncher.org/zh/">官方网站</a> · <a href="https://lumilauncher.org/zh/demo">浏览器在线试玩</a>
   </p>
 
   <p>
@@ -68,11 +68,11 @@
 
 ## 下载与安装
 
-请从 **[官方网站](https://lumilauncher.pages.dev/zh/#download)** 或 **[GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases)** 下载最新版本，这两个是仅有的官方下载渠道。
+请从 **[官方网站](https://lumilauncher.org/zh/#download)** 或 **[GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases)** 下载最新版本，这两个是仅有的官方下载渠道。
 
 | 文件 | 说明 |
 |---|---|
-| `LumiLauncher_<版本号>_x64-setup.exe` | **安装版（推荐）**。为当前用户安装，添加开始菜单快捷方式，并接收经过签名的自动更新（预审构建不含自动更新）。 |
+| `LumiLauncher_<版本号>_x64-setup.exe` | **安装版（推荐）**。为当前用户安装，添加开始菜单快捷方式，并接收经过签名的自动更新。 |
 | `LumiLauncher_<版本号>_x64-portable.zip` | **便携版**。解压到任意可写的文件夹后运行 `Lumi.exe`；设置和默认游戏目录保存在旁边的 `LumiData` 文件夹中，需要手动更新。 |
 | `SHA256SUMS.txt` | 用于核对以上文件的校验和。 |
 
@@ -86,30 +86,24 @@ Get-FileHash .\LumiLauncher_0.6.4_x64-setup.exe -Algorithm SHA256
 
 输出的值应与同一发布页 `SHA256SUMS.txt` 中对应文件的那一行一致。
 
-> **谨防冒名版本**：Lumi 只在[官方网站](https://lumilauncher.pages.dev/zh/)与 [GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases) 发布。其他下载站的转载、所谓「破解版」「高级版」以及任何索要 Microsoft 密码的程序都不是官方版本。官方渠道列表见 [TRADEMARK.md](TRADEMARK.md#简体中文)。
+> **谨防冒名版本**：Lumi 只在[官方网站](https://lumilauncher.org/zh/)与 [GitHub Releases](https://github.com/kokoa-77/LumiLauncher/releases) 发布。其他下载站的转载、所谓「破解版」「高级版」以及任何索要 Microsoft 密码的程序都不是官方版本。官方渠道列表见 [TRADEMARK.md](TRADEMARK.md#简体中文)。
 
-## 账号认证与当前状态
+## 账号认证与正版核验
 
-- **官方正版游玩权核验**：通过系统浏览器执行 **OAuth 2.0 授权码 + PKCE** 登录 Lumi 自有 Microsoft Entra 公共客户端应用（`732fc771-cf09-4ec5-b899-ee92fd012d57`），并在启动前经由 Microsoft / Xbox Live / Minecraft 官方服务核验 Java 版游玩权限与官方档案。
+- **官方正版游玩权核验**：Lumi 的 Microsoft Entra 应用已通过 Mojang 官方 AppID 白名单审核。登录通过系统浏览器执行 **OAuth 2.1 授权码 + PKCE（S256）+ `form_post`** 流程（天然支持系统浏览器的 Passkey / Windows Hello，不启用设备码公共流），并在启动前直连 Microsoft / Xbox Live / Minecraft 官方服务核验 Java 版游玩权限与官方档案。
 - **不绕过正版验证**：不提供离线用户名游玩、第三方皮肤站登录、认证注入器或非官方披风。
-- **预审构建说明**：官方预审包已注入 Lumi 的 Microsoft Entra 客户端 ID（`732fc771-cf09-4ec5-b899-ee92fd012d57`），点击登录会正常拉起系统浏览器的官方 Microsoft 授权流程；在 Mojang 将该 AppID 加入白名单前，登录会按预期止步于 Minecraft Services 的 `403` 校验门禁，期间仍可浏览实例、存档、资源与设置。（未配置 `LUMI_MICROSOFT_CLIENT_ID` 的自行编译版本则保持登录入口关闭。）
+- **源码自行编译说明**：官方发布包在构建阶段注入官方 Microsoft Entra 客户端 ID，开箱即可登录正版游玩；从源码自行编译且未设置 `LUMI_MICROSOFT_CLIENT_ID` 的构建会保持登录入口关闭（可按下方说明配置你自己获批的 AppID）。
 
 ## 隐私与安全
 
 Lumi **不收集遥测和行为统计，也没有广告**。
 
-- 刷新令牌按账号隔离保存在 **Windows 凭据管理器**（系统凭据库不可用时仅存于当前会话内存）。
+- 刷新令牌按账号隔离保存在 **Windows 凭据管理器**（DPAPI 用户隔离；系统凭据库不可用时仅存于当前会话内存）。
 - 核验通过的 Minecraft 游戏会话凭据经由 Java 子进程**标准输入（`stdin`）管道**交付（`SessionPipe.java`），不会出现在系统进程命令行、环境变量或临时参数文件里。
 - 普通日志、崩溃日志与导出的诊断包均统一经过自动脱敏处理（`<redacted>`）。
 - 详细说明见 [PRIVACY.md](PRIVACY.md) 与 [SECURITY.md](SECURITY.md)。
 
 ## 常见问题
-
-<details>
-<summary><strong>为什么现在还不能登录？</strong></summary>
-
-新的启动器必须先通过 Mojang 的 AppID 白名单审核，`api.minecraftservices.com` 才会放行其 Microsoft Entra 应用（`732fc771-cf09-4ec5-b899-ee92fd012d57`）的登录请求。审核期间点击登录会正常打开系统浏览器的 Microsoft OAuth 2.0 + PKCE 官方授权页，并在最后一步按预期停在 `403` 门禁；你现在就可以正常浏览实例、存档、模组与设置，待 Mojang 放行后即可直接登录游玩。
-</details>
 
 <details>
 <summary><strong>支持离线账号或非正版账号吗？</strong></summary>
@@ -211,7 +205,7 @@ pnpm --dir app tauri build --bundles nsis
 
 - 官方版本由本仓库的 [Windows 发布工作流](.github/workflows/windows-release.yml) 在 GitHub Actions 上构建，每个版本都附带 `SHA256SUMS.txt`。
 - **Windows 安装包和程序暂未进行代码签名**，可能出现 SmartScreen 提醒，请按[下载与安装](#下载与安装)中的方法核对校验和。
-- **自动更新带有签名**：已安装的 Lumi 只接受用 Lumi 更新密钥签名的更新包，并在安装前校验签名。预审构建不含自动更新。
+- **自动更新带有签名**：已安装的 Lumi 只接受用 Lumi 更新密钥签名的更新包，并在安装前校验签名。
 
 ## Fork、转载与品牌
 
