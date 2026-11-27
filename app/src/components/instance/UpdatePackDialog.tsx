@@ -17,7 +17,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { unwrap } from "@/lib/api";
@@ -161,6 +161,8 @@ export default function UpdatePackDialog({
   const [confirmRollback, setConfirmRollback] = useState(false);
 
   const tokenRef = useRef<string | null>(null);
+  const previewGenRef = useRef(0);
+  const checkingRef = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
 
   const releaseToken = (token: string | null) => {
@@ -168,8 +170,23 @@ export default function UpdatePackDialog({
     void commands.modpackUpdateDiscard(token);
   };
 
+  const cancelAndDiscardPreview = useCallback(() => {
+    const wasChecking = checkingRef.current;
+    previewGenRef.current += 1;
+    checkingRef.current = false;
+    setChecking(false);
+    const token = tokenRef.current;
+    tokenRef.current = null;
+    if (token !== null || wasChecking) {
+      void commands.modpackUpdateDiscard(token ?? "");
+    }
+  }, []);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      cancelAndDiscardPreview();
+      return;
+    }
     setVersions(null);
     setVersionsError(null);
     setMcFilter("all");
@@ -210,7 +227,7 @@ export default function UpdatePackDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, instance.id, instance.packVersionId, isOnlineManaged, t]);
+  }, [open, instance.id, instance.packVersionId, isOnlineManaged, t, cancelAndDiscardPreview]);
 
   useEffect(() => {
     tokenRef.current = choice?.token ?? null;
@@ -218,14 +235,12 @@ export default function UpdatePackDialog({
 
   useEffect(() => {
     return () => {
-      releaseToken(tokenRef.current);
-      tokenRef.current = null;
+      cancelAndDiscardPreview();
     };
-  }, []);
+  }, [cancelAndDiscardPreview]);
 
   const handleClose = () => {
-    releaseToken(tokenRef.current);
-    tokenRef.current = null;
+    cancelAndDiscardPreview();
     onClose();
   };
 
@@ -267,28 +282,45 @@ export default function UpdatePackDialog({
 
   const previewRemote = async () => {
     if (!selectedVersionId || checking) return;
+    const gen = ++previewGenRef.current;
+    checkingRef.current = true;
     setChecking(true);
     try {
       const result = unwrap(
         await commands.modpackUpdatePreviewRemote(instance.id, selectedVersionId),
       );
+      if (previewGenRef.current !== gen) {
+        releaseToken(result.token);
+        return;
+      }
       releaseToken(tokenRef.current);
       setChoice(result);
       setFilter("all");
       setQuery("");
       setOverwriteConfigs(false);
     } catch (error) {
-      reportError(error, t("packUpdate.checkFailed"));
+      if (previewGenRef.current === gen) {
+        reportError(error, t("packUpdate.checkFailed"));
+      }
     } finally {
-      setChecking(false);
+      if (previewGenRef.current === gen) {
+        checkingRef.current = false;
+        setChecking(false);
+      }
     }
   };
 
   const previewLocalFile = async () => {
     if (checking) return;
+    const gen = ++previewGenRef.current;
+    checkingRef.current = true;
     setChecking(true);
     try {
       const result = unwrap(await commands.modpackUpdatePreviewFile(instance.id));
+      if (previewGenRef.current !== gen) {
+        if (result) releaseToken(result.token);
+        return;
+      }
       if (!result) return;
       releaseToken(tokenRef.current);
       setChoice(result);
@@ -296,9 +328,14 @@ export default function UpdatePackDialog({
       setQuery("");
       setOverwriteConfigs(false);
     } catch (error) {
-      reportError(error, t("packUpdate.checkFailed"));
+      if (previewGenRef.current === gen) {
+        reportError(error, t("packUpdate.checkFailed"));
+      }
     } finally {
-      setChecking(false);
+      if (previewGenRef.current === gen) {
+        checkingRef.current = false;
+        setChecking(false);
+      }
     }
   };
 

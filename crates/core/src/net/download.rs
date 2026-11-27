@@ -1828,6 +1828,7 @@ impl Downloader {
                         if looks_like_html_payload(&sniff_buf) {
                             drop(sink);
                             remove_quietly(&part, cancel).await;
+                            remove_quietly(&etag_sidecar, cancel).await;
                             let reason = format!("{STRUCTURE_MISMATCH}下载源返回了 HTML 劫持页面");
                             return Err(AttemptError::NextUrl {
                                 diagnosis: Some(FailureDiagnosis::integrity_mismatch(
@@ -1898,6 +1899,7 @@ impl Downloader {
                     if item.size.is_some_and(|size| written > size) {
                         drop(sink);
                         remove_quietly(&part, cancel).await;
+                        remove_quietly(&etag_sidecar, cancel).await;
                         let reason = "收到的内容比预期大，可能不是正确的文件".to_owned();
                         return Err(AttemptError::retry(reason));
                     }
@@ -1965,6 +1967,7 @@ impl Downloader {
                     && written != expected
                 {
                     remove_quietly(&part, cancel).await;
+                    remove_quietly(&etag_sidecar, cancel).await;
                     let reason =
                         format!("{SIZE_MISMATCH}应为 {expected} 字节，实际 {written} 字节");
                     return Err(AttemptError::retry(reason));

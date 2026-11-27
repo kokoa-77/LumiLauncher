@@ -512,18 +512,7 @@ pub(crate) async fn ready(
         account.id.clone(),
         session.profile().clone(),
     );
-    accounts
-        .health
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .insert(
-            account.id.clone(),
-            AccountHealthView {
-                status: AccountHealthStatus::Ready,
-                verified_at_ms: Some(launcher_core::now_millis() as f64),
-                error_code: None,
-            },
-        );
+    accounts.set_health_ready(app, &account.id);
     accounts
         .authority
         .authorize(selection.generation, session)
