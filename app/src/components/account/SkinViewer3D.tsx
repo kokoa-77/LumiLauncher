@@ -8,12 +8,14 @@ import { logError } from "@/lib/report";
  */
 export default function SkinViewer3D({
   skin,
+  cape = null,
   model,
   width,
   height,
   still = false,
 }: {
   skin: string;
+  cape?: string | null;
   model: SkinModel;
   width: number;
   height: number;
@@ -39,6 +41,9 @@ export default function SkinViewer3D({
         viewer.controls.enablePan = false;
         viewerRef.current = viewer;
         void viewer.loadSkin(skin, { model: model === "slim" ? "slim" : "default" });
+        if (cape) {
+          void viewer.loadCape(cape);
+        }
         if (!still) {
           const walk = new skinview3d.WalkingAnimation();
           walk.speed = 0.6;
@@ -63,6 +68,16 @@ export default function SkinViewer3D({
       .loadSkin(skin, { model: model === "slim" ? "slim" : "default" })
       ?.catch((error: unknown) => logError(error, "3D 预览换皮肤"));
   }, [skin, model]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    if (cape) {
+      viewer.loadCape(cape)?.catch((error: unknown) => logError(error, "3D 预览切换披风"));
+    } else {
+      viewer.resetCape();
+    }
+  }, [cape]);
 
   useEffect(() => {
     viewerRef.current?.setSize(width, height);

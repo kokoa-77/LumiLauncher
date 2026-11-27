@@ -65,8 +65,10 @@ const GAME_LANGUAGES: GameLanguage[] = [
 export function SettingsDialog() {
   const { t } = useTranslation();
   const section = useAppStore((s) => s.settingsSection);
+  const focusSettingId = useAppStore((s) => s.settingsFocusId);
   const openSettings = useAppStore((s) => s.openSettings);
   const closeSettings = useAppStore((s) => s.closeSettings);
+  const clearSettingsFocus = useAppStore((s) => s.clearSettingsFocus);
   const settings = useAppStore((s) => s.settings);
   const info = useAppStore((s) => s.info);
   const lowEnd = useAppStore((s) => s.lowEnd);
@@ -242,23 +244,86 @@ export function SettingsDialog() {
         keywords: "modrinth curseforge 平台 前置",
       },
       {
+        id: "autoDeps",
+        section: "download",
+        label: t("settings.autoDependencies"),
+        keywords: "dependencies mod 前置 依赖 自动安装",
+      },
+      {
+        id: "proxy",
+        section: "download",
+        label: t("settings.proxy"),
+        keywords: "proxy http socks5 tun clash 代理 梯子",
+      },
+      {
+        id: "metered",
+        section: "download",
+        label: t("settings.meteredPolicy"),
+        keywords: "metered hotspot 热点 计费 流量 限速",
+      },
+      {
         id: "concurrency",
         section: "download",
         label: t("settings.maxConcurrency"),
         keywords: "threads concurrent 并发 线程",
       },
       {
-        id: "proxy",
+        id: "segments",
         section: "download",
-        label: t("settings.proxy"),
-        keywords: "proxy http socks5 代理 梯子",
+        label: t("settings.segmentMode"),
+        keywords: "range segment multi 分段 多连接 多线程 断点续传",
       },
-      { id: "doh", section: "download", label: t("settings.doh"), keywords: "dns doh 域名解析" },
+      {
+        id: "diskWriters",
+        section: "download",
+        label: t("settings.diskWriteMode"),
+        keywords: "hdd ssd disk write 磁盘 写入 机械盘 固态",
+      },
+      {
+        id: "speedLimit",
+        section: "download",
+        label: t("settings.speedLimit"),
+        keywords: "bandwidth throttle cap 限速 带宽",
+      },
+      {
+        id: "localReuse",
+        section: "download",
+        label: t("settings.localReuse"),
+        keywords: "reuse cache hardlink dedup 本地复用 秒传 硬链接",
+      },
+      {
+        id: "doh",
+        section: "download",
+        label: t("settings.doh"),
+        keywords: "dns doh custom url 域名解析",
+      },
+      ...(info?.communityMirrorsEnabled
+        ? [
+            {
+              id: "sourcePolicy",
+              section: "download" as SettingsSection,
+              label: t("settings.sourcePolicy"),
+              keywords: "mirror source official 下载源 镜像 加速 路由",
+            },
+            {
+              id: "customMirror",
+              section: "download" as SettingsSection,
+              label: t("settings.customMirrorLabel"),
+              keywords: "custom mirror root 自定义 镜像",
+            },
+            {
+              id: "modrinthFallback",
+              section: "download" as SettingsSection,
+              label: t("settings.modrinthFallback"),
+              keywords: "modrinth mirror fallback 镜像 回退",
+            },
+          ]
+        : []),
       {
         id: "netdiag",
         section: "download",
         label: t("settings.netDiagLabel"),
-        keywords: "network diagnostics ping 连通 延迟 诊断",
+        keywords: "network diagnostics ping neoforge 连通 延迟 诊断",
       },
       {
         id: "claim",
@@ -297,7 +362,7 @@ export function SettingsDialog() {
         keywords: "onboarding setup 引导 初始设置",
       },
     ],
-    [t],
+    [info?.communityMirrorsEnabled, t],
   );
 
   const detected = resolveEffects("auto", lowEnd ?? false);
@@ -560,7 +625,14 @@ export function SettingsDialog() {
         sync: <SyncSettings settings={settings} update={update} />,
         java: <JavaSettings settings={settings} update={update} />,
         worlds: <WorldSettings settings={settings} update={update} />,
-        download: <DownloadSettings settings={settings} update={update} />,
+        download: (
+          <DownloadSettings
+            settings={settings}
+            update={update}
+            focusSettingId={focusSettingId}
+            onFocusConsumed={clearSettingsFocus}
+          />
+        ),
         about: info ? <AboutSettings info={info} onCloseSettings={closeSettings} /> : null,
       }
     : {
@@ -583,6 +655,7 @@ export function SettingsDialog() {
       sections={SECTIONS.map(({ id, icon }) => ({ id, icon, label: t(`settings.${id}`) }))}
       current={current}
       onSection={openSettings}
+      onSelectItem={(item) => openSettings(item.section, item.id)}
       searchItems={searchItems}
       footer={t("settings.shortcut")}
     >

@@ -1,4 +1,5 @@
 //! 账户摘要与 Minecraft 启动前的官方游玩许可校验。
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
@@ -23,6 +24,16 @@ enum AccountKind {
     Unsupported,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct AccountCape {
+    pub id: String,
+    pub alias: String,
+    pub hash: String,
+    pub active: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {
@@ -32,6 +43,8 @@ pub struct Account {
     pub uuid: String,
     #[serde(default)]
     pub skin: Option<Skin>,
+    #[serde(default)]
+    pub capes: Vec<AccountCape>,
     pub added_at: f64,
 }
 
@@ -45,6 +58,7 @@ pub struct AccountView {
     pub has_skin: bool,
     pub skin_model: SkinModel,
     pub skin_hash: Option<String>,
+    pub capes: Vec<AccountCape>,
 }
 
 impl Account {
@@ -60,6 +74,7 @@ impl Account {
                 .map(|skin| skin.model)
                 .unwrap_or_default(),
             skin_hash: self.skin.as_ref().map(|skin| skin.hash.clone()),
+            capes: self.capes.clone(),
         }
     }
 
@@ -155,11 +170,13 @@ pub struct AccountStore {
     path: PathBuf,
     skins: PathBuf,
     file: Mutex<AccountsFile>,
+    io_locked: Mutex<bool>,
 }
 
 impl AccountStore {
     pub fn open(data_dir: &Path, settings_existed: bool) -> Self {
         let path = data_dir.join(ACCOUNTS_FILE);
+        let mut io_locked = false;
         let file = match read_json::<AccountsFile>(&path) {
             Ok(Some(mut file)) => {
                 file.retain_supported_accounts(&path);
@@ -176,7 +193,8 @@ impl AccountStore {
                 AccountsFile::empty(true)
             }
             Err(ReadJsonError::Io { source, .. }) => {
-                tracing::warn!(%source, "读账户文件失败");
+                tracing::warn!(%source, "读账户文件失败，暂以只读安全模式启动以免覆写原数据");
+                io_locked = path.exists();
                 AccountsFile::empty(true)
             }
         };
@@ -184,6 +202,7 @@ impl AccountStore {
             path,
             skins: data_dir.join("skins"),
             file: Mutex::new(file),
+            io_locked: Mutex::new(io_locked),
         }
     }
 
@@ -211,7 +230,47 @@ impl AccountStore {
             .cloned()
     }
 
+    pub fn active_asset_hashes(&self) -> HashSet<String> {
+        let file = self.lock();
+        let mut hashes = HashSet::new();
+        for account in &file.accounts {
+            if let Some(skin) = &account.skin {
+                hashes.insert(skin.hash.to_ascii_lowercase());
+            }
+            for cape in &account.capes {
+                hashes.insert(cape.hash.to_ascii_lowercase());
+            }
+        }
+        hashes
+    }
+
     fn save(&self, current: &mut AccountsFile, mut next: AccountsFile) -> Result<(), AccountError> {
+        if *self
+            .io_locked
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+        {
+            // 若启动时读取 `accounts.json` 发生瞬时 I/O 失败，先尝试重新读取磁盘合并，绝不盲目覆盖。
+            if let Ok(Some(disk)) = read_json::<AccountsFile>(&self.path)
+                && current.accounts.is_empty()
+                && next.accounts.len() <= 1
+            {
+                let added = next.accounts.first().cloned();
+                next.accounts = disk.accounts;
+                if let Some(account) = added
+                    && !next
+                        .accounts
+                        .iter()
+                        .any(|existing| existing.uuid == account.uuid)
+                {
+                    next.accounts.push(account);
+                }
+            }
+            *self
+                .io_locked
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = false;
+        }
         next.schema_version = SCHEMA;
         write_json_atomic(&self.path, &next)?;
         *current = next;
@@ -228,7 +287,14 @@ impl AccountStore {
         self.save(&mut file, next)
     }
 
+    /// 先原子移除账户元信息，再删除系统凭据，避免写盘失败留下失去令牌的僵尸账户。
     pub fn remove(&self, id: &str, vault: &dyn TokenVault) -> Result<(), VerifyError> {
+        self.remove_metadata(id)?;
+        vault.remove(id)?;
+        Ok(())
+    }
+
+    pub fn remove_metadata(&self, id: &str) -> Result<(), AccountError> {
         let mut file = self.lock();
         let mut next = file.clone();
         let index = next
@@ -237,7 +303,6 @@ impl AccountStore {
             .position(|account| account.id == id)
             .ok_or(AccountError::NotFound)?;
         next.accounts.remove(index);
-        vault.remove(id)?;
         if next.selected.as_deref() == Some(id) {
             next.selected = next.accounts.first().map(|account| account.id.clone());
         }
@@ -245,12 +310,14 @@ impl AccountStore {
         Ok(())
     }
 
-    pub fn save_session(
+    /// 登记/更新会话元信息并原子落盘（不持锁调用凭据库），返回 `(account_id, is_new_account)`。
+    pub fn upsert_session_metadata(
         &self,
+        target_id: &str,
         session: &VerifiedSession,
         skin: Option<Skin>,
-        vault: &dyn TokenVault,
-    ) -> Result<(), VerifyError> {
+        capes: Option<Vec<AccountCape>>,
+    ) -> Result<(String, bool), AccountError> {
         let profile = session.profile();
         let mut file = self.lock();
         let mut next = file.clone();
@@ -262,29 +329,149 @@ impl AccountStore {
         let id = match existing {
             Some(account) => {
                 account.name.clone_from(&profile.name);
-                account.skin = skin;
+                // 皮肤或披风下载瞬时失败时保留既有本地缓存，不清空外观展示。
+                if let Some(skin) = skin {
+                    account.skin = Some(skin);
+                } else if profile.skin_url.is_none() {
+                    account.skin = None;
+                }
+                if let Some(capes) = capes {
+                    account.capes = capes;
+                }
                 account.id.clone()
             }
             None => {
-                let id = Uuid::new_v4().simple().to_string();
+                let id = target_id.to_owned();
                 next.accounts.push(Account {
                     id: id.clone(),
                     kind: AccountKind::Microsoft,
                     name: profile.name.clone(),
                     uuid: profile.uuid.hyphenated().to_string(),
                     skin,
+                    capes: capes.unwrap_or_default(),
                     added_at: crate::now_millis() as f64,
                 });
                 id
             }
         };
         next.selected = Some(id.clone());
-        vault.save(&id, session.refresh_token())?;
+        self.save(&mut file, next)?;
+        Ok((id, new_account))
+    }
+
+    /// 用于兼容旧调用路径；内部会按先落凭据后写元信息的顺序完成保存。
+    pub fn save_session(
+        &self,
+        session: &VerifiedSession,
+        skin: Option<Skin>,
+        vault: &dyn TokenVault,
+    ) -> Result<(), VerifyError> {
+        let profile = session.profile();
+        let existing_id = {
+            let file = self.lock();
+            file.accounts
+                .iter()
+                .find(|account| account.verified_uuid() == Some(profile.uuid))
+                .map(|account| account.id.clone())
+        };
+        let target_id = existing_id
+            .clone()
+            .unwrap_or_else(|| Uuid::new_v4().simple().to_string());
+        vault.save(&target_id, session.refresh_token())?;
+        let mut file = self.lock();
+        let mut next = file.clone();
+        let existing = next
+            .accounts
+            .iter_mut()
+            .find(|account| account.id == target_id);
+        let new_account = existing.is_none();
+        match existing {
+            Some(account) => {
+                account.name.clone_from(&profile.name);
+                if let Some(skin) = skin {
+                    account.skin = Some(skin);
+                } else if profile.skin_url.is_none() {
+                    account.skin = None;
+                }
+            }
+            None => {
+                next.accounts.push(Account {
+                    id: target_id.clone(),
+                    kind: AccountKind::Microsoft,
+                    name: profile.name.clone(),
+                    uuid: profile.uuid.hyphenated().to_string(),
+                    skin,
+                    capes: Vec::new(),
+                    added_at: crate::now_millis() as f64,
+                });
+            }
+        }
+        next.selected = Some(target_id.clone());
         if let Err(error) = self.save(&mut file, next) {
-            if new_account && let Err(error) = vault.remove(&id) {
-                tracing::warn!(%error, "未能清理未登记的 Microsoft 凭据");
+            if new_account && let Err(vault_err) = vault.remove(&target_id) {
+                tracing::warn!(%vault_err, "未能清理未登记的 Microsoft 凭据");
             }
             return Err(error.into());
+        }
+        Ok(())
+    }
+
+    pub fn update_profile_assets(
+        &self,
+        account_id: &str,
+        name: &str,
+        skin: Option<Skin>,
+        explicit_no_skin: bool,
+        capes: Option<Vec<AccountCape>>,
+    ) -> Result<(), AccountError> {
+        let mut file = self.lock();
+        let Some(existing) = file
+            .accounts
+            .iter()
+            .find(|account| account.id == account_id)
+        else {
+            return Err(AccountError::NotFound);
+        };
+        let next_skin = if explicit_no_skin {
+            None
+        } else {
+            skin.or_else(|| existing.skin.clone())
+        };
+        let next_capes = capes.unwrap_or_else(|| existing.capes.clone());
+        if existing.name == name && existing.skin == next_skin && existing.capes == next_capes {
+            return Ok(());
+        }
+        let mut next = file.clone();
+        let account = next
+            .accounts
+            .iter_mut()
+            .find(|account| account.id == account_id)
+            .ok_or(AccountError::NotFound)?;
+        account.name = name.to_owned();
+        account.skin = next_skin;
+        account.capes = next_capes;
+        self.save(&mut file, next)
+    }
+
+    pub fn save_refreshed_name(
+        &self,
+        expected: &Account,
+        new_name: &str,
+    ) -> Result<(), VerifyError> {
+        let mut file = self.lock();
+        let current = file.current().ok_or(VerifyError::Changed)?;
+        if current.id != expected.id {
+            return Err(VerifyError::Changed);
+        }
+        if current.name != new_name {
+            let mut next = file.clone();
+            let account = next
+                .accounts
+                .iter_mut()
+                .find(|account| account.id == expected.id)
+                .ok_or(VerifyError::Changed)?;
+            account.name = new_name.to_owned();
+            self.save(&mut file, next)?;
         }
         Ok(())
     }
@@ -458,6 +645,7 @@ mod tests {
             Err(VerifyError::Changed)
         ));
     }
+
     #[test]
     fn corrupt_file_is_backed_up() {
         let dir = tempfile::tempdir().unwrap();
@@ -470,5 +658,50 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().contains("corrupt"))
             .count();
         assert_eq!(backups, 1);
+    }
+
+    #[test]
+    fn upsert_keeps_target_id_and_preserves_cached_assets_on_transient_miss() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(dir.path(), true);
+        let uuid = Uuid::parse_str("54f2906a-88dd-444e-bcb3-c68132a30a57").unwrap();
+        let profile = super::super::microsoft::MinecraftProfile {
+            uuid,
+            name: "Steve".to_owned(),
+            skin_url: Some("https://textures.minecraft.net/texture/abcd".to_owned()),
+            slim: false,
+            capes: Vec::new(),
+        };
+        let session = VerifiedSession::for_test(profile.clone());
+        let cached_skin = Skin {
+            hash: "a".repeat(64),
+            model: SkinModel::Classic,
+        };
+        let cached_capes = vec![AccountCape {
+            id: "c1".to_owned(),
+            alias: "Migrator".to_owned(),
+            hash: "b".repeat(64),
+            active: true,
+        }];
+        let (id, is_new) = store
+            .upsert_session_metadata(
+                "fixed-target-id",
+                &session,
+                Some(cached_skin.clone()),
+                Some(cached_capes.clone()),
+            )
+            .unwrap();
+        assert_eq!(id, "fixed-target-id");
+        assert!(is_new);
+
+        // 重登时若皮肤和披风下载瞬时返回 None（但 skin_url 仍存在），应保留既有缓存。
+        let (again_id, again_new) = store
+            .upsert_session_metadata("ignored-id", &session, None, None)
+            .unwrap();
+        assert_eq!(again_id, "fixed-target-id");
+        assert!(!again_new);
+        let saved = store.get("fixed-target-id").unwrap();
+        assert_eq!(saved.skin, Some(cached_skin));
+        assert_eq!(saved.capes, cached_capes);
     }
 }

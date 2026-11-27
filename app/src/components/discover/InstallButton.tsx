@@ -24,11 +24,14 @@ export function InstallButton({
   state,
   kind,
   disabled = false,
+  prominent = false,
   onClick,
 }: {
   state: InstallState;
   kind: InstallKind;
   disabled?: boolean;
+  /** 详情页主操作按钮：按设计规范第 5 节，单页唯一主操作使用实心主色 */
+  prominent?: boolean;
   onClick: () => void;
 }) {
   const { t } = useTranslation();
@@ -75,7 +78,9 @@ export function InstallButton({
       }}
       className={`relative inline-flex h-9 w-28 shrink-0 items-center justify-center overflow-hidden rounded-control font-medium text-sm transition-[background-color,color,border-color,opacity] duration-(--motion-toggle) ${
         idle
-          ? "border border-accent/55 bg-surface text-accent hover:bg-accent-soft disabled:border-line disabled:text-fg-muted disabled:opacity-60"
+          ? prominent
+            ? "bg-accent text-on-accent shadow-raised hover:bg-accent-hover disabled:bg-surface disabled:text-fg-muted disabled:opacity-60"
+            : "border border-accent/55 bg-surface text-accent hover:bg-accent-soft disabled:border-line disabled:text-fg-muted disabled:opacity-60"
           : state.kind === "joined"
             ? "border border-transparent bg-accent-soft text-accent hover:border-accent/55"
             : "border border-transparent bg-accent-soft text-accent"

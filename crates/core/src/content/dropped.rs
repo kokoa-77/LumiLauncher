@@ -237,6 +237,10 @@ fn inspect_archive(mut found: Dropped, mut archive: zip::ZipArchive<File>) -> Dr
         found.kind = DropKind::Modpack;
         return found;
     }
+    if crate::modpack::multimc::looks_like_multimc_entries(&names) {
+        found.kind = DropKind::Modpack;
+        return found;
+    }
     // 加载器的安装器（里面有 install_profile.json）：不是模组
     if has("install_profile.json") {
         return found.unknown(DropProblem::Installer);

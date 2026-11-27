@@ -1,11 +1,15 @@
-//! 网络连通性诊断：并行探测核心官方服务端点的连通状态与响应耗时。
+//! 网络连通性诊断：并行探测核心官方服务端点（含 NeoForge 主站与官方 CDN 对比）的连通状态与响应耗时。
 //! 只做极轻的 HEAD/GET 探测，不携带任何账号凭据或用户标识。
 
 use std::time::{Duration, Instant};
 
 use futures_util::future::join_all;
-use reqwest::Client;
+use reqwest::{Client, Version};
 use serde::Serialize;
+
+use crate::config::ProxyMode;
+
+use super::diagnosis::{RootCauseKind, classify_reqwest_error};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(6);
 
@@ -32,6 +36,8 @@ pub struct EndpointProbe {
     pub http_status: Option<u16>,
     pub latency_ms: Option<u32>,
     pub error: Option<String>,
+    pub http_version: Option<String>,
+    pub failure_cause: Option<RootCauseKind>,
 }
 
 struct Target {
@@ -64,6 +70,18 @@ const TARGETS: &[Target] = &[
         id: "curseforge",
         host: "api.curseforge.com",
         url: "https://api.curseforge.com/v1/games",
+        use_get: false,
+    },
+    Target {
+        id: "neoforgeMain",
+        host: "maven.neoforged.net",
+        url: "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml",
+        use_get: false,
+    },
+    Target {
+        id: "neoforgeCdn",
+        host: "neoforged.forgecdn.net",
+        url: "https://neoforged.forgecdn.net/releases/net/neoforged/neoforge/maven-metadata.xml",
         use_get: false,
     },
 ];
@@ -101,6 +119,12 @@ async fn probe_one(
     match response {
         Ok(resp) => {
             let code = resp.status().as_u16();
+            let http_version = Some(match resp.version() {
+                Version::HTTP_2 => "H2".to_owned(),
+                Version::HTTP_3 => "H3".to_owned(),
+                Version::HTTP_11 => "HTTP/1.1".to_owned(),
+                _ => format!("{:?}", resp.version()),
+            });
             // CurseForge 无 Key 访问返回 403 但代表网络层完全通畅
             let ok = resp.status().is_success()
                 || resp.status().is_redirection()
@@ -116,9 +140,12 @@ async fn probe_one(
                 http_status: Some(code),
                 latency_ms: Some(elapsed),
                 error: None,
+                http_version,
+                failure_cause: (!ok && code == 429).then_some(RootCauseKind::RateLimited429),
             }
         }
         Err(err) => {
+            let diag = classify_reqwest_error(&err, Some(host), None, ProxyMode::Direct);
             let reason = if err.is_timeout() {
                 "timeout".to_owned()
             } else if err.is_connect() {
@@ -133,6 +160,8 @@ async fn probe_one(
                 http_status: None,
                 latency_ms: None,
                 error: Some(reason),
+                http_version: None,
+                failure_cause: Some(diag.cause),
             }
         }
     }
@@ -177,6 +206,7 @@ mod tests {
         .await;
         assert_eq!(result.status, EndpointStatus::Ok);
         assert_eq!(result.http_status, Some(200));
+        assert_eq!(result.http_version.as_deref(), Some("HTTP/1.1"));
         assert!(result.latency_ms.is_some());
     }
 }

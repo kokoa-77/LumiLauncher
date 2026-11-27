@@ -7,6 +7,7 @@ import {
   FolderSearch,
   Heart,
   History,
+  Link2,
   Lock,
   LockOpen,
   PackageOpen,
@@ -19,11 +20,15 @@ import {
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { ProjectName } from "@/components/discover/ProjectName";
 import { open } from "@/components/discover/ResultItem";
-import { HistoryDialog } from "@/components/HistoryDialog";
+import type {
+  InspectingModDeps,
+  ModTitleInfo,
+  PendingModImpact,
+} from "@/components/instance/ModImpactDialog";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -42,6 +47,7 @@ import {
   type ContentSource,
   commands,
   type InstanceSummary,
+  type ModDepInfo,
   type ProjectHit,
   type UpdateInfo,
 } from "@/lib/bindings";
@@ -62,6 +68,11 @@ import { updateCacheKey, updatesMapOf, useContentUpdatesStore } from "@/stores/c
 import { useFavorites, useIsFavorite } from "@/stores/favorites";
 import { isActive, useGameStore } from "@/stores/game";
 
+const HistoryDialog = lazy(() => import("@/components/HistoryDialog"));
+const ModImpactDialog = lazy(() => import("@/components/instance/ModImpactDialog"));
+const ModDepsDetailDialog = lazy(async () => ({
+  default: (await import("@/components/instance/ModImpactDialog")).ModDepsDetailDialog,
+}));
 const SwitchVersionDialog = lazy(async () => ({
   default: (await import("@/components/instance/SwitchVersionDialog")).SwitchVersionDialog,
 }));
@@ -118,6 +129,7 @@ function useRowMenu(
   running: boolean,
   onToggleLock: () => void,
   onSwitchVersion: () => void,
+  onInspectDeps?: () => void,
 ): MenuItem[] {
   const { t } = useTranslation();
   const { pageUrl, authorUrl, author, source } = item;
@@ -180,6 +192,16 @@ function useRowMenu(
           },
         ]
       : []),
+    ...(onInspectDeps
+      ? [
+          {
+            key: "deps",
+            label: t("content.deps.viewDeps"),
+            icon: Link2,
+            onSelect: onInspectDeps,
+          },
+        ]
+      : []),
     {
       key: "reveal",
       label: t("content.reveal"),
@@ -233,6 +255,17 @@ function useRowMenu(
         ]
       : []),
     {
+      key: "copyName",
+      label: t("content.copyName"),
+      icon: Copy,
+      onSelect: () => {
+        navigator.clipboard
+          .writeText(item.title)
+          .then(() => toast.success(t("content.copiedName", { name: item.title })))
+          .catch((error: unknown) => reportError(error, "复制名称"));
+      },
+    },
+    {
       key: "mcmod",
       label: t("discover.mcmod"),
       icon: BookOpen,
@@ -244,6 +277,8 @@ function useRowMenu(
 interface RowProps {
   instanceId: string;
   item: ContentItem;
+  depInfo?: ModDepInfo;
+  titleByFile: Record<string, ModTitleInfo>;
   update?: UpdateInfo;
   updating: boolean;
   selected: boolean;
@@ -254,6 +289,7 @@ interface RowProps {
   onToggle: (enabled: boolean) => void;
   onToggleLock: () => void;
   onSwitchVersion: () => void;
+  onInspectDeps: () => void;
   onUpdate: () => void;
   onRemove: () => void;
 }
@@ -261,6 +297,8 @@ interface RowProps {
 function ContentRow({
   instanceId,
   item,
+  depInfo,
+  titleByFile,
   update,
   updating,
   selected,
@@ -270,12 +308,23 @@ function ContentRow({
   onToggle,
   onToggleLock,
   onSwitchVersion,
+  onInspectDeps,
   onUpdate,
   onRemove,
 }: RowProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const menu = useRowMenu(instanceId, item, locked, onToggleLock, onSwitchVersion);
+  const hasDeps = !!depInfo && (depInfo.requiredBy.length > 0 || depInfo.requires.length > 0);
+  const menu = useRowMenu(
+    instanceId,
+    item,
+    locked,
+    onToggleLock,
+    onSwitchVersion,
+    hasDeps ? onInspectDeps : undefined,
+  );
+  const depTitle = (d: { fileName: string; title: string }) =>
+    titleByFile[d.fileName]?.display ?? d.title;
   const { author, authorUrl } = item;
   const platform = platformOf(item);
   const nameClass = `truncate text-sm ${
@@ -316,17 +365,18 @@ function ContentRow({
           <PackageOpen className="size-4" aria-hidden />
         </div>
       )}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 select-text">
         {platform ? (
           <button
             type="button"
             onClick={(event) => {
-              // 多选时点名字也是选这一行
+              // 多选时点名字也是选这一行；拖选复制文字时不跳转详情页
               if (selecting) return;
+              if (window.getSelection()?.toString()) return;
               event.stopPropagation();
               openDetail();
             }}
-            className="block max-w-full text-left transition-colors duration-(--motion-press) hover:text-accent hover:underline"
+            className="block max-w-full select-text text-left transition-colors duration-(--motion-press) hover:text-accent hover:underline"
           >
             <ProjectName
               as="span"
@@ -368,6 +418,52 @@ function ContentRow({
           )}
           <span aria-hidden>·</span>
           <span className="shrink-0">{t(`content.source.${sourceKey(item)}`)}</span>
+          {depInfo && depInfo.requiredBy.length > 0 && (
+            <HoverHint
+              hint={[
+                t("content.deps.requiredByHint"),
+                ...depInfo.requiredBy
+                  .slice(0, 8)
+                  .map(
+                    (d) =>
+                      `• ${depTitle(d)}${d.enabled ? "" : ` (${t("content.deps.disabledTag")})`}`,
+                  ),
+                ...(depInfo.requiredBy.length > 8
+                  ? [t("content.deps.moreClickToView", { n: depInfo.requiredBy.length - 8 })]
+                  : [t("content.deps.clickToViewAll")]),
+              ].join("\n")}
+              className="inline-flex shrink-0 items-center"
+            >
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onInspectDeps();
+                }}
+                className="inline-flex items-center gap-1 rounded-tag bg-surface-2 px-1.5 py-0.5 text-2xs text-fg-muted transition-colors hover:bg-accent-soft hover:text-accent"
+              >
+                <Link2 className="size-2.5 shrink-0" aria-hidden />
+                {depInfo.requiredBy.length === 1
+                  ? t("content.deps.requiredByOne", {
+                      name: depInfo.requiredBy[0] ? depTitle(depInfo.requiredBy[0]) : "",
+                    })
+                  : t("content.deps.requiredByMany", {
+                      name: depInfo.requiredBy[0] ? depTitle(depInfo.requiredBy[0]) : "",
+                      n: depInfo.requiredBy.length,
+                    })}
+              </button>
+            </HoverHint>
+          )}
+          {depInfo && depInfo.requiredBy.length === 0 && depInfo.autoDependency && (
+            <HoverHint
+              hint={t("content.deps.orphanBadgeHint")}
+              className="inline-flex shrink-0 items-center"
+            >
+              <span className="inline-flex items-center rounded-tag bg-warning-soft px-1.5 py-0.5 text-2xs text-warning">
+                {t("content.deps.orphanBadge")}
+              </span>
+            </HoverHint>
+          )}
           {update && !item.locked && (
             <span className="shrink-0 text-accent">
               {t("content.updateTo", { version: update.versionNumber })}
@@ -441,6 +537,7 @@ export function ContentTab({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const id = instance.id;
   // 「⋮」里的收藏要知道哪些已经收藏了：没读过收藏夹就读一次（不然会把收藏过的当成没收藏）
   const favoritesLoaded = useFavorites((s) => s.items !== null);
@@ -458,8 +555,21 @@ export function ContentTab({
   const invalidateUpdates = useContentUpdatesStore((s) => s.invalidate);
 
   const [items, setItems] = useState<ContentItem[] | null>(null);
+  const [modDeps, setModDeps] = useState<Record<string, ModDepInfo>>({});
+  const [inspectingDeps, setInspectingDeps] = useState<InspectingModDeps | null>(null);
+  const [pendingImpact, setPendingImpact] = useState<PendingModImpact | null>(null);
+  const [impactBusy, setImpactBusy] = useState(false);
   const [refreshingLocal, setRefreshingLocal] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  // 从崩溃弹窗「查看时间线」跳转过来时自动打开时间线并清理地址参数
+  useEffect(() => {
+    if (searchParams.get("timeline") !== "1") return;
+    setHistoryOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("timeline");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [switchingItem, setSwitchingItem] = useState<ContentItem | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ContentFilter>("all");
@@ -469,6 +579,48 @@ export function ContentTab({
   const [batchBusy, setBatchBusy] = useState(false);
   const anchor = useRef<string | null>(null);
   const loadId = useRef(0);
+  const depsLoadId = useRef(0);
+
+  const titleByFile = useMemo(() => {
+    const map: Record<string, ModTitleInfo> = {};
+    for (const item of items ?? []) {
+      map[item.fileName] = {
+        display: item.titleZh ?? item.title,
+        raw: item.title,
+      };
+    }
+    return map;
+  }, [items]);
+
+  const orphanSet = useMemo(() => {
+    const set = new Set<string>();
+    if (kind !== "mod") return set;
+    for (const [fileName, info] of Object.entries(modDeps)) {
+      if (info.requiredBy.length === 0 && info.autoDependency) {
+        set.add(fileName);
+      }
+    }
+    return set;
+  }, [kind, modDeps]);
+
+  const refreshDeps = useCallback(async () => {
+    if (kind !== "mod") {
+      setModDeps({});
+      return;
+    }
+    const current = ++depsLoadId.current;
+    try {
+      const graph = unwrap(await commands.contentModDeps(id));
+      if (current !== depsLoadId.current) return;
+      const map: Record<string, ModDepInfo> = {};
+      for (const [key, val] of Object.entries(graph.items)) {
+        if (val) map[key] = val;
+      }
+      setModDeps(map);
+    } catch (error) {
+      logError(error, "分析模组反向依赖");
+    }
+  }, [id, kind]);
 
   const updates = useMemo(() => {
     if (!updateEntry || updateEntry.contentVersion !== contentVersion) return {};
@@ -479,7 +631,7 @@ export function ContentTab({
   }, [updateEntry, contentVersion, items]);
   const checking = checkingUpdates || refreshingLocal;
 
-  // 先用缓存秒出列表，再在后台认出还不认识的文件、补作者
+  // 先用缓存秒出列表，再在后台认出还不认识的文件、补作者；随后刷新离线依赖图
   const load = useCallback(async () => {
     const current = ++loadId.current;
     try {
@@ -487,7 +639,10 @@ export function ContentTab({
       if (current !== loadId.current) return quick;
       setItems(quick);
       const refreshed = unwrap(await commands.contentRefresh(id, kind));
-      if (current === loadId.current) setItems(refreshed);
+      if (current === loadId.current) {
+        setItems(refreshed);
+        void refreshDeps();
+      }
       return refreshed;
     } catch (error) {
       if (current !== loadId.current) return null;
@@ -495,7 +650,7 @@ export function ContentTab({
       reportError(error, "读取实例内容");
       return null;
     }
-  }, [id, kind]);
+  }, [id, kind, refreshDeps]);
 
   useEffect(() => {
     void load();
@@ -532,17 +687,26 @@ export function ContentTab({
     });
   }, [items]);
 
-  // 「有更新」筛到最后一个也更新完了，回到全部
+  // 「有更新」或「孤儿前置」清完后回到全部
   useEffect(() => {
     if (filter === "updates" && Object.keys(updates).length === 0) setFilter("all");
-  }, [filter, updates]);
+    if (filter === "orphans" && orphanSet.size === 0) setFilter("all");
+  }, [filter, updates, orphanSet]);
 
   // 「来源」筛选：列表里有两种以上来源时才出现
   const origins = useMemo(() => originsIn(items ?? []), [items]);
   const activeOrigin = origins.includes(origin as ContentOrigin) ? origin : "all";
   const visible = useMemo(
-    () => viewContent(items ?? [], { query, filter, sort, updates, origin: activeOrigin }),
-    [items, query, filter, sort, updates, activeOrigin],
+    () =>
+      viewContent(items ?? [], {
+        query,
+        filter,
+        sort,
+        updates,
+        orphans: orphanSet,
+        origin: activeOrigin,
+      }),
+    [items, query, filter, sort, updates, orphanSet, activeOrigin],
   );
   const visibleKeys = useMemo(() => visible.map((i) => i.fileName), [visible]);
   const running = useGameStore((s) => isActive(s.sessions[id]));
@@ -567,7 +731,12 @@ export function ContentTab({
     anchor.current = key;
   };
 
-  const toggle = async (item: ContentItem, enabled: boolean) => {
+  useEffect(() => {
+    void contentVersion;
+    void refreshDeps();
+  }, [contentVersion, refreshDeps]);
+
+  const toggleDirect = async (item: ContentItem, enabled: boolean) => {
     // 乐观更新：光影同一时间只能用一个
     setItems(
       (list) =>
@@ -581,10 +750,35 @@ export function ContentTab({
     );
     try {
       unwrap(await commands.contentSetEnabled(id, kind, item.fileName, enabled));
+      if (kind === "mod") void refreshDeps();
     } catch (error) {
       reportError(error, "切换内容开关");
+      void load();
     }
-    void load();
+  };
+
+  const toggle = async (item: ContentItem, enabled: boolean) => {
+    if (kind === "mod" && !enabled) {
+      const cached = modDeps[item.fileName];
+      // 已拿到依赖图且无任何已启用模组依赖它时，0ms 直接切换，省去一次后端往返
+      const needsImpactCheck = !cached || cached.requiredBy.some((d) => d.enabled);
+      if (needsImpactCheck) {
+        try {
+          const report = unwrap(await commands.contentModImpact(id, [item.fileName], "disable"));
+          if (report.dependentWarnings.length > 0) {
+            setPendingImpact({
+              action: "disable",
+              targets: [{ fileName: item.fileName, title: item.title }],
+              report,
+            });
+            return;
+          }
+        } catch (error) {
+          logError(error, "检查停用依赖影响");
+        }
+      }
+    }
+    await toggleDirect(item, enabled);
   };
 
   /** 手动点「刷新」：重新扫描本地文件夹 + 强制绕过缓存重查远端更新 */
@@ -656,13 +850,32 @@ export function ContentTab({
     });
   };
 
-  const remove = async (item: ContentItem) => {
+  const removeDirect = async (item: ContentItem) => {
     try {
       unwrap(await commands.contentRemove(id, kind, item.fileName));
       await toastRemoved(t("content.removed", { name: item.title }));
     } catch (error) {
       reportError(error, "删除内容");
     }
+  };
+
+  const remove = async (item: ContentItem) => {
+    if (kind === "mod") {
+      try {
+        const report = unwrap(await commands.contentModImpact(id, [item.fileName], "remove"));
+        if (report.dependentWarnings.length > 0 || report.orphans.length > 0) {
+          setPendingImpact({
+            action: "remove",
+            targets: [{ fileName: item.fileName, title: item.title }],
+            report,
+          });
+          return;
+        }
+      } catch (error) {
+        logError(error, "检查删除依赖影响");
+      }
+    }
+    await removeDirect(item);
   };
 
   const chosen = (items ?? []).filter((i) => selected.has(i.fileName));
@@ -679,13 +892,12 @@ export function ContentTab({
     }
   };
 
-  // 批量启用 / 停用：提示条上带「撤销」，一点把刚才改的这几个全部改回去
-  const setManyEnabled = async (enabled: boolean) => {
-    const targets = chosen.filter((i) => i.enabled !== enabled).map((i) => i.fileName);
+  const applyManyEnabledAndToast = async (targets: string[], enabled: boolean) => {
     setBatchBusy(true);
     const changed = await applyEnabled(targets, enabled);
     setBatchBusy(false);
     void load();
+    void refreshDeps();
     if (changed.length === 0) return;
     setSelected(new Set());
     toast.success(
@@ -696,6 +908,7 @@ export function ContentTab({
           onClick: () => {
             void applyEnabled(changed, !enabled).then((back) => {
               void load();
+              void refreshDeps();
               if (back.length > 0) toast.success(t("content.batch.undone", { n: back.length }));
             });
           },
@@ -704,23 +917,98 @@ export function ContentTab({
     );
   };
 
-  const removeMany = async () => {
+  // 批量启用 / 停用：停用模组前检查是否仍被其他已启用模组依赖
+  const setManyEnabled = async (enabled: boolean) => {
+    const targetItems = chosen.filter((i) => i.enabled !== enabled);
+    const targets = targetItems.map((i) => i.fileName);
+    if (targets.length === 0) return;
+    if (kind === "mod" && !enabled) {
+      try {
+        const report = unwrap(await commands.contentModImpact(id, targets, "disable"));
+        if (report.dependentWarnings.length > 0) {
+          setPendingImpact({
+            action: "disable",
+            targets: targetItems.map((i) => ({ fileName: i.fileName, title: i.title })),
+            report,
+          });
+          return;
+        }
+      } catch (error) {
+        logError(error, "检查批量停用依赖影响");
+      }
+    }
+    await applyManyEnabledAndToast(targets, enabled);
+  };
+
+  const executeRemoveFiles = async (fileNames: string[], singleTitle?: string) => {
     setBatchBusy(true);
     try {
-      const n = unwrap(
-        await commands.contentRemoveMany(
-          id,
-          kind,
-          removable.map((i) => i.fileName),
-        ),
-      );
-      setSelected(new Set());
-      await toastRemoved(t("content.batch.removed", { n }));
+      if (fileNames.length === 1 && singleTitle) {
+        unwrap(await commands.contentRemove(id, kind, fileNames[0] ?? ""));
+        setSelected(new Set());
+        await toastRemoved(t("content.removed", { name: singleTitle }));
+      } else {
+        const n = unwrap(await commands.contentRemoveMany(id, kind, fileNames));
+        setSelected(new Set());
+        await toastRemoved(t("content.batch.removed", { n }));
+      }
     } catch (error) {
-      reportError(error, "批量删除");
+      reportError(error, "删除内容");
       void load();
     } finally {
       setBatchBusy(false);
+    }
+  };
+
+  const removeMany = async () => {
+    const targets = removable.map((i) => i.fileName);
+    if (targets.length === 0) return;
+    if (kind === "mod") {
+      try {
+        const report = unwrap(await commands.contentModImpact(id, targets, "remove"));
+        if (report.dependentWarnings.length > 0 || report.orphans.length > 0) {
+          setPendingImpact({
+            action: "remove",
+            targets: removable.map((i) => ({ fileName: i.fileName, title: i.title })),
+            report,
+          });
+          return;
+        }
+      } catch (error) {
+        logError(error, "检查批量删除依赖影响");
+      }
+    }
+    await executeRemoveFiles(targets);
+  };
+
+  const confirmImpact = async (extraOrphanFiles: string[]) => {
+    if (!pendingImpact) return;
+    setImpactBusy(true);
+    try {
+      const { action, targets } = pendingImpact;
+      if (action === "disable") {
+        if (targets.length === 1 && targets[0]) {
+          const item = (items ?? []).find((i) => i.fileName === targets[0]?.fileName);
+          setPendingImpact(null);
+          if (item) await toggleDirect(item, false);
+        } else {
+          setPendingImpact(null);
+          await applyManyEnabledAndToast(
+            targets.map((x) => x.fileName),
+            false,
+          );
+        }
+      } else {
+        const allFiles = Array.from(
+          new Set([...targets.map((x) => x.fileName), ...extraOrphanFiles]),
+        );
+        const singleTitle =
+          allFiles.length === 1 && targets.length === 1 ? targets[0]?.title : undefined;
+        setPendingImpact(null);
+        await executeRemoveFiles(allFiles, singleTitle);
+      }
+    } finally {
+      setImpactBusy(false);
     }
   };
 
@@ -734,6 +1022,9 @@ export function ContentTab({
     { value: "disabled", label: t("content.filter.disabled") },
     ...(pending.length > 0
       ? [{ value: "updates" as const, label: t("content.filter.updates", { n: pending.length }) }]
+      : []),
+    ...(kind === "mod" && orphanSet.size > 0
+      ? [{ value: "orphans" as const, label: t("content.filter.orphans", { n: orphanSet.size }) }]
       : []),
   ];
 
@@ -952,6 +1243,8 @@ export function ContentTab({
                 <ContentRow
                   instanceId={id}
                   item={item}
+                  depInfo={kind === "mod" ? modDeps[item.fileName] : undefined}
+                  titleByFile={titleByFile}
                   update={updates[item.fileName]}
                   updating={!!updateJob}
                   selected={selected.has(item.fileName)}
@@ -961,6 +1254,16 @@ export function ContentTab({
                   onToggle={(enabled) => void toggle(item, enabled)}
                   onToggleLock={() => void toggleLock(item)}
                   onSwitchVersion={() => setSwitchingItem(item)}
+                  onInspectDeps={() => {
+                    const info = modDeps[item.fileName];
+                    if (info) {
+                      setInspectingDeps({
+                        fileName: item.fileName,
+                        title: item.titleZh ?? item.title,
+                        info,
+                      });
+                    }
+                  }}
                   onUpdate={() => {
                     const update = updates[item.fileName];
                     if (update) void runUpdate([update]);
@@ -972,7 +1275,36 @@ export function ContentTab({
           </div>
         )}
       </section>
-      <HistoryDialog instanceId={id} open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      {historyOpen && (
+        <Suspense fallback={null}>
+          <HistoryDialog instanceId={id} open onClose={() => setHistoryOpen(false)} />
+        </Suspense>
+      )}
+      {inspectingDeps && (
+        <Suspense fallback={null}>
+          <ModDepsDetailDialog
+            inspecting={inspectingDeps}
+            titleByFile={titleByFile}
+            onClose={() => setInspectingDeps(null)}
+            onLocate={(name) => {
+              setFilter("all");
+              setOrigin("all");
+              setQuery(name);
+            }}
+          />
+        </Suspense>
+      )}
+      {pendingImpact && (
+        <Suspense fallback={null}>
+          <ModImpactDialog
+            pending={pendingImpact}
+            titleByFile={titleByFile}
+            busy={impactBusy}
+            onCancel={() => setPendingImpact(null)}
+            onConfirm={(orphans) => void confirmImpact(orphans)}
+          />
+        </Suspense>
+      )}
       {switchingItem && (
         <Suspense fallback={null}>
           <SwitchVersionDialog

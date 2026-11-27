@@ -46,6 +46,10 @@ pub fn is_meta_dir(name: &str) -> bool {
 }
 
 const CONFIG_FILE: &str = "instance.json";
+/// 实例级笔记文件：`instances/<ID>/Lumi/notes.md`
+pub const NOTES_FILE: &str = "notes.md";
+/// 单实例笔记最大字节数（256 KiB）
+pub const MAX_NOTES_BYTES: usize = 256 * 1024;
 /// 2：实例搬到 `instances/`，记下要启动的版本
 const CONFIG_FORMAT: u32 = 2;
 
@@ -71,6 +75,8 @@ pub enum LoaderKind {
     Fabric,
     Forge,
     Quilt,
+    LegacyFabric,
+    Babric,
 }
 
 impl LoaderKind {
@@ -80,6 +86,8 @@ impl LoaderKind {
             LoaderKind::Fabric => "Fabric",
             LoaderKind::Forge => "Forge",
             LoaderKind::Quilt => "Quilt",
+            LoaderKind::LegacyFabric => "Legacy Fabric",
+            LoaderKind::Babric => "Babric",
         }
     }
 
@@ -90,28 +98,81 @@ impl LoaderKind {
             LoaderKind::Fabric => "fabric",
             LoaderKind::Forge => "forge",
             LoaderKind::Quilt => "quilt",
+            LoaderKind::LegacyFabric => "legacy-fabric",
+            LoaderKind::Babric => "babric",
         }
     }
 
-    /// Forge 1.12.2 及以前用另一种安装器格式，暂不自行安装。
+    /// 各加载器对应的游戏版本兼容范围：
+    /// - `NeoForge`: 1.20.1+ / 26.x+ 正式版
+    /// - `Forge`: 1.5.2+ / 26.x+ 正式版（1.5.2–1.12.2 走旧版安装器管线，1.13+ 走处理器管线）
+    /// - `Fabric` / `Quilt`: 1.14+ / 26.x+ 正式版以及 18w43+ 现代快照 / 愚人节版
+    /// - `LegacyFabric`: 1.3.2–1.13.2 正式版
+    /// - `Babric`: Beta `b1.7.3`
     pub fn installable_for(self, game_version: &str) -> bool {
-        if self != Self::Forge {
-            return true;
-        }
-        let mut numbers = game_version.split('.');
-        match numbers.next().and_then(|n| n.parse::<u32>().ok()) {
-            Some(1) => numbers
-                .next()
-                .and_then(|n| n.parse::<u32>().ok())
-                .is_some_and(|n| n >= 13),
-            Some(year) => year >= 26,
-            None => false,
+        let release = parse_release_version(game_version);
+        match self {
+            Self::NeoForge => {
+                matches!(release, Some((1, 20, p)) if p >= 1)
+                    || matches!(release, Some((1, m, _)) if m >= 21)
+                    || matches!(release, Some((y, _, _)) if y >= 26)
+            }
+            Self::Forge => {
+                matches!(release, Some((1, 5, p)) if p >= 2)
+                    || matches!(release, Some((1, m, _)) if m >= 6)
+                    || matches!(release, Some((y, _, _)) if y >= 26)
+            }
+            Self::Fabric | Self::Quilt => {
+                matches!(release, Some((1, m, _)) if m >= 14)
+                    || matches!(release, Some((y, _, _)) if y >= 26)
+                    || is_modern_snapshot_for_fabric(game_version)
+            }
+            Self::LegacyFabric => {
+                matches!(release, Some((1, 3, p)) if p >= 2)
+                    || matches!(release, Some((1, m, _)) if (4..=13).contains(&m))
+            }
+            Self::Babric => game_version == "b1.7.3",
         }
     }
 
     pub fn uses_processor(self) -> bool {
         matches!(self, LoaderKind::NeoForge | LoaderKind::Forge)
     }
+}
+
+fn parse_release_version(version: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = version.split('.');
+    let major = parts.next()?.parse::<u32>().ok()?;
+    let minor = parts.next()?.parse::<u32>().ok()?;
+    let patch = match parts.next() {
+        Some(seg) => seg.parse::<u32>().ok()?,
+        None => 0,
+    };
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+fn is_modern_snapshot_for_fabric(version: &str) -> bool {
+    let bytes = version.as_bytes();
+    if bytes.len() >= 5
+        && bytes[0].is_ascii_digit()
+        && bytes[1].is_ascii_digit()
+        && bytes[2] == b'w'
+        && bytes[3].is_ascii_digit()
+        && bytes[4].is_ascii_digit()
+    {
+        let year = (bytes[0] - b'0') * 10 + (bytes[1] - b'0');
+        let week = (bytes[3] - b'0') * 10 + (bytes[4] - b'0');
+        return year > 18 || (year == 18 && week >= 43);
+    }
+    if let Some((base, _)) = version.split_once(['-', '_'])
+        && let Some((major, minor, _)) = parse_release_version(base)
+    {
+        return (major == 1 && minor >= 14) || major >= 26;
+    }
+    false
 }
 
 impl LoaderRef {
@@ -136,6 +197,10 @@ impl LoaderRef {
                 format!("{game_version}-forge-{short}")
             }
             LoaderKind::Quilt => format!("quilt-loader-{}-{game_version}", self.version),
+            LoaderKind::LegacyFabric => {
+                format!("legacy-fabric-loader-{}-{game_version}", self.version)
+            }
+            LoaderKind::Babric => format!("babric-loader-{}-{game_version}", self.version),
         }
     }
 }
@@ -162,6 +227,9 @@ pub struct PackSource {
     pub project_id: Option<String>,
     #[serde(default)]
     pub version_id: Option<String>,
+    /// 整合包官方宣传图或图标地址（无游戏截图时作为默认封面兜底）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_url: Option<String>,
 }
 
 /// `instance.json` 的内容。
@@ -196,6 +264,9 @@ pub struct InstanceConfig {
     /// 置顶的时间（毫秒时间戳）；`None` 是没置顶。置顶的按这个排，先置顶的在前
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pinned_at: Option<f64>,
+    /// 实例默认矢量封面预设（`<徽章>:<色板>`，如 `lantern:dusk`）；`None` 表示自动分配
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_preset: Option<String>,
     /// 挂上的别家版本：游戏文件都在别家的 `.minecraft` 里原地读；`None` 是本启动器自己的实例
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "specta", specta(skip))]
@@ -229,6 +300,7 @@ impl InstanceConfig {
             overrides: InstanceOverrides::default(),
             group: None,
             pinned_at: None,
+            cover_preset: None,
             link: None,
         }
     }
@@ -326,6 +398,47 @@ impl Instance {
 
 fn config_path(game: &GameDir, id: &str) -> Result<PathBuf, UnsafePath> {
     Ok(game.instance_dir(id)?.join(META_DIR).join(CONFIG_FILE))
+}
+
+/// 实例级笔记路径：`instances/<ID>/Lumi/notes.md`（关联外部实例也存放在 Lumi 元数据目录，不污染外部目录）。
+pub fn notes_path(game: &GameDir, id: &str) -> Result<PathBuf, UnsafePath> {
+    Ok(game.instance_dir(id)?.join(META_DIR).join(NOTES_FILE))
+}
+
+/// 读取实例笔记；不存在时返回空字符串，读取上限为 [`MAX_NOTES_BYTES`]。
+pub fn read_notes(game: &GameDir, id: &str) -> Result<String, InstanceError> {
+    use std::io::Read;
+    let path = notes_path(game, id)?;
+    let file = match std::fs::File::open(&path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
+        Err(error) => return Err(InstanceError::Io(format!("读取实例笔记失败：{error}"))),
+    };
+    let mut bytes = Vec::new();
+    file.take(MAX_NOTES_BYTES as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| InstanceError::Io(format!("读取实例笔记失败：{error}")))?;
+    let text = String::from_utf8_lossy(&bytes);
+    Ok(text.replace("\r\n", "\n").replace('\r', "\n"))
+}
+
+/// 原子保存实例笔记；纯空白时删除笔记文件保持目录整洁，返回保存后的规范化内容。
+pub fn write_notes(game: &GameDir, id: &str, content: &str) -> Result<String, InstanceError> {
+    let path = notes_path(game, id)?;
+    let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
+    if normalized.len() > MAX_NOTES_BYTES {
+        return Err(InstanceError::Io("实例笔记不能超过 256 KB".to_owned()));
+    }
+    if normalized.trim().is_empty() {
+        if let Err(error) = std::fs::remove_file(&path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(InstanceError::Io(format!("清空实例笔记失败：{error}")));
+        }
+        return Ok(String::new());
+    }
+    write_atomic(&path, normalized.as_bytes())?;
+    Ok(normalized)
 }
 
 /// 读一个实例；没有这个实例时返回 `None`。
@@ -878,6 +991,85 @@ mod tests {
         assert_eq!(
             load(&game, "生存 (2)").unwrap().unwrap().config.name,
             "老生存"
+        );
+    }
+
+    #[test]
+    fn instance_notes_round_trip_clear_and_size_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = GameDir::new(dir.path());
+        create(&game, "生存", &InstanceConfig::new("生存", "1.21.1", None)).unwrap();
+
+        // 尚未创建时返回空字符串
+        assert_eq!(read_notes(&game, "生存").unwrap(), "");
+
+        // 原子写入并规范化换行符（含 Markdown 与潜在 XSS 文本按原文安全存储，由前端清洗）
+        let raw = "# 整合包攻略\r\n- [ ] 调试内存\r\n<script>alert(1)</script>";
+        let saved = write_notes(&game, "生存", raw).unwrap();
+        assert_eq!(
+            saved,
+            "# 整合包攻略\n- [ ] 调试内存\n<script>alert(1)</script>"
+        );
+        assert_eq!(read_notes(&game, "生存").unwrap(), saved);
+        assert!(notes_path(&game, "生存").unwrap().is_file());
+
+        // 超出 256 KiB 拒绝写入且不破坏已有笔记
+        let oversized = "a".repeat(MAX_NOTES_BYTES + 1);
+        assert!(write_notes(&game, "生存", &oversized).is_err());
+        assert_eq!(read_notes(&game, "生存").unwrap(), saved);
+
+        // 仅空白内容时自动清理文件
+        assert_eq!(write_notes(&game, "生存", "   \r\n\t ").unwrap(), "");
+        assert!(!notes_path(&game, "生存").unwrap().exists());
+        assert_eq!(read_notes(&game, "生存").unwrap(), "");
+    }
+
+    #[test]
+    fn loader_compatibility_matrix_covers_legacy_ancient_and_snapshots() {
+        assert!(LoaderKind::NeoForge.installable_for("1.21.1"));
+        assert!(LoaderKind::NeoForge.installable_for("1.20.1"));
+        assert!(LoaderKind::NeoForge.installable_for("26.1"));
+        assert!(!LoaderKind::NeoForge.installable_for("1.19.2"));
+        assert!(!LoaderKind::NeoForge.installable_for("26.4-pre-1"));
+
+        assert!(LoaderKind::Forge.installable_for("1.21.1"));
+        assert!(LoaderKind::Forge.installable_for("1.12.2"));
+        assert!(LoaderKind::Forge.installable_for("1.7.10"));
+        assert!(LoaderKind::Forge.installable_for("1.5.2"));
+        assert!(!LoaderKind::Forge.installable_for("1.5.1"));
+        assert!(!LoaderKind::Forge.installable_for("b1.7.3"));
+
+        assert!(LoaderKind::Fabric.installable_for("1.21.1"));
+        assert!(LoaderKind::Fabric.installable_for("26.4-pre-1"));
+        assert!(LoaderKind::Fabric.installable_for("24w14potato"));
+        assert!(LoaderKind::Fabric.installable_for("25w14craftmine"));
+        assert!(!LoaderKind::Fabric.installable_for("1.12.2"));
+        assert!(!LoaderKind::Fabric.installable_for("b1.7.3"));
+
+        assert!(LoaderKind::LegacyFabric.installable_for("1.13.2"));
+        assert!(LoaderKind::LegacyFabric.installable_for("1.8.9"));
+        assert!(LoaderKind::LegacyFabric.installable_for("1.3.2"));
+        assert!(!LoaderKind::LegacyFabric.installable_for("1.14"));
+        assert!(!LoaderKind::LegacyFabric.installable_for("1.2.5"));
+
+        assert!(LoaderKind::Babric.installable_for("b1.7.3"));
+        assert!(!LoaderKind::Babric.installable_for("1.7.10"));
+
+        assert_eq!(
+            LoaderRef {
+                kind: LoaderKind::LegacyFabric,
+                version: "0.16.10".to_owned(),
+            }
+            .version_id("1.8.9"),
+            "legacy-fabric-loader-0.16.10-1.8.9"
+        );
+        assert_eq!(
+            LoaderRef {
+                kind: LoaderKind::Babric,
+                version: "0.16.10".to_owned(),
+            }
+            .version_id("b1.7.3"),
+            "babric-loader-0.16.10-b1.7.3"
         );
     }
 }

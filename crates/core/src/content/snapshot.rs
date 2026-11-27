@@ -25,32 +25,32 @@ const SNAPSHOT_FILE: &str = "snapshot.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Snapshot {
-    at: f64,
+pub(super) struct Snapshot {
+    pub(super) at: f64,
     /// 游戏在这个状态下正常玩过；否则只是「第一次改动之前」的样子
-    verified: bool,
-    files: Vec<SnapFile>,
+    pub(super) verified: bool,
+    pub(super) files: Vec<SnapFile>,
     #[serde(default)]
-    records: Records,
+    pub(super) records: Records,
     #[serde(default)]
-    shader: Option<String>,
+    pub(super) shader: Option<String>,
     #[serde(default)]
-    resource_packs: Vec<String>,
+    pub(super) resource_packs: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SnapFile {
-    kind: ContentKind,
+pub(super) struct SnapFile {
+    pub(super) kind: ContentKind,
     /// 启用时的文件名
-    file_name: String,
-    sha1: String,
+    pub(super) file_name: String,
+    pub(super) sha1: String,
     /// 模组是不是停用状态
-    disabled: bool,
+    pub(super) disabled: bool,
 }
 
 impl Snapshot {
-    fn enabled(&self, file: &SnapFile) -> bool {
+    pub(super) fn enabled(&self, file: &SnapFile) -> bool {
         match file.kind {
             ContentKind::Mod => !file.disabled,
             ContentKind::Shader => self.shader.as_deref() == Some(file.file_name.as_str()),
@@ -60,7 +60,7 @@ impl Snapshot {
         }
     }
 
-    fn file_ref(&self, file: &SnapFile) -> FileRef {
+    pub(super) fn file_ref(&self, file: &SnapFile) -> FileRef {
         FileRef {
             file_name: file.file_name.clone(),
             sha1: file.sha1.clone(),
@@ -72,24 +72,31 @@ impl Snapshot {
                 .cloned(),
         }
     }
+
+    pub(super) fn same_state(&self, other: &Self) -> bool {
+        let packs_same = self.resource_packs.is_empty()
+            || other.resource_packs.is_empty()
+            || self.resource_packs == other.resource_packs;
+        diff(self, other).is_empty() && self.shader == other.shader && packs_same
+    }
 }
 
 /// 同一个文件名在快照里和现在的差别。`before` 是快照里的，`after` 是现在的。
 #[derive(Debug)]
-struct Op {
-    kind: ContentKind,
-    before: Option<SnapFile>,
-    after: Option<SnapFile>,
+pub(super) struct Op {
+    pub(super) kind: ContentKind,
+    pub(super) before: Option<SnapFile>,
+    pub(super) after: Option<SnapFile>,
 }
 
 impl Op {
     /// 文件内容没变，只是启用 / 停用变了
-    fn toggle_only(&self) -> bool {
+    pub(super) fn toggle_only(&self) -> bool {
         matches!((&self.before, &self.after), (Some(b), Some(a)) if b.sha1 == a.sha1)
     }
 }
 
-fn diff(snapshot: &Snapshot, current: &Snapshot) -> Vec<Op> {
+pub(super) fn diff(snapshot: &Snapshot, current: &Snapshot) -> Vec<Op> {
     let index = |s: &Snapshot| -> BTreeMap<(ContentKind, String), SnapFile> {
         s.files
             .iter()
@@ -174,8 +181,174 @@ fn describe(file: &SnapFile, records: &Records, cache: &IdentityCache) -> Descri
     }
 }
 
+pub(super) fn describe_changes(
+    before: &Snapshot,
+    after: &Snapshot,
+    cache: &IdentityCache,
+) -> Vec<OfferChange> {
+    let ops = diff(before, after);
+    let mut changes = Vec::new();
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let mut touched_files: HashSet<(ContentKind, String)> = HashSet::new();
+
+    for op in &ops {
+        match (&op.before, &op.after) {
+            (Some(b), Some(a)) => {
+                touched_files.insert((op.kind, a.file_name.clone()));
+                let now = describe(a, &after.records, cache);
+                let change = if b.sha1 != a.sha1 {
+                    ChangeType::Updated
+                } else if a.disabled {
+                    ChangeType::Disabled
+                } else {
+                    ChangeType::Enabled
+                };
+                let was = describe(b, &before.records, cache);
+                let updated = change == ChangeType::Updated;
+                changes.push(OfferChange {
+                    kind: op.kind,
+                    change,
+                    title: now.title,
+                    from_version: was.version.filter(|_| updated),
+                    to_version: now.version.filter(|_| updated),
+                });
+            }
+            (None, Some(a)) => {
+                touched_files.insert((op.kind, a.file_name.clone()));
+                added.push((op.kind, describe(a, &after.records, cache)));
+            }
+            (Some(b), None) => {
+                touched_files.insert((op.kind, b.file_name.clone()));
+                removed.push((op.kind, describe(b, &before.records, cache)));
+            }
+            (None, None) => {}
+        }
+    }
+    // 同一个项目「旧文件没了 + 新文件来了」是一次更新（新版本文件名不一样）
+    for (kind, now) in added {
+        let pair = now.project.as_ref().and_then(|project| {
+            removed
+                .iter()
+                .position(|(k, was)| *k == kind && was.project.as_ref() == Some(project))
+        });
+        let change = match pair {
+            Some(index) => {
+                let (_, was) = removed.swap_remove(index);
+                OfferChange {
+                    kind,
+                    change: ChangeType::Updated,
+                    title: now.title,
+                    from_version: was.version,
+                    to_version: now.version,
+                }
+            }
+            None => OfferChange {
+                kind,
+                change: ChangeType::Added,
+                title: now.title,
+                from_version: None,
+                to_version: now.version,
+            },
+        };
+        changes.push(change);
+    }
+    for (kind, was) in removed {
+        changes.push(OfferChange {
+            kind,
+            change: ChangeType::Removed,
+            title: was.title,
+            from_version: was.version,
+            to_version: None,
+        });
+    }
+
+    // 光影启用/关闭状态变化（文件本身未增删）
+    if before.shader != after.shader {
+        if let Some(prev) = &before.shader
+            && !touched_files.contains(&(ContentKind::Shader, prev.clone()))
+        {
+            let title = before
+                .records
+                .get(&record_key(ContentKind::Shader, prev))
+                .map(|r| r.title.clone())
+                .unwrap_or_else(|| display_name(prev));
+            changes.push(OfferChange {
+                kind: ContentKind::Shader,
+                change: ChangeType::Disabled,
+                title,
+                from_version: None,
+                to_version: None,
+            });
+        }
+        if let Some(next) = &after.shader
+            && !touched_files.contains(&(ContentKind::Shader, next.clone()))
+        {
+            let title = after
+                .records
+                .get(&record_key(ContentKind::Shader, next))
+                .map(|r| r.title.clone())
+                .unwrap_or_else(|| display_name(next));
+            changes.push(OfferChange {
+                kind: ContentKind::Shader,
+                change: ChangeType::Enabled,
+                title,
+                from_version: None,
+                to_version: None,
+            });
+        }
+    }
+
+    // 材质包启用/停用变化（文件本身未增删）
+    let before_packs: HashSet<&str> = before
+        .resource_packs
+        .iter()
+        .filter_map(|p| p.strip_prefix("file/"))
+        .collect();
+    let after_packs: HashSet<&str> = after
+        .resource_packs
+        .iter()
+        .filter_map(|p| p.strip_prefix("file/"))
+        .collect();
+    for enabled_pack in after_packs.difference(&before_packs) {
+        if !touched_files.contains(&(ContentKind::ResourcePack, (*enabled_pack).to_owned())) {
+            let title = after
+                .records
+                .get(&record_key(ContentKind::ResourcePack, enabled_pack))
+                .map(|r| r.title.clone())
+                .unwrap_or_else(|| display_name(enabled_pack));
+            changes.push(OfferChange {
+                kind: ContentKind::ResourcePack,
+                change: ChangeType::Enabled,
+                title,
+                from_version: None,
+                to_version: None,
+            });
+        }
+    }
+    for disabled_pack in before_packs.difference(&after_packs) {
+        if !touched_files.contains(&(ContentKind::ResourcePack, (*disabled_pack).to_owned())) {
+            let title = before
+                .records
+                .get(&record_key(ContentKind::ResourcePack, disabled_pack))
+                .map(|r| r.title.clone())
+                .unwrap_or_else(|| display_name(disabled_pack));
+            changes.push(OfferChange {
+                kind: ContentKind::ResourcePack,
+                change: ChangeType::Disabled,
+                title,
+                from_version: None,
+                to_version: None,
+            });
+        }
+    }
+
+    changes.sort_by_key(|c| (c.kind, c.title.to_lowercase()));
+    changes
+}
+
 impl InstanceContent {
-    fn load_snapshot(&self) -> Option<Snapshot> {
+    pub(super) fn load_snapshot(&self) -> Option<Snapshot> {
         match read_json(&self.meta_path(SNAPSHOT_FILE)) {
             Ok(snapshot) => snapshot,
             Err(error) => {
@@ -185,9 +358,10 @@ impl InstanceContent {
         }
     }
 
-    /// 把实例现在的样子记成清单（算哈希用缓存，没改过的文件不重算）。
-    async fn capture(&self, verified: bool) -> Result<Snapshot, ContentError> {
+    /// 把实例现在的样子记成清单（算哈希用缓存，没改过的文件不重算、无新增哈希不重写缓存）。
+    pub(super) async fn capture(&self, verified: bool) -> Result<Snapshot, ContentError> {
         let mut cache = IdentityCache::load(self.store.root());
+        let hashes_before = cache.hash_count();
         let mut files = Vec::new();
         for kind in ContentKind::ALL {
             for (scanned, sha1) in self.hash_files(kind, &mut cache).await? {
@@ -199,7 +373,9 @@ impl InstanceContent {
                 });
             }
         }
-        if let Err(error) = cache.save(self.store.root()) {
+        if cache.hash_count() != hashes_before
+            && let Err(error) = cache.save(self.store.root())
+        {
             tracing::warn!(%error, "保存识别缓存失败");
         }
         Ok(Snapshot {
@@ -212,10 +388,11 @@ impl InstanceContent {
         })
     }
 
-    /// 游戏在现在这个状态下正常玩过：记成「上次能玩的状态」。
+    /// 游戏在现在这个状态下正常玩过：记成「上次能玩的状态」，同时同步标记时间线节点为已验证可玩。
     pub async fn mark_good(&self) -> Result<(), ContentError> {
         let snapshot = self.capture(true).await?;
         write_json_atomic(&self.meta_path(SNAPSHOT_FILE), &snapshot)?;
+        self.record_timeline_verified(&snapshot);
         tracing::info!(files = snapshot.files.len(), "已记下能玩的状态");
         Ok(())
     }
@@ -248,77 +425,10 @@ impl InstanceContent {
             return Ok(None);
         }
         let cache = IdentityCache::load(self.store.root());
-        let mut changes = Vec::new();
-        let mut added = Vec::new();
-        let mut removed = Vec::new();
-        for op in &ops {
-            match (&op.before, &op.after) {
-                (Some(before), Some(after)) => {
-                    let now = describe(after, &current.records, &cache);
-                    let change = if before.sha1 != after.sha1 {
-                        ChangeType::Updated
-                    } else if after.disabled {
-                        ChangeType::Disabled
-                    } else {
-                        ChangeType::Enabled
-                    };
-                    let was = describe(before, &snapshot.records, &cache);
-                    let updated = change == ChangeType::Updated;
-                    changes.push(OfferChange {
-                        kind: op.kind,
-                        change,
-                        title: now.title,
-                        from_version: was.version.filter(|_| updated),
-                        to_version: now.version.filter(|_| updated),
-                    });
-                }
-                (None, Some(after)) => {
-                    added.push((op.kind, describe(after, &current.records, &cache)))
-                }
-                (Some(before), None) => {
-                    removed.push((op.kind, describe(before, &snapshot.records, &cache)))
-                }
-                (None, None) => {}
-            }
+        let changes = describe_changes(&snapshot, &current, &cache);
+        if changes.is_empty() {
+            return Ok(None);
         }
-        // 同一个项目「旧文件没了 + 新文件来了」是一次更新（新版本文件名不一样）
-        for (kind, now) in added {
-            let pair = now.project.as_ref().and_then(|project| {
-                removed
-                    .iter()
-                    .position(|(k, was)| *k == kind && was.project.as_ref() == Some(project))
-            });
-            let change = match pair {
-                Some(index) => {
-                    let (_, was) = removed.swap_remove(index);
-                    OfferChange {
-                        kind,
-                        change: ChangeType::Updated,
-                        title: now.title,
-                        from_version: was.version,
-                        to_version: now.version,
-                    }
-                }
-                None => OfferChange {
-                    kind,
-                    change: ChangeType::Added,
-                    title: now.title,
-                    from_version: None,
-                    to_version: now.version,
-                },
-            };
-            changes.push(change);
-        }
-        for (kind, was) in removed {
-            changes.push(OfferChange {
-                kind,
-                change: ChangeType::Removed,
-                title: was.title,
-                from_version: was.version,
-                to_version: None,
-            });
-        }
-        changes.sort_by_key(|c| (c.kind, c.title.to_lowercase()));
         Ok(Some(RollbackOffer {
             verified: snapshot.verified,
             at: snapshot.at,
@@ -326,33 +436,39 @@ impl InstanceContent {
         }))
     }
 
-    /// 回到快照那时的样子：多出来的文件进仓库，少了的 / 换掉的从仓库放回来，启用状态和安装记录一并恢复。
-    /// 记一条改动历史（可以再撤销）。返回动了几个文件。要么全回去、要么一点不动。
-    pub async fn restore_snapshot(&self) -> Result<u32, ContentError> {
-        self.settle().await?;
-        let snapshot = self
-            .load_snapshot()
-            .ok_or_else(|| ContentError::Message("这个实例还没有记下可以回去的状态".to_owned()))?;
-        let current = self.capture(false).await?;
-        let ops = diff(&snapshot, &current);
-        if ops.is_empty() {
-            return Ok(0);
-        }
-
-        // 先确认要放回的文件都拿得到（仓库里有，或者就是这次要收走的文件），缺一个就整个不做
+    /// 检查从 `current` 恢复到 `target` 所需的所有文件是否都能拿到（已在仓库中或将由本次操作收进仓库）。
+    pub(super) fn missing_for_restore(&self, target: &Snapshot, current: &Snapshot) -> Vec<String> {
+        let ops = diff(target, current);
         let leaving: HashSet<&str> = ops
             .iter()
             .filter(|op| !op.toggle_only())
             .filter_map(|op| op.after.as_ref())
             .map(|f| f.sha1.as_str())
             .collect();
-        let missing: Vec<&str> = ops
-            .iter()
+        ops.iter()
             .filter(|op| !op.toggle_only())
             .filter_map(|op| op.before.as_ref())
             .filter(|f| !self.store.contains(&f.sha1) && !leaving.contains(f.sha1.as_str()))
-            .map(|f| f.file_name.as_str())
-            .collect();
+            .map(|f| f.file_name.clone())
+            .collect()
+    }
+
+    /// 核心原子恢复原语：把实例恢复到指定 `target` 快照的状态，写入改动历史（返回改动项数）。
+    pub(super) async fn apply_restore_to(
+        &self,
+        target: &Snapshot,
+        current: &Snapshot,
+        summary_label: &str,
+    ) -> Result<u32, ContentError> {
+        let ops = diff(target, current);
+        let packs_changed =
+            !target.resource_packs.is_empty() && target.resource_packs != current.resource_packs;
+        let active_changed = target.shader != current.shader || packs_changed;
+        if ops.is_empty() && !active_changed {
+            return Ok(0);
+        }
+
+        let missing = self.missing_for_restore(target, current);
         if !missing.is_empty() {
             return Err(ContentError::Message(format!(
                 "仓库里找不到 {} 的备份（可能是在文件夹里手动删掉的），没法一键回去。可以在「改动历史」里逐条撤销",
@@ -365,12 +481,12 @@ impl InstanceContent {
             .map(|op| Change {
                 kind: op.kind,
                 removed: op.after.as_ref().map(|f| current.file_ref(f)),
-                added: op.before.as_ref().map(|f| snapshot.file_ref(f)),
+                added: op.before.as_ref().map(|f| target.file_ref(f)),
             })
             .collect();
 
         let mut draft = self.draft();
-        // 现在多出来的、被换过的文件收进仓库
+        // 现在多出来的、被换过的文件收进仓库（保证后续随时可前滚回来）
         for op in ops.iter().filter(|op| !op.toggle_only()) {
             let Some(after) = &op.after else { continue };
             draft.plan.take(
@@ -378,7 +494,7 @@ impl InstanceContent {
                 after.sha1.clone(),
             );
         }
-        // 快照里的文件放回来；只是启停变了的改个名
+        // 目标快照里的文件放回来；只是启停变了的改个名
         for op in &ops {
             let Some(before) = &op.before else { continue };
             let dest = rel_path(op.kind, &before.file_name, before.disabled)?;
@@ -391,27 +507,44 @@ impl InstanceContent {
                 draft.plan.place_stored(dest, before.sha1.clone());
             }
         }
-        draft.records = snapshot.records.clone();
-        // 动过光影 / 材质包文件的，把「用哪个」也恢复成当时的
-        if ops.iter().any(|op| op.kind == ContentKind::Shader) {
-            draft.active.shader = snapshot.shader.clone();
+        draft.records = target.records.clone();
+        if ops.iter().any(|op| op.kind == ContentKind::Shader) || target.shader != current.shader {
+            draft.active.shader = target.shader.clone();
         }
-        if ops.iter().any(|op| op.kind == ContentKind::ResourcePack)
-            && !snapshot.resource_packs.is_empty()
+        if (ops.iter().any(|op| op.kind == ContentKind::ResourcePack)
+            || target.resource_packs != current.resource_packs)
+            && !target.resource_packs.is_empty()
         {
-            draft.active.packs = snapshot.resource_packs.clone();
+            draft.active.packs = target.resource_packs.clone();
         }
 
-        let count = changes.len();
-        let summary = if snapshot.verified {
-            format!("回到上次能玩的状态（{count} 项改动）")
-        } else {
-            format!("回到改动前（{count} 项改动）")
-        };
+        let count = changes.len().max(usize::from(active_changed));
+        let summary = format!("{summary_label}（{count} 项改动）");
         let history = self.pushed_history(HistoryAction::Restore, summary.clone(), changes);
-        self.commit(draft, &summary, Some(history)).await?;
-        tracing::info!(count, verified = snapshot.verified, "已回到快照的状态");
+        self.commit_inner(draft, &summary, Some(history), false)
+            .await?;
+        tracing::info!(count, verified = target.verified, "已回到快照的状态");
         Ok(u32::try_from(count).unwrap_or(u32::MAX))
+    }
+
+    /// 回到快照那时的样子：多出来的文件进仓库，少了的 / 换掉的从仓库放回来，启用状态和安装记录一并恢复。
+    /// 恢复前自动将当前态留存到时间线，记一条改动历史（可以再撤销）。返回动了几个文件。要么全回去、要么一点不动。
+    pub async fn restore_snapshot(&self) -> Result<u32, ContentError> {
+        self.settle().await?;
+        let snapshot = self
+            .load_snapshot()
+            .ok_or_else(|| ContentError::Message("这个实例还没有记下可以回去的状态".to_owned()))?;
+        let current = self.capture(false).await?;
+        let label = if snapshot.verified {
+            "回到上次能玩的状态"
+        } else {
+            "回到改动前"
+        };
+        let count = self.apply_restore_to(&snapshot, &current, label).await?;
+        if count > 0 {
+            self.record_timeline_restore(&current, &snapshot, label, None);
+        }
+        Ok(count)
     }
 }
 

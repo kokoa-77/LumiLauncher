@@ -91,7 +91,13 @@ export const commands = {
 	jobsHistory: () => __TAURI_INVOKE<JobSnapshot[]>("jobs_history"),
 	/**  重试一个失败或取消的任务，返回新任务的编号。新任务接替历史里的旧记录 */
 	jobsRetry: (id: string) => typedError<string, AppError>(__TAURI_INVOKE("jobs_retry", { id })),
-	/**  从下载历史里删掉一条已结束的（正在进行的删不掉） */
+	/**  仅重试上次失败的条目（依赖后端 `PartialFailureReceipt`；无回执时自动回退整单重试）。 */
+	jobsRetryFailed: (id: string) => typedError<string, AppError>(__TAURI_INVOKE("jobs_retry_failed", { id })),
+	/**  暂停正在进行的任务（立即释放网络与磁盘并发许可，保留已下分片供恢复）。 */
+	jobsPause: (id: string) => __TAURI_INVOKE<boolean>("jobs_pause", { id }),
+	/**  恢复已暂停的任务。 */
+	jobsResume: (id: string) => __TAURI_INVOKE<boolean>("jobs_resume", { id }),
+	/**  从下载历史里删掉一条已结束的（正在进行或已暂停的删不掉） */
 	jobsRemove: (id: string) => __TAURI_INVOKE<boolean>("jobs_remove", { id }),
 	/**  清空下载历史（正在进行的不动）。没做完的整合包导入的临时文件一起删掉（没法重试了） */
 	jobsClearHistory: () => __TAURI_INVOKE<void>("jobs_clear_history"),
@@ -99,6 +105,12 @@ export const commands = {
 	netDohTest: () => typedError<DnsProbe[], AppError>(__TAURI_INVOKE("net_doh_test")),
 	/**  设置里的「网络连通性检测」：并行探测核心官方服务端点 */
 	netDiagnostics: () => typedError<EndpointProbe[], AppError>(__TAURI_INVOKE("net_diagnostics")),
+	/**  读取当前运行期网络、磁盘与限速实时状态摘要（供设置页与驾驶舱首帧显示）。 */
+	netRuntimeStatus: () => __TAURI_INVOKE<TransferTelemetry>("net_runtime_status"),
+	/**  5 秒超时实测当前输入/选择的代理配置是否可连通官方 Mojang 端点。 */
+	netTestProxy: (proxy: ProxySettings) => typedError<ProxyTestResult, AppError>(__TAURI_INVOKE("net_test_proxy", { proxy })),
+	/**  驾驶舱诊断卡一键自愈执行器：自动调优配置，并在有可恢复失败任务时直接重跑失败项。 */
+	netApplyQuickFix: (action: QuickFixAction, jobId: string | null) => typedError<QuickFixResult, AppError>(__TAURI_INVOKE("net_apply_quick_fix", { action, jobId })),
 	claimFolderInfo: () => __TAURI_INVOKE<ClaimFolderInfo>("claim_folder_info"),
 	/**  弹出「选择文件夹」换补件盯的文件夹；用户取消时返回 `None` */
 	claimFolderChoose: () => typedError<ClaimFolderInfo | null, AppError>(__TAURI_INVOKE("claim_folder_choose")),
@@ -117,6 +129,8 @@ export const commands = {
 	instancesRepairFiles: (instanceId: string) => typedError<string, AppError>(__TAURI_INVOKE("instances_repair_files", { instanceId })),
 	/**  正式版列表（新的在前） */
 	catalogGameVersions: () => typedError<string[], AppError>(__TAURI_INVOKE("catalog_game_versions")),
+	/**  全量 Mojang 版本清单（含正式版 / 快照版 / 愚人节版 / 远古版分类与最新发布标记） */
+	catalogGameVersionEntries: () => typedError<GameVersionEntry[], AppError>(__TAURI_INVOKE("catalog_game_version_entries")),
 	/**  某个游戏版本可用的 NeoForge（新的在前） */
 	catalogNeoforgeVersions: (gameVersion: string) => typedError<NeoForgeVersion[], AppError>(__TAURI_INVOKE("catalog_neoforge_versions", { gameVersion })),
 	/**  当前游戏版本可选的加载器版本。None 表示 Lumi 尚未支持这个组合的安装。 */
@@ -138,13 +152,13 @@ export const commands = {
 	 *  搜索。给了实例时按实例的游戏版本和加载器筛选。
 	 *  `category` 是 Modrinth 的分类名（例如 `technology`），只看这一类。
 	 */
-	modrinthSearch: (query: string, kind: ContentKind, instanceId: string | null, sort: SearchSort, category: string | null, offset: number) => typedError<SearchPage, AppError>(__TAURI_INVOKE("modrinth_search", { query, kind, instanceId, sort, category, offset })),
+	modrinthSearch: (query: string, kind: ContentKind, instanceId: string | null, gameVersion: string | null, loader: LoaderKind | null, clientOnly: boolean, sort: SearchSort, category: string | null, offset: number) => typedError<SearchPage, AppError>(__TAURI_INVOKE("modrinth_search", { query, kind, instanceId, gameVersion, loader, clientOnly, sort, category, offset })),
 	/**
 	 *  搜 CurseForge。给了实例时按实例的游戏版本和加载器筛选。
 	 *  启动器的 Key 没有搜索权限时返回 `curseforge.denied`（界面据此提示「CurseForge 搜索还没开通」）。
 	 *  `category` 是 CurseForge 的分类编号。
 	 */
-	curseforgeSearch: (query: string, kind: ContentKind, instanceId: string | null, sort: SearchSort, category: string | null, offset: number) => typedError<SearchPage, AppError>(__TAURI_INVOKE("curseforge_search", { query, kind, instanceId, sort, category, offset })),
+	curseforgeSearch: (query: string, kind: ContentKind, instanceId: string | null, gameVersion: string | null, loader: LoaderKind | null, sort: SearchSort, category: string | null, offset: number) => typedError<SearchPage, AppError>(__TAURI_INVOKE("curseforge_search", { query, kind, instanceId, gameVersion, loader, sort, category, offset })),
 	/**  解析安装计划（含前置、光影加载器），给用户确认。 */
 	contentResolve: (instanceId: string, projectId: string, kind: ContentKind, source: ContentSource) => typedError<PlanItem[], AppError>(__TAURI_INVOKE("content_resolve", { instanceId, projectId, kind, source })),
 	/**  安装用户确认过的计划（后台任务），返回任务 ID。 */
@@ -167,6 +181,14 @@ export const commands = {
 	contentCrashOffer: (instanceId: string) => typedError<RollbackOffer | null, AppError>(__TAURI_INVOKE("content_crash_offer", { instanceId })),
 	/**  一键回到「能玩的时候」（或者第一次改动之前）。返回动了几个文件；这次放回记在改动历史里，可以撤销。 */
 	contentRestoreSnapshot: (instanceId: string) => typedError<number, AppError>(__TAURI_INVOKE("content_restore_snapshot", { instanceId })),
+	/**  「永不玩坏」融合时间线（改动快照节点 + 历史启动/崩溃记录，按时间倒序排列）。 */
+	contentTimeline: (instanceId: string) => typedError<TimelineView, AppError>(__TAURI_INVOKE("content_timeline", { instanceId })),
+	/**  一键恢复到时间线上的任意历史快照节点（恢复前自动为当前态留存保护节点，随时可前滚回来）。 */
+	contentRestoreTimelineNode: (instanceId: string, nodeId: string) => typedError<number, AppError>(__TAURI_INVOKE("content_restore_timeline_node", { instanceId, nodeId })),
+	/**  离线读取实例的模组正/反向依赖图（带缓存，供内容列表展示「被 XX 依赖」与「孤儿前置」标记）。 */
+	contentModDeps: (instanceId: string) => typedError<ModDepsGraph, AppError>(__TAURI_INVOKE("content_mod_deps", { instanceId })),
+	/**  停用或卸载指定模组前的依赖影响分析（被依赖预警 + 卸载后将失去依赖方的孤儿前置列表）。 */
+	contentModImpact: (instanceId: string, fileNames: string[], action: ImpactAction) => typedError<ModImpactReport, AppError>(__TAURI_INVOKE("content_mod_impact", { instanceId, fileNames, action })),
 	/**
 	 *  一次启用 / 停用好几个：要么全改、要么一个不改。返回真的改了的那些，
 	 *  界面上的「撤销」就是拿它反过来再调一次。
@@ -205,8 +227,8 @@ export const commands = {
 	gameDirChoose: () => typedError<GameDirInfo | null, AppError>(__TAURI_INVOKE("game_dir_choose")),
 	/**  弹出选择文件窗口，读取并检查整合包，返回预览给用户确认。用户取消时返回 `None`。 */
 	modpackPick: () => typedError<PackChoice | null, AppError>(__TAURI_INVOKE("modpack_pick")),
-	/**  搜整合包。Modrinth 按加载器筛选，CurseForge 的格式在拿到清单后确认。`category` 按平台是 Modrinth 的分类名或 CurseForge 的分类编号。 */
-	modpackSearch: (query: string, source: ContentSource, sort: SearchSort, category: string | null, offset: number) => typedError<SearchPage, AppError>(__TAURI_INVOKE("modpack_search", { query, source, sort, category, offset })),
+	/**  搜整合包。支持按游戏版本、加载器与分类筛选。`category` 按平台是 Modrinth 的分类名或 CurseForge 的分类编号。 */
+	modpackSearch: (query: string, source: ContentSource, gameVersion: string | null, loader: LoaderKind | null, sort: SearchSort, category: string | null, offset: number) => typedError<SearchPage, AppError>(__TAURI_INVOKE("modpack_search", { query, source, gameVersion, loader, sort, category, offset })),
 	/**  一个整合包能装的版本（新的在前，带推荐项） */
 	modpackVersions: (projectId: string, source: ContentSource) => typedError<PackVersion[], AppError>(__TAURI_INVOKE("modpack_versions", { projectId, source })),
 	/**  在线安装前的准备情况：整合包还没下载，只按游戏版本查（主要是看缺不缺 Java） */
@@ -222,6 +244,18 @@ export const commands = {
 	modpackDiscard: (token: string) => __TAURI_INVOKE<void>("modpack_discard", { token }),
 	/**  本地导入：确认后在后台导入，返回任务 ID。`name` 为空时用整合包的名字。 */
 	modpackImport: (token: string, name: string | null) => typedError<string, AppError>(__TAURI_INVOKE("modpack_import", { token, name })),
+	/**  查询当前受管整合包在平台（Modrinth / CurseForge）上的全部可用版本（新的在前）。 */
+	modpackUpdateVersions: (instanceId: string) => typedError<PackVersion[], AppError>(__TAURI_INVOKE("modpack_update_versions", { instanceId })),
+	/**  从在线平台下载选定版本到暂存目录，完成三方比对并返回更新预览。 */
+	modpackUpdatePreviewRemote: (instanceId: string, versionId: string) => typedError<PackUpdateChoice, AppError>(__TAURI_INVOKE("modpack_update_preview_remote", { instanceId, versionId })),
+	/**  选择本地 `.mrpack` / `.zip` 整合包文件，与当前实例进行三方比对并返回预览。用户取消时返回 `None`。 */
+	modpackUpdatePreviewFile: (instanceId: string) => typedError<PackUpdateChoice | null, AppError>(__TAURI_INVOKE("modpack_update_preview_file", { instanceId })),
+	/**  放弃预检计划并清理可能已下载到暂存目录的整合包文件。 */
+	modpackUpdateDiscard: (token: string) => __TAURI_INVOKE<void>("modpack_update_discard", { token }),
+	/**  启动整合包无损更新后台任务，返回任务 ID。 */
+	modpackUpdateStart: (token: string, options: PackUpdateOptions) => typedError<string, AppError>(__TAURI_INVOKE("modpack_update_start", { token, options })),
+	/**  一键无损回滚最近一次整合包更新。 */
+	modpackUpdateRollback: (instanceId: string) => typedError<PackRollbackOutcome, AppError>(__TAURI_INVOKE("modpack_update_rollback", { instanceId })),
 	/**  正在进行的补件（界面启动时读一次，之后靠 `ClaimUpdated` 事件）。 */
 	claimList: () => __TAURI_INVOKE<ClaimSnapshot[]>("claim_list"),
 	/**  跳过 / 取消跳过一个可选文件。 */
@@ -253,7 +287,7 @@ export const commands = {
 	 *  搜地图。给了实例时只列适用于它的游戏版本的（老地图在新版本也能开，所以装的时候还会再放宽一次）。
 	 *  `category` 是 CurseForge 的分类编号（冒险、跑酷、解谜……）。
 	 */
-	mapsSearch: (query: string, instanceId: string | null, sort: SearchSort, category: string | null, offset: number) => typedError<SearchPage, AppError>(__TAURI_INVOKE("maps_search", { query, instanceId, sort, category, offset })),
+	mapsSearch: (query: string, instanceId: string | null, gameVersion: string | null, sort: SearchSort, category: string | null, offset: number) => typedError<SearchPage, AppError>(__TAURI_INVOKE("maps_search", { query, instanceId, gameVersion, sort, category, offset })),
 	/**  装一张地图到实例里（后台任务），返回任务编号。装好后单人游戏列表里就有它。 */
 	mapsInstall: (instanceId: string, projectId: string, title: string) => typedError<string, AppError>(__TAURI_INVOKE("maps_install", { instanceId, projectId, title })),
 	/**  搜多人服务器。`category` 是 Modrinth 的服务器分类名（生存、空岛、角色扮演……）。 */
@@ -353,16 +387,38 @@ export const commands = {
 	instancesSettingsGet: (instanceId: string) => typedError<InstanceSettingsView, AppError>(__TAURI_INVOKE("instances_settings_get", { instanceId })),
 	/**  保存实例的名字和单独设置（只改显示名，文件夹名不变）。改完下次启动生效。 */
 	instancesSettingsSet: (instanceId: string, name: string, overrides: InstanceOverrides) => typedError<InstanceSettingsView, AppError>(__TAURI_INVOKE("instances_settings_set", { instanceId, name, overrides })),
-	/**  导出弹窗打开时：列出会导出什么（读文件、联网查一次 Modrinth，要一两秒）。 */
-	instancesExportPreview: (instanceId: string) => typedError<ExportPreview, AppError>(__TAURI_INVOKE("instances_export_preview", { instanceId })),
-	/**  导出整合包：先弹「另存为」，选好后在后台导出（任务中心有进度），返回任务 ID；用户关掉保存窗口时返回空。 */
-	instancesExport: (instanceId: string, options: ExportOptions) => typedError<string | null, AppError>(__TAURI_INVOKE("instances_export", { instanceId, options })),
+	/**  读取实例级笔记（`instances/<ID>/Lumi/notes.md`）。 */
+	instancesNotesGet: (instanceId: string) => typedError<string, AppError>(__TAURI_INVOKE("instances_notes_get", { instanceId })),
+	/**  原子保存实例级笔记（纯空白时删除文件），返回规范化后的内容。 */
+	instancesNotesSet: (instanceId: string, content: string) => typedError<string, AppError>(__TAURI_INVOKE("instances_notes_set", { instanceId, content })),
+	/**  导出弹窗打开时：纯本地快速扫描实例文件并缓存计划，立即返回预览，不阻塞界面。 */
+	instancesExportPreview: (instanceId: string) => typedError<ExportChoice, AppError>(__TAURI_INVOKE("instances_export_preview", { instanceId })),
+	/**  导出弹窗打开后在后台调用：异步并行匹配 Modrinth（SHA-1）与 CurseForge（MurmurHash2）外链。 */
+	instancesExportMatch: (token: string) => typedError<ExportMatchReport, AppError>(__TAURI_INVOKE("instances_export_match", { token })),
+	/**  关闭导出弹窗时释放缓存的扫描计划。 */
+	instancesExportDiscard: (token: string) => __TAURI_INVOKE<void>("instances_export_discard", { token }),
+	/**  导出整合包：先弹「另存为」，选好后在后台按指定格式导出（任务中心有进度），返回任务 ID；用户关掉保存窗口时返回空。 */
+	instancesExport: (instanceId: string, token: string | null, options: ExportOptions) => typedError<string | null, AppError>(__TAURI_INVOKE("instances_export", { instanceId, token, options })),
 	/**  导出完：在资源管理器里选中导出的文件。 */
 	instancesRevealExport: (jobId: string) => typedError<null, AppError>(__TAURI_INVOKE("instances_reveal_export", { jobId })),
 	/**  复制实例（后台任务，任务中心有进度）。 */
 	instancesCopy: (instanceId: string, name: string, includeWorlds: boolean) => typedError<CopyStarted, AppError>(__TAURI_INVOKE("instances_copy", { instanceId, name, includeWorlds })),
 	/**  把实例移到系统回收站（存档、模组、配置都在里面，回收站里还能找回来）。 */
 	instancesDelete: (instanceId: string) => typedError<null, AppError>(__TAURI_INVOKE("instances_delete", { instanceId })),
+	/**  给实例挑选本地自定义封面（PNG / JPG），保存在 `instances/<id>/Lumi/covers/`（关联实例也不改动原启动器目录）。 */
+	instancesCoverPick: (instanceId: string) => typedError<boolean, AppError>(__TAURI_INVOKE("instances_cover_pick", { instanceId })),
+	/**  切换实例默认微光矢量封面预设（`<徽章>:<色板>`）；同时清除手动上传的实例封面图。 */
+	instancesCoverSetPreset: (instanceId: string, preset: string | null) => typedError<null, AppError>(__TAURI_INVOKE("instances_cover_set_preset", { instanceId, preset })),
+	/**  清除实例自定义封面与预设，恢复默认自动封面。 */
+	instancesCoverClear: (instanceId: string) => typedError<null, AppError>(__TAURI_INVOKE("instances_cover_clear", { instanceId })),
+	/**  预检实例切换到目标游戏版本/加载器后的模组兼容性（支持传 `request_id` 中途取消）。 */
+	instancesUpgradePreview: (instanceId: string, gameVersion: string, loader: LoaderRef | null, requestId: string | null) => typedError<UpgradeChoice, AppError>(__TAURI_INVOKE("instances_upgrade_preview", { instanceId, gameVersion, loader, requestId })),
+	/**  取消正在进行中的版本兼容性预检请求。 */
+	instancesUpgradeCancelPreview: (requestId: string) => __TAURI_INVOKE<void>("instances_upgrade_cancel_preview", { requestId }),
+	/**  取消升级向导时释放已缓存的预检计划。 */
+	instancesUpgradeDiscard: (token: string) => __TAURI_INVOKE<void>("instances_upgrade_discard", { token }),
+	/**  启动实例版本切换 / 升级后台任务（支持原地事务升级与克隆后升级双模式）。 */
+	instancesUpgradeStart: (token: string, options: UpgradeOptions) => typedError<UpgradeStarted, AppError>(__TAURI_INVOKE("instances_upgrade_start", { token, options })),
 	/**  把实例挪到一个分组（`None` 或空名字是不分组）。 */
 	instancesSetGroup: (instanceId: string, group: string | null) => typedError<null, AppError>(__TAURI_INVOKE("instances_set_group", { instanceId, group })),
 	/**  置顶或取消置顶。 */
@@ -379,16 +435,26 @@ export const commands = {
 	windowShow: () => __TAURI_INVOKE<void>("window_show"),
 	accountsList: () => __TAURI_INVOKE<AccountsState>("accounts_list"),
 	accountsSkin: (accountId: string) => __TAURI_INVOKE<string | null>("accounts_skin", { accountId }),
+	accountsCapeTexture: (hash: string) => __TAURI_INVOKE<string | null>("accounts_cape_texture", { hash }),
 	accountsSelect: (accountId: string) => typedError<null, AppError>(__TAURI_INVOKE("accounts_select", { accountId })),
 	accountsRemove: (accountId: string) => typedError<AccountsState, AppError>(__TAURI_INVOKE("accounts_remove", { accountId })),
 	accountsFinishOnboarding: () => typedError<null, AppError>(__TAURI_INVOKE("accounts_finish_onboarding")),
 	accountsRestartOnboarding: () => typedError<null, AppError>(__TAURI_INVOKE("accounts_restart_onboarding")),
 	accountsMicrosoftLogin: () => typedError<AccountsState, AppError>(__TAURI_INVOKE("accounts_microsoft_login")),
+	accountsMicrosoftReopenBrowser: () => typedError<null, AppError>(__TAURI_INVOKE("accounts_microsoft_reopen_browser")),
+	accountsMicrosoftCopyUrl: () => typedError<null, AppError>(__TAURI_INVOKE("accounts_microsoft_copy_url")),
 	accountsMicrosoftCancel: () => __TAURI_INVOKE<boolean>("accounts_microsoft_cancel"),
+	accountsPrewarm: (accountId: string | null) => typedError<AccountHealthView, AppError>(__TAURI_INVOKE("accounts_prewarm", { accountId })),
+	accountsSkinRefresh: (accountId: string) => typedError<AccountsState, AppError>(__TAURI_INVOKE("accounts_skin_refresh", { accountId })),
+	accountsSkinUpload: (accountId: string, model: SkinModel | null) => typedError<AccountsState | null, AppError>(__TAURI_INVOKE("accounts_skin_upload", { accountId, model })),
+	accountsSkinReset: (accountId: string) => typedError<AccountsState, AppError>(__TAURI_INVOKE("accounts_skin_reset", { accountId })),
+	accountsCapeSet: (accountId: string, capeId: string | null) => typedError<AccountsState, AppError>(__TAURI_INVOKE("accounts_cape_set", { accountId, capeId })),
 };
 
 /** Events */
 export const events = {
+	accountHealthUpdated: makeEvent<AccountHealthUpdated, AccountHealthUpdated>("account-health-updated"),
+	authProgressUpdated: makeEvent<AuthProgressUpdated, AuthProgressUpdated>("auth-progress-updated"),
 	backupAsk: makeEvent<BackupAsk, BackupAsk>("backup-ask"),
 	claimUpdated: makeEvent<ClaimUpdated, ClaimUpdated>("claim-updated"),
 	fileDragHover: makeEvent<FileDragHover, FileDragHover>("file-drag-hover"),
@@ -401,10 +467,34 @@ export const events = {
 	launchRecordSaved: makeEvent<LaunchRecordSaved, LaunchRecordSaved>("launch-record-saved"),
 	sessionUpdated: makeEvent<SessionUpdated, SessionUpdated>("session-updated"),
 	shortcutPlay: makeEvent<ShortcutPlay, ShortcutPlay>("shortcut-play"),
+	transferTelemetryUpdated: makeEvent<TransferTelemetryUpdated, TransferTelemetryUpdated>("transfer-telemetry-updated"),
 	updateProgress: makeEvent<UpdateProgress, UpdateProgress>("update-progress"),
 };
 
 /* Types */
+export type AccountCape = {
+	id: string,
+	alias: string,
+	hash: string,
+	active: boolean,
+};
+
+export type AccountHealthStatus = "unknown" | "verifying" | "ready" | "needsRelogin" | "networkError";
+
+/**  账号在线会话预热/健康状态变化通知。 */
+export type AccountHealthUpdated = {
+	accountId: string,
+	status: AccountHealthStatus,
+	verifiedAtMs: number | null,
+	errorCode: string | null,
+};
+
+export type AccountHealthView = {
+	status: AccountHealthStatus,
+	verifiedAtMs: number | null,
+	errorCode: string | null,
+};
+
 export type AccountView = {
 	id: string,
 	name: string,
@@ -412,6 +502,7 @@ export type AccountView = {
 	hasSkin: boolean,
 	skinModel: SkinModel,
 	skinHash: string | null,
+	capes: AccountCape[],
 };
 
 export type AccountsState = {
@@ -419,7 +510,11 @@ export type AccountsState = {
 	accounts: AccountView[],
 	onboarding: boolean,
 	microsoftAvailable: boolean,
+	security: AuthSecurityInfo,
+	health: { [key in string]: AccountHealthView },
 };
+
+export type ActiveRouteKind = "direct" | "systemProxy" | "tunFakeIp" | "customProxy";
 
 /**  游戏启动后的启动器窗口行为 */
 export type AfterLaunchBehavior = 
@@ -444,6 +539,8 @@ export type AppInfo = {
 	backdrop: Backdrop,
 	/**  电脑总内存（MB），界面判断要不要自动用「流畅」画面效果；读不到为空 */
 	memoryMb: number | null,
+	/**  本构建是否包含 V1.1 社区合规加速特性（默认审核版为 `false`） */
+	communityMirrorsEnabled: boolean,
 };
 
 export type Appearance = {
@@ -463,6 +560,23 @@ export type Appearance = {
 	accentHue: number | null,
 	accentChroma: number | null,
 };
+
+/**  Microsoft 桌面登录当前所处阶段，供界面四阶段进度条实时更新。 */
+export type AuthProgressUpdated = {
+	stage: AuthStage,
+	expiresInSecs: number | null,
+};
+
+export type AuthSecurityInfo = {
+	vaultKind: VaultKind,
+	vaultPersistent: boolean,
+	pkceMethod: string,
+	responseMode: string,
+	sessionPipe: boolean,
+	callbackMode: string,
+};
+
+export type AuthStage = "waitingBrowser" | "exchangingToken" | "authenticatingXbox" | "authorizingXsts" | "verifyingMinecraft" | "syncingProfile";
 
 /**  供精选弹窗展示的一张自动封面；图片走启动器协议地址，不暴露路径。 */
 export type AutoCoverView = {
@@ -592,6 +706,9 @@ export type ClaimState =
 /**  补件的进度变了（认领了一个文件、拖错了、结束了……）。 */
 export type ClaimUpdated = ClaimSnapshot;
 
+/**  并发调度模式 */
+export type ConcurrencyMode = "auto" | "manual";
+
 /**  实例里的一项内容。 */
 export type ContentItem = {
 	kind: ContentKind,
@@ -668,17 +785,33 @@ export type Delivery =
 /**  只能由用户在浏览器里下载（补件） */
 "manual";
 
+/**  依赖关系引用的一个本地模组。 */
+export type DepRef = {
+	fileName: string,
+	title: string,
+	enabled: boolean,
+};
+
+/**  停用或卸载某个模组时，仍被其他已启用模组依赖的告警项。 */
+export type DependentWarning = {
+	targetFile: string,
+	targetTitle: string,
+	dependents: DepRef[],
+};
+
 export type Dimension = "overworld" | "nether" | "end";
 
-/**  「测试 DoH」按钮的一行结果 */
+/**  目标磁盘物理介质类型（SSD 可开启高并发与多段并发；HDD 强制 k=1 顺序写）。 */
+export type DiskMediaKind = "ssd" | "hdd" | "unknown";
+
+/**  并发磁盘写入调度模式 */
+export type DiskWriteMode = "auto" | "manual";
+
+/**  「测试 DoH」按钮的一行结果。 */
 export type DnsProbe = {
-	/**  「阿里 DoH」「Cloudflare DoH」「系统 DNS」 */
 	name: string,
-	/**  问到用了多少毫秒；没问到为空 */
 	ms: number | null,
-	/**  问到的地址（最多 3 个） */
 	addresses: string[],
-	/**  没问到的原因（中文） */
 	error: string | null,
 };
 
@@ -699,7 +832,28 @@ export type DownloadSettings = {
 	claimFolder: string | null,
 	/**  网络代理设置：跟随系统 / 直连 / 自定义 HTTP 或 SOCKS5 */
 	proxy: ProxySettings,
+	sourcePolicy?: DownloadSourcePolicy,
+	concurrencyMode?: ConcurrencyMode,
+	segmentMode?: SegmentMode,
+	maxSegmentsPerFile?: number,
+	diskWriteMode?: DiskWriteMode,
+	maxDiskWriters?: number,
+	/**  全局下载限速（KiB/s，0 = 不限速），TokenBucket 实时热生效 */
+	speedLimitKibPerSec?: number,
+	meteredPolicy?: MeteredPolicy,
+	meteredSpeedLimitKibPerSec?: number,
+	/**  零字节本地内容水合开关（仅强哈希文件生效，只读不改外部目录） */
+	localReuseEnabled?: boolean,
+	/**  可选自定义 RFC 8484 公网 HTTPS DoH 地址（受三道闸防 SSRF） */
+	customDohUrl?: string | null,
+	/**  用户自定义的公网 HTTPS 下载端点（受三道闸防 SSRF；仅在开启社区兼容编译特性时生效） */
+	customMirrorRoot?: string | null,
+	/**  Modrinth 官方连败应急回退开关（默认关；CurseForge 永远直连） */
+	modrinthFallbackMirror?: boolean,
 };
+
+/**  下载源策略（审核版固定为 `OfficialOnly`；V1.1 `community-mirrors` 启用后支持多源） */
+export type DownloadSourcePolicy = "officialOnly" | "auto" | "mirrorFirst";
 
 /**  拖进来的东西和这个实例对不对得上 */
 export type DropCheck = {
@@ -789,6 +943,8 @@ export type EndpointProbe = {
 	httpStatus: number | null,
 	latencyMs: number | null,
 	error: string | null,
+	httpVersion: string | null,
+	failureCause: RootCauseKind | null,
 };
 
 export type EndpointStatus = 
@@ -805,50 +961,80 @@ export type EnvVar = {
 	value: string,
 };
 
-export type ExportEntry = {
-	name: string,
+export type ExportChoice = {
+	/**  导出会话令牌（用于后台外链匹配、最终导出和关窗释放缓存） */
+	token: string,
+	preview: ExportPreview,
+};
+
+/**  导出整合包的目标格式。 */
+export type ExportFormat = 
+/**  Modrinth `.mrpack`（SHA-1/SHA-512 外链 + `overrides/`） */
+"modrinth" | 
+/**  CurseForge `.zip`（`manifest.json` + `modlist.html` + `overrides/`） */
+"curseForge" | 
+/**  MultiMC / Prism `.zip`（`mmc-pack.json` + `instance.cfg` + `patches/` + `.minecraft/`） */
+"multiMc" | 
+/**  完整离线包 `.zip`（无外链全量内嵌） */
+"fullOffline";
+
+/**  语义分类组（驱动默认层开关与隐私隔离）。 */
+export type ExportGroup = "mods" | "disabledMods" | "resourcePacks" | "shaderPacks" | "modConfigs" | "gameOptions" | "worlds" | "privacy" | "other";
+
+/**  供界面渲染的单条导出项（同时支撑「语义勾选」与「文件树微调」两层视图）。 */
+export type ExportItemView = {
+	key: string,
+	label: string,
+	group: ExportGroup,
 	folder: boolean,
 	size: number | null,
-	/**  默认勾不勾（地图缓存这类默认不勾） */
 	defaultOn: boolean,
+	disabled: boolean,
+	isContentFile: boolean,
+	modrinthLinked: boolean,
+	curseforgeLinked: boolean,
 };
 
-/**  用户在导出弹窗里选的。 */
+/**  后台异步双平台外链匹配结果。 */
+export type ExportMatchReport = {
+	modrinthLinked: string[],
+	curseforgeLinked: string[],
+	modrinthError: string | null,
+	curseforgeError: string | null,
+};
+
+/**  用户确认导出的完整参数。 */
 export type ExportOptions = {
+	format: ExportFormat,
 	name: string,
-	/**  整合包自己的版本号，例如 1.0.0 */
 	version: string,
+	author: string | null,
 	summary: string | null,
-	/**  带上第一层的哪几项（[`ExportEntry::name`]） */
-	entries: string[],
-	/**  带上哪几个世界（存档文件夹名） */
-	worlds: string[],
+	recommendedMemoryMb: number | null,
+	/**  勾选要包含的节点键列表（对应 [`ExportItemView::key`]） */
+	selectedKeys: string[],
 };
 
-/**  给界面看的导出预览。 */
+/**  本地快速扫描后立即返回给界面的预览数据。 */
 export type ExportPreview = {
-	/**  默认的整合包名（实例名） */
 	name: string,
 	gameVersion: string,
 	/**  例如「NeoForge 21.1.265」；原版为空 */
 	loader: string | null,
-	/**  从 Modrinth 下载（清单里只写地址）的文件数 */
-	linked: number,
-	/**  Modrinth 上没有、要直接打包进去的内容（文件名，按名字排） */
-	bundled: string[],
-	/**  直接打包的内容一共多大 */
-	bundledBytes: number | null,
-	/**  其中停用的模组数（也会带上，导入后还是停用） */
-	disabled: number,
-	/**  别的文件，按第一层的名字 */
-	entries: ExportEntry[],
-	worlds: ExportWorld[],
+	recommendedMemoryMb: number | null,
+	patchCount: number,
+	hasNotes: boolean,
+	curseforgeAvailable: boolean,
+	items: ExportItemView[],
 };
 
-export type ExportWorld = {
-	folder: string,
-	name: string,
-	size: number | null,
+export type FailureDiagnosis = {
+	cause: RootCauseKind,
+	host: string | null,
+	summary: string,
+	explanation: string,
+	primaryFix: QuickFixAction,
+	secondaryFix: QuickFixAction | null,
 };
 
 export type Favorite = {
@@ -984,6 +1170,16 @@ export type GameState =
 /**  崩溃退出 */
 { kind: "crashed"; code: number | null; crash_report: string | null };
 
+export type GameVersionCategory = "release" | "snapshot" | "aprilFools" | "ancient";
+
+export type GameVersionEntry = {
+	id: string,
+	category: GameVersionCategory,
+	releaseTime: string,
+	isLatestRelease: boolean,
+	isLatestSnapshot: boolean,
+};
+
 /**  垃圾回收预设。用户自己在 JVM 参数里写了垃圾回收器时，预设不加（两个会冲突，Java 直接起不来）。 */
 export type GcPreset = 
 /**  G1，参数和官方启动器一样（所有 Java 版本都能用） */
@@ -1033,6 +1229,9 @@ export type ImageKind =
 /**  自己给这个世界选的图 */
 "custom";
 
+/**  即将对模组执行的变更类型。 */
+export type ImpactAction = "disable" | "remove";
+
 /**  实例单独的设置。字段为空 = 这一组跟全局。 */
 export type InstanceOverrides = {
 	memory: MemoryOverride | null,
@@ -1072,6 +1271,16 @@ export type InstanceSummary = {
 	loader: string | null,
 	/**  来自哪个整合包 */
 	pack: string | null,
+	/**  当前安装的整合包版本号 */
+	packVersion: string | null,
+	/**  若来自在线整合包平台（Modrinth / CurseForge 且带 project_id），标识其平台 */
+	packSource: ContentSource | null,
+	/**  整合包在平台上的项目 ID（在线一键检查更新用） */
+	packProjectId: string | null,
+	/**  整合包在平台上的当前版本 ID */
+	packVersionId: string | null,
+	/**  是否存在可一键无损回滚的整合包更新记录 */
+	packRollback: PackRollbackSummary | null,
 	createdAt: number | null,
 	lastPlayed: number | null,
 	/**  实例库里的分组；没分组为空 */
@@ -1080,6 +1289,12 @@ export type InstanceSummary = {
 	pinnedAt: number | null,
 	/**  挂上的别家版本：是哪家的；本启动器自己的实例为空 */
 	linked: Launcher | null,
+	/**  实例级自定义封面（或整合包官方封面/图标 URL）；无自定义且非整合包时为空 */
+	coverUrl: string | null,
+	/**  实例级自定义封面的显示方式 */
+	coverFit: ImageFit,
+	/**  默认微光矢量封面预设（`<徽章>:<色板>`）；为空则按实例自动分配 */
+	coverPreset: string | null,
 };
 
 /**  单个实例相对共享库的差异摘要 */
@@ -1186,6 +1401,14 @@ export type JobSnapshot = {
 	retryable: boolean,
 	/**  有几个文件第一个候选地址下不下来、换了备用地址才下好 */
 	fallbacks: number,
+	/**  失败的文件数量（供「仅重试失败 (N)」使用） */
+	failedCount?: number,
+	/**  本地水合或同盘硬链接复用的字节数 */
+	reusedBytes?: number | null,
+	/**  本地水合或同盘硬链接复用的文件数 */
+	reusedFiles?: number,
+	/**  结构化六层根因诊断（供驾驶舱一键自愈卡片显示） */
+	diagnosis?: FailureDiagnosis | null,
 };
 
 /**  任务从哪下载东西（下载历史按它筛选） */
@@ -1195,7 +1418,7 @@ export type JobSource =
 /**  本地文件：拖进来的、导入的整合包、世界备份、导出、复制实例 */
 "local" | "other";
 
-export type JobState = "running" | "succeeded" | "failed" | "cancelled" | 
+export type JobState = "running" | "paused" | "succeeded" | "failed" | "cancelled" | 
 /**  启动器关掉时还没做完（只出现在以前的历史里） */
 "interrupted";
 
@@ -1314,7 +1537,7 @@ export type LinkedRootView = {
 	hidden: number,
 };
 
-export type LoaderKind = "neoforge" | "fabric" | "forge" | "quilt";
+export type LoaderKind = "neoforge" | "fabric" | "forge" | "quilt" | "legacyfabric" | "babric";
 
 export type LoaderRef = {
 	kind: LoaderKind,
@@ -1400,6 +1623,24 @@ export type MemoryStatus = {
 	autoMaxMb: number,
 };
 
+/**  计费网络保护策略 */
+export type MeteredPolicy = "warn" | "throttle" | "allow";
+
+/**  单个模组在实例中的正/反向依赖信息。 */
+export type ModDepInfo = {
+	/**  哪些本地模组依赖它 */
+	requiredBy: DepRef[],
+	/**  它依赖哪些本地模组 */
+	requires: DepRef[],
+	/**  是否由启动器作为依赖自动安装 */
+	autoDependency: boolean,
+};
+
+/**  整个实例的模组反向依赖图（键为启用态文件名 `file_name`）。 */
+export type ModDepsGraph = {
+	items: { [key in string]: ModDepInfo },
+};
+
 /**  模组和实例对不对得上。 */
 export type ModFit = { kind: "fits" } | 
 /**  实例是原版，装不了模组 */
@@ -1408,6 +1649,48 @@ export type ModFit = { kind: "fits" } |
 { kind: "wrongLoader"; needs: string[] } | 
 /**  游戏版本对不上（这个模组支持的最新几个版本） */
 { kind: "wrongGame"; supports: string[] };
+
+/**  停用或卸载模组前的依赖影响分析报告。 */
+export type ModImpactReport = {
+	dependentWarnings: DependentWarning[],
+	orphans: OrphanDep[],
+};
+
+/**  用户对单条模组的处理动作（支持在预检页逐条覆写默认策略）。 */
+export type ModUpgradeAction = 
+/**  升级到适配目标版本的新版 */
+"upgrade" | 
+/**  保持当前文件不动 */
+"keep" | 
+/**  停用（重命名为 `.disabled`） */
+"disable";
+
+export type ModUpgradeItem = {
+	fileName: string,
+	title: string,
+	titleZh: string | null,
+	iconUrl: string | null,
+	pageUrl: string | null,
+	currentVersion: string | null,
+	targetVersion: string | null,
+	status: ModUpgradeStatus,
+	delivery: Delivery | null,
+};
+
+/**  单个模组在目标版本/加载器下的兼容状态。 */
+export type ModUpgradeStatus = 
+/**  已兼容目标版本，保持原样 */
+"compatible" | 
+/**  平台有适配目标版本的新版，可自动升级 */
+"upgradable" | 
+/**  目标为原版或平台未找到适配版本（建议自动停用） */
+"incompatible" | 
+/**  已锁定版本（跳过自动升级） */
+"locked" | 
+/**  未识别来源的本地模组（建议升级后人工核对） */
+"unknown" | 
+/**  原本即已停用 */
+"disabled";
 
 /**  中文搜索的一个结果 */
 export type NameMatch = {
@@ -1467,6 +1750,18 @@ export type OptionsSyncCategories = {
 	accessibility: boolean,
 };
 
+/**  卸载目标模组后失去全部依赖方的孤儿前置候选。 */
+export type OrphanDep = {
+	fileName: string,
+	title: string,
+	version: string | null,
+	size: number | null,
+	/**  为 true 表示当初由启动器作为前置自动安装，弹窗默认勾选清理 */
+	autoDependency: boolean,
+	/**  原本依赖它的被删模组名列表（便于向用户说明为什么它变成孤儿） */
+	freedBy: string[],
+};
+
 export type PackChoice = {
 	/**  一次性的令牌，确认导入时传回来 */
 	token: string,
@@ -1475,12 +1770,41 @@ export type PackChoice = {
 	readiness: PackReadiness,
 };
 
+/**  单条三方比对差异项。 */
+export type PackDiffItem = {
+	path: string,
+	kind: PackDiffKind,
+	category: PackFileCategory,
+	/**  该项在新版中存在更新版本（用于 `PlayerModified` 勾选覆盖时判断是否会被覆盖） */
+	hasTarget: boolean,
+	/**  CurseForge 作者禁止第三方下载、需手动补件 */
+	manual: boolean,
+};
+
+/**  文件在三方比对中的分类。 */
+export type PackDiffKind = 
+/**  新版整合包新增的文件 */
+"added" | 
+/**  旧基线文件未改过且新版已更新 */
+"updated" | 
+/**  旧基线文件未改过且新版已移除 */
+"removed" | 
+/**  玩家自加的模组/材质/光影（原样保留） */
+"playerAdded" | 
+/**  玩家修改过的配置或文件（默认保留，可选覆盖） */
+"playerModified";
+
+/**  文件所属内容类别，便于前端分组与图标展示。 */
+export type PackFileCategory = "mod" | "resourcePack" | "shader" | "config" | "other";
+
 /**  整合包格式。 */
 export type PackFormat = 
 /**  `.mrpack` */
 "modrinth" | 
 /**  `.zip`，里面有 `manifest.json` */
-"curseForge";
+"curseForge" | 
+/**  `.zip`，里面有 `mmc-pack.json`（MultiMC / Prism Launcher 实例包） */
+"multiMc";
 
 /**  导入前给用户看的信息。 */
 export type PackPreview = {
@@ -1506,6 +1830,12 @@ export type PackPreview = {
 	fromModrinth: number,
 	/**  作者推荐的内存（MB）：CurseForge 整合包的清单里有，Modrinth 整合包没有这个字段 */
 	recommendedMemoryMb: number | null,
+	/**  MultiMC / Prism 整合包含有的底层补丁数（`patches/*.json`） */
+	patchCount: number,
+	/**  补丁可读名称列表（供导入预览展示） */
+	patchNames: string[],
+	/**  补丁显式声明的兼容 Java 主版本列表（如 GTNH 声明 `[17, 21]`） */
+	javaMajors: number[],
 };
 
 /**  导入前的准备情况。 */
@@ -1520,17 +1850,83 @@ export type PackReadiness = {
 	javaFound: string | null,
 };
 
+/**  回滚结果摘要。 */
+export type PackRollbackOutcome = {
+	instanceId: string,
+	restoredVersion: string,
+	revertedFrom: string,
+	restoredFiles: number,
+	removedFiles: number,
+};
+
+/**  供界面展示的回滚摘要信息。 */
+export type PackRollbackSummary = {
+	fromVersion: string,
+	toVersion: string,
+	createdAt: number | null,
+};
+
+export type PackUpdateChoice = {
+	/**  一次性令牌，确认执行更新时传回 */
+	token: string,
+	preview: PackUpdatePreview,
+};
+
+/**  更新执行选项。 */
+export type PackUpdateOptions = {
+	/**  是否覆盖玩家改过的配置文件（默认 false，保留玩家修改） */
+	overwriteModifiedConfigs?: boolean,
+};
+
+/**  更新预览（展示给玩家确认）。 */
+export type PackUpdatePreview = {
+	instanceId: string,
+	instanceName: string,
+	packName: string,
+	format: PackFormat,
+	currentPackVersion: string | null,
+	targetPackVersion: string,
+	currentGameVersion: string,
+	targetGameVersion: string,
+	currentLoader: LoaderRef | null,
+	targetLoader: LoaderRef | null,
+	changelog: string | null,
+	changelogFormat: BodyFormat,
+	addedCount: number,
+	updatedCount: number,
+	removedCount: number,
+	unchangedCount: number,
+	playerAddedCount: number,
+	playerModifiedCount: number,
+	manualFiles: ManualFile[],
+	downloadBytes: number | null,
+	hasOriginBaseline: boolean,
+	mcVersionChanged: boolean,
+	loaderChanged: boolean,
+	isDowngrade: boolean,
+	hasWorlds: boolean,
+	items: PackDiffItem[],
+};
+
 /**  整合包的一个可装版本。 */
 export type PackVersion = {
 	id: string,
 	versionNumber: string,
 	gameVersions: string[],
+	/**  该版本使用的加载器（如 `["Fabric"]`、`["NeoForge"]`；未标明时为空） */
+	loaders: string[],
 	/**  正式版（不是测试版） */
 	release: boolean,
 	/**  `.mrpack` 文件本身的大小（不含要下载的模组） */
 	size: number | null,
 	/**  默认选它：最新的正式版，没有正式版就是最新的 */
 	recommended: boolean,
+	/**  发布时间（ISO 8601） */
+	published: string | null,
+	/**  更新日志（Modrinth 直接携带 Markdown；CurseForge 需懒加载 HTML） */
+	changelog: string | null,
+	/**  更新日志格式（Markdown / HTML） */
+	changelogFormat: BodyFormat,
 };
 
 /**  一个坐标（基地、矿洞、村庄……） */
@@ -1705,6 +2101,23 @@ export type ProxySettings = {
 	port: number,
 };
 
+export type ProxyTestResult = {
+	ok: boolean,
+	latencyMs: number | null,
+	httpStatus: number | null,
+	error: string | null,
+};
+
+export type QuickFixAction = "enableDohAndRetry" | "switchOfficialCdnAndRetry" | "enableMirrorFallbackRetry" | "switchDirectAndRetry" | "lowerDiskPressureAndRetry" | "lowerConcurrencyAndRetry" | "openDateTimeSettings" | "openStorageClean" | "openProxySettings" | "openDiagnostics";
+
+export type QuickFixResult = {
+	applied: boolean,
+	message: string,
+	openSettingsSection: string | null,
+	focusSettingId: string | null,
+	retriedJobId: string | null,
+};
+
 /**  直接进的世界或服务器 */
 export type QuickPlayRecord = { kind: "world"; folder: string } | { kind: "server"; address: string };
 
@@ -1767,6 +2180,8 @@ export type RollbackOffer = {
 	changes: OfferChange[],
 };
 
+export type RootCauseKind = "proxyUnreachable" | "fakeIpStale" | "dnsPoisoned" | "sniBlocked" | "clockSkewCert" | "rateLimited429" | "integrityMismatch" | "diskLockedOrFull" | "authDenied" | "timeoutOrReset" | "unknown";
+
 /**  实例的一张截图：图片换成启动器图片协议的地址，不给路径。 */
 export type ScreenshotView = {
 	url: string,
@@ -1791,6 +2206,9 @@ export type SearchSort =
 "updated" | 
 /**  最新发布（项目创建时间） */
 "newest";
+
+/**  大文件分段模式 */
+export type SegmentMode = "auto" | "aggressive" | "off";
 
 export type ServerEntryView = {
 	name: string,
@@ -1967,12 +2385,109 @@ export type SyncStrategy =
 /**  从指定实例采集设置与服务器更新共享库，再同步给其余参与实例 */
 "pullFromInstance";
 
+export type TelemetryEvent = {
+	atMs: number | null,
+	kind: TelemetryEventKind,
+	/**  已脱敏简短中文事件，绝不含本机路径与凭据 */
+	message: string,
+};
+
+export type TelemetryEventKind = "routeSwitched" | "rampUp" | "rampRollback" | "workStolen" | "sourceFallback" | "sniBypass" | "diskBackpressure" | "watchdogRecovery" | "rateLimitCooldown" | "localReused";
+
 export type ThemeMode = "system" | "light" | "dark";
+
+export type TimelineEntry = { kind: "snapshot"; id: string; at: number | null; trigger: TimelineTrigger; summary: string; 
+/**  该状态经过进世界正常退出验证 */
+verified: boolean; 
+/**  是否是最近一次「上次已验证可玩」节点（绿色主徽章） */
+isLatestVerified: boolean; 
+/**  是否为当前实例所处的状态（时间轴最新且内容一致） */
+isCurrent: boolean; 
+/**  内容是否与当前磁盘状态完全一致（用于历史同态节点防呆禁点） */
+sameAsCurrent: boolean; 
+/**  该节点记录时的 Minecraft 版本（老节点可能为空） */
+gameVersion: string | null; 
+/**  该节点所属 Minecraft 版本与当前实例不同（恢复时仅动模组/光影/资源包，不改游戏版本） */
+versionMismatch: boolean; 
+/**  该节点之后紧接着发生过崩溃或启动失败（红色警告标记） */
+crashedAfter: boolean; 
+/**  该节点包含的内容文件总数（模组 + 光影 + 资源包） */
+fileCount: number; 
+/**  相对上一个时间线节点的详细改动列表 */
+changes: OfferChange[]; 
+/**  该节点是否可以直接一键恢复（所需文件均在本地或内容仓库中） */
+restorable: boolean } | { kind: "launch"; recordId: string; at: number | null; endedAt: number | null; outcome: LaunchOutcome; reachedWorld: boolean; exitCode: number | null; gameVersion: string; loader: string | null; modCount: number; hasCrashReport: boolean; error: string | null; 
+/**  该次启动属于「改动后崩溃」（红色徽章） */
+crashedAfterChange: boolean; 
+/**  该次启动属于「已验证可玩」（绿色徽章） */
+verifiedPlay: boolean };
+
+export type TimelineTrigger = 
+/**  首次改动前自动记录的基线状态 */
+"initial" | 
+/**  安装 / 更新 / 切换版本 / 删除 / 启停 / 撤销等改动后的状态 */
+"change" | 
+/**  游戏进过世界并正常退出验证可玩的状态 */
+"verifiedPlay" | 
+/**  恢复任意历史节点前自动为当前态保存的保护节点（永不丢状态） */
+"beforeRestore" | 
+/**  恢复到某个历史节点后形成的状态 */
+"restored";
+
+/**  给界面渲染的完整时间线视图（快照节点 + 启动记录按时间倒序融合）。 */
+export type TimelineView = {
+	/**  融合后的时间线条目（最新的在前） */
+	entries: TimelineEntry[],
+	/**  最近一次「已验证可玩」的快照节点 ID（供顶部一键回退横幅使用） */
+	latestVerifiedId: string | null,
+	/**  当前磁盘状态与最新快照不一致（例如用户在文件夹里手动增删了模组） */
+	hasUnsavedChanges: boolean,
+	/**  相对最近一次「已验证可玩」节点是否存在未验证的改动 */
+	changedSinceVerified: boolean,
+};
 
 export type Todo = {
 	text: string,
 	done?: boolean,
 };
+
+export type TransferTelemetry = {
+	seq: number,
+	timestampMs: number | null,
+	/**  仅计真从网卡收到的字节（B/s） */
+	speedBytesPerSec: number | null,
+	routeKind: ActiveRouteKind,
+	routeLabel: string,
+	proxyEpoch: number,
+	protocol: TransportProtocol,
+	activeConnections: number,
+	maxConnections: number,
+	activeH2Streams: number,
+	activeH1Segments: number,
+	memBufferUsedBytes: number | null,
+	diskKind: DiskMediaKind,
+	diskWritersActive: number,
+	diskWritersLimit: number,
+	diskQueueDepth: number,
+	diskWriteEwmaMs: number | null,
+	/**  本地零字节水合 / 同盘硬链接节省流量 */
+	reusedBytes: number | null,
+	reusedFiles: number,
+	workSteals: number,
+	fallbacks: number,
+	metered: boolean,
+	meteredThrottled: boolean,
+	effectiveSpeedLimitKib: number,
+	recentEvents: TelemetryEvent[],
+	activeDiagnosis: FailureDiagnosis | null,
+	/**  当前运行态 DoH 简要摘要（如 "阿里 DoH 32ms"），供设置页状态条展示 */
+	dohSummary: string | null,
+};
+
+/**  10 Hz 独立实时传输遥测事件（仅在有活跃传输或任务时推送，空闲时 0 Hz 零唤醒）。 */
+export type TransferTelemetryUpdated = TransferTelemetry;
+
+export type TransportProtocol = "idle" | "h2" | "h1Segmented" | "mixed";
 
 /**  未被任何实例引用的闲置游戏版本目录 */
 export type UnusedVersion = {
@@ -2026,6 +2541,87 @@ export type UpdateProgress = {
 	downloaded: number | null,
 	total: number | null,
 };
+
+export type UpgradeChoice = {
+	/**  一次性令牌，确认执行升级时传回 */
+	token: string,
+	preview: UpgradePreview,
+};
+
+export type UpgradeCounts = {
+	compatible: number,
+	upgradable: number,
+	incompatible: number,
+	locked: number,
+	unknown: number,
+	disabled: number,
+};
+
+/**  升级模式。 */
+export type UpgradeMode = 
+/**  原地切换（升级前自动打快照，模组改动进改动历史可撤销） */
+"inPlace" | 
+/**  先克隆副本再升级，原实例保持不变 */
+"clone";
+
+/**  执行升级时的用户选项。 */
+export type UpgradeOptions = {
+	mode: UpgradeMode,
+	/**  仅 `Clone` 模式使用；留空则自动生成名称 */
+	cloneName: string | null,
+	/**  仅 `InPlace` 模式使用；若非空则同步更新实例显示名（如自动把名称里的旧版本号替换为新版本） */
+	newName?: string | null,
+	/**  仅 `Clone` 模式使用；是否一并复制世界存档 */
+	includeWorlds: boolean,
+	/**  是否默认将可升级模组升级至适配目标版本的最新版 */
+	updateMods: boolean,
+	/**  是否默认停用不兼容模组 */
+	disableIncompatible: boolean,
+	/**  升级模组后是否自动解析并补装新版模组新增的必需前置依赖 */
+	installDependencies?: boolean,
+	/**  用户在预检列表里对单条模组手动覆写的动作（键为 `file_name`） */
+	modActions?: { [key in string]: ModUpgradeAction },
+};
+
+/**  给前端展示的兼容性预检结果。 */
+export type UpgradePreview = {
+	instanceId: string,
+	instanceName: string,
+	currentGameVersion: string,
+	currentLoader: LoaderRef | null,
+	targetGameVersion: string,
+	targetLoader: LoaderRef | null,
+	sameGameVersion: boolean,
+	sameLoaderKind: boolean,
+	/**  平台查询是否失败（失败时无法准确给出可升级清单，但仍允许继续切换） */
+	lookupFailed: boolean,
+	/**  可升级模组中，属于 CurseForge 作者禁止第三方下载、需通过补件认领的数量 */
+	manualCount: number,
+	/**  当前实例是否带有 MultiMC / Prism 自定义运行库/参数补丁（`Lumi/patches.json`） */
+	hasPatches: boolean,
+	/**  补丁显示名列表（供风险提示展示） */
+	patchNames: string[],
+	/**  目标 Minecraft 版本是否低于当前版本（存在原位打开高版本存档毁档风险） */
+	isDowngrade: boolean,
+	/**  当前实例是否设置了自定义 Java 覆盖且正在切换 Minecraft 版本 */
+	hasCustomJava: boolean,
+	/**  若实例来自受管整合包，给出原整合包名称（手动切版本将脱离原包更新线） */
+	managedPackName: string | null,
+	/**  是否为外部启动器关联实例（仅支持复制为新 Lumi 实例后升级，绝不改动原启动器目录） */
+	isLinked: boolean,
+	/**  实例当前是否包含单人世界存档（跨版本升级时提示世界格式不可逆迁移） */
+	hasWorlds: boolean,
+	counts: UpgradeCounts,
+	mods: ModUpgradeItem[],
+};
+
+export type UpgradeStarted = {
+	jobId: string,
+	/**  目标实例 ID（原地模式为原 ID，克隆模式为预分配的新 ID） */
+	instanceId: string,
+};
+
+export type VaultKind = "windowsCredentialManager" | "memoryOnly";
 
 /**  游戏窗口一开始多大。 */
 export type WindowMode = 

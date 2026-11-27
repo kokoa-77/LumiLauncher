@@ -408,3 +408,77 @@ async fn progress_reaches_the_total() {
     assert_eq!(p.done_bytes, 100_000, "续传不能把字节重复计算");
     assert_eq!(p.total_bytes, 100_000);
 }
+
+#[tokio::test]
+async fn rejects_html_hijack_and_unhashed_truncated_jar() {
+    let html_server = start_server(vec![(
+        "/hijack.jar",
+        Behavior::Serve(b"<!DOCTYPE html><html><body>blocked</body></html>".to_vec()),
+    )])
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let item = DownloadItem {
+        urls: vec![html_server.url("/hijack.jar")],
+        path: dir.path().join("mod.jar"),
+        sha1: None,
+        size: None,
+    };
+    let err = downloader()
+        .download_all(&[item], &CancellationToken::new(), |_| {})
+        .await
+        .unwrap_err();
+    match err {
+        DownloadError::Failed(failures) => {
+            assert!(failures[0].is_integrity_mismatch());
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+
+    // 截断的无哈希 JAR 也必须在结构验尸中被拦截
+    let partial_zip = b"PK\x03\x04\x14\x00\x00\x00\x08\x00truncated_jar_no_eocd".to_vec();
+    let bad_jar_server = start_server(vec![("/cut.jar", Behavior::Serve(partial_zip))]).await;
+    let err2 = downloader()
+        .download_all(
+            &[DownloadItem {
+                urls: vec![bad_jar_server.url("/cut.jar")],
+                path: dir.path().join("cut.jar"),
+                sha1: None,
+                size: None,
+            }],
+            &CancellationToken::new(),
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err2, DownloadError::Failed(_)));
+}
+
+#[tokio::test]
+async fn ram_fast_path_spills_over_1_mib_to_disk_cleanly() {
+    let payload = body(1_350_000, 11);
+    let expected_sha1 = sha1_of(&payload).await;
+    let server = start_server(vec![(
+        "/large_unknown.jar",
+        Behavior::Serve(payload.clone()),
+    )])
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("large_unknown.jar");
+
+    downloader()
+        .download_all(
+            &[DownloadItem {
+                urls: vec![server.url("/large_unknown.jar")],
+                path: target.clone(),
+                sha1: Some(expected_sha1),
+                size: None, // 未知大小触发 RAM 快车道 -> >1 MiB 无缝溢出到磁盘
+            }],
+            &CancellationToken::new(),
+            |_| {},
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(std::fs::read(&target).unwrap(), payload);
+    assert!(no_part_files(dir.path()));
+}

@@ -24,6 +24,8 @@ pub struct AppInfo {
     pub backdrop: Backdrop,
     /// 电脑总内存（MB），界面判断要不要自动用「流畅」画面效果；读不到为空
     pub memory_mb: Option<u32>,
+    /// 本构建是否包含 V1.1 社区合规加速特性（默认审核版为 `false`）
+    pub community_mirrors_enabled: bool,
 }
 
 #[tauri::command]
@@ -37,6 +39,7 @@ pub fn app_info(app: AppHandle, state: State<'_, AppState>) -> AppInfo {
             .unwrap_or_else(std::sync::PoisonError::into_inner),
         memory_mb: launcher_core::launch::memory::system_memory()
             .map(|m| u32::try_from(m.total_mb).unwrap_or(u32::MAX)),
+        community_mirrors_enabled: cfg!(feature = "community-mirrors"),
     }
 }
 
@@ -94,7 +97,11 @@ pub fn settings_get(state: State<'_, AppState>) -> Settings {
 /// 保存整份设置，返回规范化后的结果（越界的值会被拉回合法范围）。
 #[tauri::command]
 #[specta::specta]
-pub fn settings_set(state: State<'_, AppState>, settings: Settings) -> Result<Settings, AppError> {
+pub fn settings_set(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    settings: Settings,
+) -> Result<Settings, AppError> {
     let prev = state.settings.get();
     let gpu_was_on = prev.game.high_performance_gpu;
     let normalized = settings.normalized();
@@ -108,7 +115,16 @@ pub fn settings_set(state: State<'_, AppState>, settings: Settings) -> Result<Se
         })?;
     }
     let saved = state.settings.set(normalized)?;
-    state.doh.set_enabled(saved.download.doh_enabled);
+    if saved.game.directory != prev.game.directory {
+        state
+            .engine
+            .set_game_root(state.game().root().to_path_buf(), state.linked.root_paths());
+    }
+    state.apply_download_settings(&saved.download);
+    crate::events::emit(
+        &app,
+        crate::events::TransferTelemetryUpdated(state.engine.runtime_telemetry()),
+    );
     // 关掉「高性能显卡」：撤回我们写过的 Windows 显卡设置
     if gpu_was_on && !saved.game.high_performance_gpu {
         crate::system::undo_gpu(&state);
@@ -156,13 +172,14 @@ pub async fn settings_import(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<Settings>, AppError> {
+    let app_dialog = app.clone();
     let picked = tauri::async_runtime::spawn_blocking(move || {
-        let mut dialog = app
+        let mut dialog = app_dialog
             .dialog()
             .file()
             .set_title("导入 Lumi 偏好设置")
             .add_filter("JSON 文件", &["json"]);
-        if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        if let Some(window) = app_dialog.get_webview_window(MAIN_WINDOW) {
             dialog = dialog.set_parent(&window);
         }
         dialog.blocking_pick_file()
@@ -195,7 +212,11 @@ pub async fn settings_import(
         })?;
     }
     let saved = state.settings.set(imported)?;
-    state.doh.set_enabled(saved.download.doh_enabled);
+    state.apply_download_settings(&saved.download);
+    crate::events::emit(
+        &app,
+        crate::events::TransferTelemetryUpdated(state.engine.runtime_telemetry()),
+    );
     Ok(Some(saved))
 }
 

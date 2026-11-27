@@ -34,14 +34,36 @@ pub async fn readiness(
     preview: &PackPreview,
     javas: &[JavaInstall],
 ) -> PackReadiness {
-    for_game(
+    let mut ready = for_game(
         game,
         client,
         &preview.game_version,
         preview.loader.as_ref(),
         javas,
     )
-    .await
+    .await;
+    // 若 MultiMC/Prism 补丁显式声明了兼容 Java（如 GTNH 1.7.10 要求 Java 17–25），以补丁声明为准
+    if !preview.java_majors.is_empty() {
+        let preferred = crate::meta::patches::preferred_java_major(&preview.java_majors);
+        ready.java_required = preferred;
+        ready.java_found = preview
+            .java_majors
+            .iter()
+            .copied()
+            .find_map(|major| java::select(javas, major))
+            .or_else(|| preferred.and_then(|req| java::select(javas, req)))
+            .map(|j| j.version.clone());
+    }
+    // 加载器由包内 patches 直接提供时（例如 1.7.10 Forge），无需单独跑加载器安装器
+    if preview.patch_count > 0
+        && preview
+            .loader
+            .as_ref()
+            .is_some_and(|l| !l.kind.installable_for(&preview.game_version))
+    {
+        ready.loader_installed = true;
+    }
+    ready
 }
 
 /// 只知道游戏版本（和加载器）时的准备情况：在线安装时，整合包还没下载就能先告诉用户缺不缺 Java。
@@ -98,6 +120,9 @@ mod tests {
             manual_files: Vec::new(),
             from_modrinth: 0,
             recommended_memory_mb: None,
+            patch_count: 0,
+            patch_names: Vec::new(),
+            java_majors: Vec::new(),
         }
     }
 

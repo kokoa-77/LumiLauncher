@@ -35,10 +35,13 @@ export function canRetry(job: Pick<JobSnapshot, "state" | "retryable">): boolean
   );
 }
 
-/** 状态的颜色（docs/DESIGN.md 第 5 节的颜色角色）：做完了是主色，失败是红色，取消、中断、进行中是灰色 */
-export function stateTone(state: JobState): "text-accent" | "text-danger" | "text-fg-muted" {
+/** 状态的颜色（docs/DESIGN.md 第 5 节的颜色角色）：做完了是主色，失败是红色，暂停是警告色，取消、中断、进行中是灰色 */
+export function stateTone(
+  state: JobState,
+): "text-accent" | "text-danger" | "text-warning" | "text-fg-muted" {
   if (state === "succeeded") return "text-accent";
   if (state === "failed") return "text-danger";
+  if (state === "paused") return "text-warning";
   return "text-fg-muted";
 }
 
@@ -57,11 +60,11 @@ export function jobAmount(progress: JobProgress, t: TFunction): string | null {
   return t("tasks.items", { done: done ?? 0, total });
 }
 
-/** 进行中的任务优先留在面板里，已经结束的按时间补齐。 */
+/** 进行中或已暂停的任务优先留在面板里，已经结束的按时间补齐。 */
 export function recentDownloadJobs(jobs: JobSnapshot[], limit: number) {
   const ordered = [...jobs].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
-  const running = ordered.filter((job) => job.state === "running");
-  const finished = ordered.filter((job) => job.state !== "running");
+  const running = ordered.filter((job) => job.state === "running" || job.state === "paused");
+  const finished = ordered.filter((job) => job.state !== "running" && job.state !== "paused");
   return { running, visible: [...running, ...finished].slice(0, limit) };
 }
 
@@ -104,7 +107,7 @@ export function formatClock(ms: number): string {
 export interface JobFilter {
   query: string;
   source: JobSource | "all";
-  state: Exclude<JobState, "running"> | "all";
+  state: Exclude<JobState, "running" | "paused"> | "all";
 }
 
 /**

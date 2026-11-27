@@ -3,11 +3,12 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { unwrap } from "@/lib/api";
 import { commands, type RollbackOffer } from "@/lib/bindings";
+import { formatDateTime } from "@/lib/format";
 import { logError, reportError } from "@/lib/report";
 import { playLumiSound } from "@/lib/sound";
+import { router } from "@/router";
 import { useGameStore } from "@/stores/game";
 import { SpotArt } from "./art/SpotArt";
-import { formatTime } from "./HistoryDialog";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { HoverHint } from "./ui/HoverCard";
@@ -90,6 +91,22 @@ export function CrashRollbackDialog() {
       title={t(offer?.verified ? "safety.titleVerified" : "safety.title")}
       footer={
         <>
+          {pending && (
+            <Button
+              variant="ghost"
+              disabled={busy}
+              className="mr-auto"
+              onClick={() => {
+                const targetId = pending.instanceId;
+                setPending(null);
+                void router.navigate(
+                  `/instances/${encodeURIComponent(targetId)}?tab=content&timeline=1`,
+                );
+              }}
+            >
+              {t("safety.openTimeline")}
+            </Button>
+          )}
           <Button variant="ghost" disabled={busy} onClick={close}>
             {t("safety.later")}
           </Button>
@@ -105,7 +122,7 @@ export function CrashRollbackDialog() {
           <p className="text-fg-muted text-sm">
             {t(offer.verified ? "safety.introVerified" : "safety.intro", {
               name,
-              time: formatTime(offer.at ?? 0),
+              time: formatDateTime(offer.at ?? 0),
             })}
           </p>
           <ul className="flex flex-col divide-y divide-line rounded-panel border border-line">

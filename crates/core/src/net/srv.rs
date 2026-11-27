@@ -11,11 +11,12 @@ use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::task::JoinSet;
 
+use super::dns_wire::{self, TYPE_SRV, read_name, skip_name, u16_at};
+
 /// 整个 SRV 查询最多等多久（查不到就按默认端口连，不能让状态一直转圈）
 const TIMEOUT: Duration = Duration::from_millis(1500);
 /// 最多同时问几个 DNS 服务器
 const MAX_SERVERS: usize = 4;
-const TYPE_SRV: u16 = 33;
 
 /// SRV 记录指向的地方。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,68 +105,7 @@ fn pick(mut records: Vec<Srv>) -> Option<SrvTarget> {
 
 /// 拼一个「请递归查 SRV」的查询。域名不是 ASCII、标签太长时返回 `None`。
 fn build_query(id: u16, name: &str) -> Option<Vec<u8>> {
-    if !name.is_ascii() || name.len() > 253 {
-        return None;
-    }
-    let mut out = Vec::with_capacity(name.len() + 18);
-    out.extend_from_slice(&id.to_be_bytes());
-    out.extend_from_slice(&[0x01, 0x00]); // 只开「要递归」
-    out.extend_from_slice(&[0, 1, 0, 0, 0, 0, 0, 0]); // 一个问题
-    for label in name.trim_end_matches('.').split('.') {
-        let len = u8::try_from(label.len())
-            .ok()
-            .filter(|&n| (1..=63).contains(&n))?;
-        out.push(len);
-        out.extend_from_slice(label.as_bytes());
-    }
-    out.push(0);
-    out.extend_from_slice(&TYPE_SRV.to_be_bytes());
-    out.extend_from_slice(&1u16.to_be_bytes()); // IN
-    Some(out)
-}
-
-fn u16_at(msg: &[u8], pos: usize) -> Option<u16> {
-    Some(u16::from_be_bytes([*msg.get(pos)?, *msg.get(pos + 1)?]))
-}
-
-/// 跳过一个名字（可能是压缩指针），返回名字后面的位置。
-fn skip_name(msg: &[u8], mut pos: usize) -> Option<usize> {
-    loop {
-        let len = *msg.get(pos)?;
-        match len {
-            0 => return Some(pos + 1),
-            l if l & 0xC0 == 0xC0 => return Some(pos + 2),
-            l if l & 0xC0 != 0 => return None,
-            l => pos += 1 + usize::from(l),
-        }
-    }
-}
-
-/// 读一个名字（跟着压缩指针走，最多跳 16 次防止死循环）。
-fn read_name(msg: &[u8], mut pos: usize) -> Option<String> {
-    let mut labels: Vec<String> = Vec::new();
-    for _ in 0..64 {
-        let len = *msg.get(pos)?;
-        if len == 0 {
-            return Some(labels.join("."));
-        }
-        if len & 0xC0 == 0xC0 {
-            let pointer = usize::from(u16_at(msg, pos)? & 0x3FFF);
-            if pointer >= pos {
-                return None; // 只许往前指
-            }
-            pos = pointer;
-            continue;
-        }
-        if len & 0xC0 != 0 {
-            return None;
-        }
-        let start = pos + 1;
-        let label = msg.get(start..start + usize::from(len))?;
-        labels.push(String::from_utf8_lossy(label).into_owned());
-        pos = start + usize::from(len);
-    }
-    None
+    dns_wire::build_query(id, name, TYPE_SRV)
 }
 
 /// 读回答：编号对不上、不是回答时返回 `None`；域名不存在、没有记录时返回空列表。

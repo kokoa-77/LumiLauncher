@@ -1,13 +1,19 @@
 import {
+  ArrowUpCircle,
   ChevronDown,
   ChevronUp,
   Coffee,
   FolderOpen,
   Gamepad2,
   Globe,
+  Image as ImageIcon,
   Info,
   type LucideIcon,
   Pencil,
+  RotateCcw,
+  Trash2,
+  Unlink,
+  Upload,
   X,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
@@ -24,7 +30,14 @@ import {
 import { reportError } from "@/lib/report";
 import { type SettingsSection, useAppStore } from "@/stores/app";
 import { useGameStore } from "@/stores/game";
+import {
+  COVER_EMBLEMS,
+  COVER_PALETTES,
+  CoverEmblem,
+  resolveDefaultCover,
+} from "../art/InstanceDefaultCover";
 import { openInstanceFolder } from "../HomeHero";
+import { InstanceCover } from "../InstanceTile";
 import { EnvVarsEditor } from "../settings/EnvVars";
 import { JavaArgsRows } from "../settings/JavaArgs";
 import { MemoryPicker } from "../settings/MemorySettings";
@@ -105,12 +118,18 @@ export function InstanceSettingsDialog({
   instance,
   section,
   onSection,
+  onUpgrade,
+  onDelete,
   onClose,
 }: {
   instance: InstanceSummary;
   /** 开着哪一栏；关着是 null */
   section: InstanceSection | null;
   onSection: (section: InstanceSection) => void;
+  /** 点击「切换版本 / 升级」时关闭设置并打开版本切换向导 */
+  onUpgrade?: () => void;
+  /** 点击「删除实例 / 从 Lumi 移除」时关闭设置并打开确认弹窗 */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -124,6 +143,7 @@ export function InstanceSettingsDialog({
   const [autoMb, setAutoMb] = useState<number | undefined>(undefined);
   const [pickingJava, setPickingJava] = useState(false);
   const [syncDetailOpen, setSyncDetailOpen] = useState(false);
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
 
   const refreshAuto = useCallback(() => {
     commands
@@ -175,127 +195,316 @@ export function InstanceSettingsDialog({
 
     if (current === "general") {
       page = (
-        <Group>
-          <Row
-            label={t("instanceSettings.name")}
-            hint={t("instanceSettings.nameHint")}
-            control={
-              <div className="w-64">
-                <TextInput
-                  key={view.name}
-                  defaultValue={view.name}
-                  maxLength={64}
-                  aria-label={t("instanceSettings.name")}
-                  onBlur={(event) => {
-                    const name = event.target.value.trim();
-                    if (name && name !== view.name) void save(name, overrides);
-                    else event.target.value = view.name;
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
-                  }}
-                />
-              </div>
-            }
-          />
-          <Row
-            label={t("instanceSettings.folder")}
-            hint={t("instanceSettings.folderHint")}
-            control={
-              <Button variant="secondary" onClick={() => openInstanceFolder(instance.id)}>
-                <FolderOpen className="size-4" aria-hidden />
-                {t("instanceSettings.openFolder")}
-              </Button>
-            }
-          />
-          <Row
-            label={t("instanceSettings.syncLabel")}
-            hint={
-              instance.linked
-                ? t("instanceSettings.syncLinkedHint")
-                : t("instanceSettings.syncHint")
-            }
-            control={
-              <Switch
-                label={t("instanceSettings.syncLabel")}
-                checked={!instance.linked && !overrides.syncDisabled}
-                disabled={Boolean(instance.linked)}
-                onChange={(participate) => change({ syncDisabled: !participate })}
-              />
-            }
-          />
-          {!instance.linked &&
-            !overrides.syncDisabled &&
-            (() => {
-              const exclusions: InstanceSyncExclusions = {
-                options: overrides.syncExclusions?.options ?? false,
-                servers: overrides.syncExclusions?.servers ?? false,
-                resourcePacks: overrides.syncExclusions?.resourcePacks ?? false,
-                shaderPacks: overrides.syncExclusions?.shaderPacks ?? false,
-                commandHistory: overrides.syncExclusions?.commandHistory ?? false,
-                hotbar: overrides.syncExclusions?.hotbar ?? false,
-              };
-              const skippedCount = Object.values(exclusions).filter(Boolean).length;
-              const items: { key: keyof InstanceSyncExclusions; labelKey: string }[] = [
-                { key: "options", labelKey: "settings.syncPage.options" },
-                { key: "servers", labelKey: "settings.syncPage.servers" },
-                { key: "resourcePacks", labelKey: "settings.syncPage.resourcePacks" },
-                { key: "shaderPacks", labelKey: "settings.syncPage.shaderPacks" },
-                { key: "commandHistory", labelKey: "settings.syncPage.commandHistory" },
-                { key: "hotbar", labelKey: "settings.syncPage.hotbar" },
-              ];
-              return (
-                <>
-                  <Row
-                    label={t("instanceSettings.syncExclusionsLabel")}
-                    hint={
-                      skippedCount > 0
-                        ? `${t("instanceSettings.syncExclusionsHint")} · ${t("instanceSettings.syncExclusionsCount", { n: skippedCount })}`
-                        : t("instanceSettings.syncExclusionsHint")
-                    }
-                    control={
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        aria-expanded={syncDetailOpen}
-                        onClick={() => setSyncDetailOpen((v) => !v)}
-                      >
-                        {syncDetailOpen ? (
-                          <ChevronUp className="size-3.5" aria-hidden />
-                        ) : (
-                          <ChevronDown className="size-3.5" aria-hidden />
-                        )}
-                        {syncDetailOpen
-                          ? t("settings.advanced.collapse")
-                          : t("settings.advanced.expand")}
-                      </Button>
-                    }
+        <>
+          <Group>
+            <Row
+              label={t("instanceSettings.name")}
+              hint={t("instanceSettings.nameHint")}
+              control={
+                <div className="w-64">
+                  <TextInput
+                    key={view.name}
+                    defaultValue={view.name}
+                    maxLength={64}
+                    aria-label={t("instanceSettings.name")}
+                    onBlur={(event) => {
+                      const name = event.target.value.trim();
+                      if (name && name !== view.name) void save(name, overrides);
+                      else event.target.value = view.name;
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
                   />
-                  {syncDetailOpen && (
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 px-4 py-3">
-                      {items.map(({ key, labelKey }) => {
-                        const included = !exclusions[key];
+                </div>
+              }
+            />
+            <Row
+              label={t("instanceSettings.cover")}
+              hint={t("instanceSettings.coverHint")}
+              control={
+                <div className="flex items-center gap-2.5">
+                  <div className="relative h-9 w-16 overflow-hidden rounded-inner border border-line">
+                    <InstanceCover
+                      instance={instance}
+                      world={undefined}
+                      width={128}
+                      compact
+                      shared={false}
+                      className="size-full"
+                    />
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    aria-expanded={coverPickerOpen}
+                    onClick={() => setCoverPickerOpen((v) => !v)}
+                  >
+                    <ImageIcon className="size-3.5" aria-hidden />
+                    {coverPickerOpen
+                      ? t("settings.advanced.collapse")
+                      : t("instanceSettings.changeCover")}
+                  </Button>
+                </div>
+              }
+            />
+            {coverPickerOpen &&
+              (() => {
+                const { emblem: activeEmblem, palette: activePalette } =
+                  resolveDefaultCover(instance);
+                const applyPreset = async (nextEmblem: string, nextPalette: string) => {
+                  try {
+                    unwrap(
+                      await commands.instancesCoverSetPreset(
+                        instance.id,
+                        `${nextEmblem}:${nextPalette}`,
+                      ),
+                    );
+                    void refreshInstances();
+                  } catch (error) {
+                    reportError(error, "设置实例封面");
+                  }
+                };
+                const pickImage = async () => {
+                  try {
+                    const picked = unwrap(await commands.instancesCoverPick(instance.id));
+                    if (picked) void refreshInstances();
+                  } catch (error) {
+                    reportError(error, "上传实例封面");
+                  }
+                };
+                const resetCover = async () => {
+                  try {
+                    unwrap(await commands.instancesCoverClear(instance.id));
+                    void refreshInstances();
+                  } catch (error) {
+                    reportError(error, "恢复默认封面");
+                  }
+                };
+                return (
+                  <div className="flex flex-col gap-3 border-line/60 border-t px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-fg-muted text-xs">
+                        {t("instanceSettings.coverPalette")}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <Button variant="secondary" size="sm" onClick={() => void pickImage()}>
+                          <Upload className="size-3.5" aria-hidden />
+                          {t("instanceSettings.coverUpload")}
+                        </Button>
+                        {(instance.coverUrl || instance.coverPreset) && (
+                          <Button variant="ghost" size="sm" onClick={() => void resetCover()}>
+                            <RotateCcw className="size-3.5" aria-hidden />
+                            {t("instanceSettings.coverReset")}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {COVER_PALETTES.map((pal) => {
+                        const selected = !instance.coverUrl && activePalette.id === pal.id;
                         return (
-                          <div key={key} className="flex items-center justify-between gap-3">
-                            <span className="truncate text-sm">{t(labelKey)}</span>
-                            <Switch
-                              label={t(labelKey)}
-                              checked={included}
-                              onChange={(nextIncluded) =>
-                                change({
-                                  syncExclusions: { ...exclusions, [key]: !nextIncluded },
-                                })
-                              }
-                            />
-                          </div>
+                          <button
+                            key={pal.id}
+                            type="button"
+                            aria-label={t(`instanceSettings.coverPalettes.${pal.id}`)}
+                            title={t(`instanceSettings.coverPalettes.${pal.id}`)}
+                            onClick={() => void applyPreset(activeEmblem, pal.id)}
+                            style={{
+                              background: `linear-gradient(135deg, ${pal.deep} 0%, ${pal.mid} 55%, ${pal.glow} 100%)`,
+                            }}
+                            className={`size-7 rounded-control border transition-transform duration-(--motion-press) hover:scale-105 ${
+                              selected ? "border-accent ring-2 ring-accent/40" : "border-line/70"
+                            }`}
+                          />
                         );
                       })}
                     </div>
-                  )}
-                </>
-              );
-            })()}
-        </Group>
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-fg-muted text-xs">
+                        {t("instanceSettings.coverEmblem")}
+                      </span>
+                      <div className="grid grid-cols-8 gap-1.5">
+                        {COVER_EMBLEMS.map((emb) => {
+                          const selected = !instance.coverUrl && activeEmblem === emb;
+                          return (
+                            <button
+                              key={emb}
+                              type="button"
+                              aria-label={t(`instanceSettings.coverEmblems.${emb}`)}
+                              title={t(`instanceSettings.coverEmblems.${emb}`)}
+                              onClick={() => void applyPreset(emb, activePalette.id)}
+                              className={`grid aspect-square place-items-center rounded-inner border bg-bg transition-colors duration-(--motion-press) hover:border-accent/50 ${
+                                selected
+                                  ? "border-accent bg-accent-soft/60 ring-1 ring-accent/35"
+                                  : "border-line"
+                              }`}
+                            >
+                              <CoverEmblem
+                                emblem={emb}
+                                accent={activePalette.accent}
+                                glow={activePalette.glow}
+                                className="size-6"
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            <Row
+              label={t("instanceSettings.version")}
+              hint={
+                instance.linked
+                  ? t("instanceSettings.versionLinkedHint", {
+                      version: `Minecraft ${instance.gameVersion} · ${instance.loader ?? t("create.vanilla")}`,
+                    })
+                  : `Minecraft ${instance.gameVersion} · ${instance.loader ?? t("create.vanilla")}`
+              }
+              control={
+                onUpgrade ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      onClose();
+                      onUpgrade();
+                    }}
+                  >
+                    <ArrowUpCircle className="size-4" aria-hidden />
+                    {t("detail.menu.upgrade")}
+                  </Button>
+                ) : (
+                  <Tag>{instance.loader ?? t("create.vanilla")}</Tag>
+                )
+              }
+            />
+            <Row
+              label={t("instanceSettings.folder")}
+              hint={t("instanceSettings.folderHint")}
+              control={
+                <Button variant="secondary" onClick={() => openInstanceFolder(instance.id)}>
+                  <FolderOpen className="size-4" aria-hidden />
+                  {t("instanceSettings.openFolder")}
+                </Button>
+              }
+            />
+            <Row
+              label={t("instanceSettings.syncLabel")}
+              hint={
+                instance.linked
+                  ? t("instanceSettings.syncLinkedHint")
+                  : t("instanceSettings.syncHint")
+              }
+              control={
+                <Switch
+                  label={t("instanceSettings.syncLabel")}
+                  checked={!instance.linked && !overrides.syncDisabled}
+                  disabled={Boolean(instance.linked)}
+                  onChange={(participate) => change({ syncDisabled: !participate })}
+                />
+              }
+            />
+            {!instance.linked &&
+              !overrides.syncDisabled &&
+              (() => {
+                const exclusions: InstanceSyncExclusions = {
+                  options: overrides.syncExclusions?.options ?? false,
+                  servers: overrides.syncExclusions?.servers ?? false,
+                  resourcePacks: overrides.syncExclusions?.resourcePacks ?? false,
+                  shaderPacks: overrides.syncExclusions?.shaderPacks ?? false,
+                  commandHistory: overrides.syncExclusions?.commandHistory ?? false,
+                  hotbar: overrides.syncExclusions?.hotbar ?? false,
+                };
+                const skippedCount = Object.values(exclusions).filter(Boolean).length;
+                const items: { key: keyof InstanceSyncExclusions; labelKey: string }[] = [
+                  { key: "options", labelKey: "settings.syncPage.options" },
+                  { key: "servers", labelKey: "settings.syncPage.servers" },
+                  { key: "resourcePacks", labelKey: "settings.syncPage.resourcePacks" },
+                  { key: "shaderPacks", labelKey: "settings.syncPage.shaderPacks" },
+                  { key: "commandHistory", labelKey: "settings.syncPage.commandHistory" },
+                  { key: "hotbar", labelKey: "settings.syncPage.hotbar" },
+                ];
+                return (
+                  <>
+                    <Row
+                      label={t("instanceSettings.syncExclusionsLabel")}
+                      hint={
+                        skippedCount > 0
+                          ? `${t("instanceSettings.syncExclusionsHint")} · ${t("instanceSettings.syncExclusionsCount", { n: skippedCount })}`
+                          : t("instanceSettings.syncExclusionsHint")
+                      }
+                      control={
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          aria-expanded={syncDetailOpen}
+                          onClick={() => setSyncDetailOpen((v) => !v)}
+                        >
+                          {syncDetailOpen ? (
+                            <ChevronUp className="size-3.5" aria-hidden />
+                          ) : (
+                            <ChevronDown className="size-3.5" aria-hidden />
+                          )}
+                          {syncDetailOpen
+                            ? t("settings.advanced.collapse")
+                            : t("settings.advanced.expand")}
+                        </Button>
+                      }
+                    />
+                    {syncDetailOpen && (
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 px-4 py-3">
+                        {items.map(({ key, labelKey }) => {
+                          const included = !exclusions[key];
+                          return (
+                            <div key={key} className="flex items-center justify-between gap-3">
+                              <span className="truncate text-sm">{t(labelKey)}</span>
+                              <Switch
+                                label={t(labelKey)}
+                                checked={included}
+                                onChange={(nextIncluded) =>
+                                  change({
+                                    syncExclusions: { ...exclusions, [key]: !nextIncluded },
+                                  })
+                                }
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+          </Group>
+          {onDelete && (
+            <Group>
+              <Row
+                label={t(instance.linked ? "detail.menu.unlink" : "detail.menu.delete")}
+                hint={t(
+                  instance.linked ? "instanceSettings.unlinkHint" : "instanceSettings.deleteHint",
+                )}
+                control={
+                  <Button
+                    variant={instance.linked ? "secondary" : "danger"}
+                    onClick={() => {
+                      onClose();
+                      onDelete();
+                    }}
+                  >
+                    {instance.linked ? (
+                      <Unlink className="size-4" aria-hidden />
+                    ) : (
+                      <Trash2 className="size-4" aria-hidden />
+                    )}
+                    {t(instance.linked ? "detail.menu.unlink" : "detail.menu.delete")}
+                  </Button>
+                }
+              />
+            </Group>
+          )}
+        </>
       );
     } else if (current === "game") {
       page = (

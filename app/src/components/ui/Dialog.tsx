@@ -113,13 +113,14 @@ export function Dialog({
     };
   }, [open]);
 
-  const size = bare ? "" : wider ? "max-w-4xl" : wide ? "max-w-xl" : "max-w-md";
+  const hasCustomWidth = /\bmax-w-/.test(className);
+  const size = bare || hasCustomWidth ? "" : wider ? "max-w-4xl" : wide ? "max-w-xl" : "max-w-md";
 
   return (
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-40 grid place-items-center p-6"
+          className="fixed inset-0 z-40 flex items-center justify-center p-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1, transition: { duration: duration.overlay, ease: ease.out } }}
           exit={{ opacity: 0, transition: { duration: duration.overlay, ease: ease.in } }}
@@ -137,7 +138,7 @@ export function Dialog({
             aria-modal="true"
             aria-label={title}
             tabIndex={-1}
-            className={`relative flex max-h-full outline-none w-full flex-col overflow-hidden rounded-dialog border border-line bg-overlay shadow-dialog ${size} ${className}`}
+            className={`relative flex max-h-full w-full flex-col overflow-hidden rounded-dialog border border-line bg-overlay shadow-dialog outline-none ${size} ${className}`}
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0, transition: spring.snappy }}
             exit={{
@@ -153,14 +154,18 @@ export function Dialog({
                 <IconButton
                   label={t("dialog.close")}
                   onClick={onClose}
-                  className="absolute top-3 right-3"
+                  className="absolute top-3 right-3 z-10"
                   data-dialog-close
                 >
                   <X className="size-4" aria-hidden />
                 </IconButton>
-                <h2 className="truncate pt-5 pr-14 pl-6 font-semibold text-lg">{title}</h2>
-                <div className="min-h-0 overflow-y-auto px-6 py-4">{children}</div>
-                {footer && <div className="flex justify-end gap-2 px-6 pb-5">{footer}</div>}
+                <h2 className="shrink-0 truncate pt-5 pr-14 pl-6 font-semibold text-lg leading-snug">
+                  {title}
+                </h2>
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>
+                {footer && (
+                  <div className="flex shrink-0 justify-end gap-2 px-6 pt-1 pb-5">{footer}</div>
+                )}
               </>
             )}
           </motion.div>

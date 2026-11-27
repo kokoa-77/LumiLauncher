@@ -13,9 +13,19 @@ use serde::{Deserialize, Serialize};
 use crate::fs::{AtomicWriteError, ReadJsonError, read_json, write_json_atomic};
 use crate::now_millis;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 const MIN_CONCURRENCY: u32 = 1;
-const MAX_CONCURRENCY: u32 = 256;
+const MAX_CONCURRENCY: u32 = 128;
+const DEFAULT_CONCURRENCY: u32 = 32;
+const DEFAULT_SEGMENTS_PER_FILE: u8 = 16;
+const MIN_SEGMENTS_PER_FILE: u8 = 1;
+const MAX_SEGMENTS_PER_FILE: u8 = 32;
+const DEFAULT_DISK_WRITERS: u8 = 12;
+const MIN_DISK_WRITERS: u8 = 1;
+const MAX_DISK_WRITERS: u8 = 32;
+const MAX_SPEED_LIMIT_KIB: u32 = 1_048_576; // 1 GiB/s
+const DEFAULT_METERED_LIMIT_KIB: u32 = 2_048; // 2 MiB/s
+const MIN_METERED_LIMIT_KIB: u32 = 128;
 const MIN_MEMORY_MB: u32 = 512;
 const MAX_MEMORY_MB: u32 = 65536;
 /// 自定义参数最长多少个字符（防止误粘贴一大段东西进来）
@@ -208,6 +218,189 @@ pub enum ThemeMode {
     Dark,
 }
 
+/// 下载源策略（审核版固定为 `OfficialOnly`；V1.1 `community-mirrors` 启用后支持多源）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub enum DownloadSourcePolicy {
+    #[default]
+    OfficialOnly,
+    Auto,
+    MirrorFirst,
+}
+
+/// 并发调度模式
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub enum ConcurrencyMode {
+    #[default]
+    Auto,
+    Manual,
+}
+
+/// 大文件分段模式
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub enum SegmentMode {
+    #[default]
+    Auto,
+    Aggressive,
+    Off,
+}
+
+/// 并发磁盘写入调度模式
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub enum DiskWriteMode {
+    #[default]
+    Auto,
+    Manual,
+}
+
+/// 计费网络保护策略
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub enum MeteredPolicy {
+    #[default]
+    Warn,
+    Throttle,
+    Allow,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_segments_per_file() -> u8 {
+    DEFAULT_SEGMENTS_PER_FILE
+}
+
+fn default_disk_writers() -> u8 {
+    DEFAULT_DISK_WRITERS
+}
+
+fn default_metered_limit_kib() -> u32 {
+    DEFAULT_METERED_LIMIT_KIB
+}
+
+/// 校验用户输入的公网 HTTPS 地址（用于 `custom_doh_url` / `custom_mirror_root` 三道闸第一道静态防 SSRF）。
+///
+/// 规则：
+/// - 必须以 `https://` 开头，总长 <= 512，不含空白、控制字符、userinfo (`@`)、`?`、`#`；
+/// - 不允许显式非 443 端口；
+/// - 拒绝单标签主机名、`localhost`、`.local/.lan/.internal/.arpa/.home.arpa`；
+/// - 若主机是 IP 字面量，仅允许严格全局单播地址（解包 IPv4-mapped IPv6 `::ffff:0:0/96` 后校验）。
+pub fn validate_public_https_url(raw: &str) -> Option<String> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty()
+        || trimmed.len() > 512
+        || trimmed.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return None;
+    }
+    let rest = trimmed
+        .get(..8)
+        .filter(|s| s.eq_ignore_ascii_case("https://"))
+        .map(|_| &trimmed[8..])?;
+    let (authority, path_part) = match rest.find('/') {
+        Some(idx) => (&rest[..idx], &rest[idx..]),
+        None => (rest, ""),
+    };
+    if authority.is_empty()
+        || authority.contains('@')
+        || trimmed.contains('?')
+        || trimmed.contains('#')
+    {
+        return None;
+    }
+
+    let host_raw = if authority.starts_with('[') {
+        let end = authority.find(']')?;
+        let port_part = &authority[end + 1..];
+        if !port_part.is_empty() && port_part != ":443" {
+            return None;
+        }
+        &authority[1..end]
+    } else if let Some((h, port)) = authority.rsplit_once(':') {
+        if port != "443" {
+            return None;
+        }
+        h
+    } else {
+        authority
+    };
+
+    let host = host_raw.trim().to_ascii_lowercase();
+    if host.is_empty() {
+        return None;
+    }
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        if !is_strictly_global_unicast(ip) {
+            return None;
+        }
+        let formatted_host = if ip.is_ipv6() {
+            format!("[{ip}]")
+        } else {
+            ip.to_string()
+        };
+        return Some(format!("https://{formatted_host}{path_part}"));
+    }
+
+    if host == "localhost"
+        || !host.contains('.')
+        || host.ends_with(".local")
+        || host.ends_with(".lan")
+        || host.ends_with(".internal")
+        || host.ends_with(".arpa")
+        || host.ends_with(".home.arpa")
+        || host.starts_with('.')
+        || host.ends_with('.')
+        || host.contains("..")
+    {
+        return None;
+    }
+    Some(format!("https://{host}{path_part}"))
+}
+
+fn is_strictly_global_unicast(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => is_public_ipv4(v4),
+        std::net::IpAddr::V6(v6) => {
+            if let Some(mapped) = v6.to_ipv4_mapped() {
+                return is_public_ipv4(mapped);
+            }
+            let seg0 = v6.segments()[0];
+            !v6.is_unspecified()
+                && !v6.is_loopback()
+                && !v6.is_multicast()
+                && (seg0 & 0xfe00) != 0xfc00 // ULA fc00::/7
+                && (seg0 & 0xffc0) != 0xfe80 // Link-local fe80::/10
+                && (seg0 & 0xffc0) != 0xfec0 // Deprecated site-local fec0::/10
+        }
+    }
+}
+
+fn is_public_ipv4(v4: std::net::Ipv4Addr) -> bool {
+    let [a, b, c, _] = v4.octets();
+    !v4.is_unspecified()
+        && !v4.is_loopback()
+        && !v4.is_private()
+        && !v4.is_link_local()
+        && !v4.is_multicast()
+        && !v4.is_broadcast()
+        && !(a == 100 && (64..=127).contains(&b)) // CGNAT 100.64.0.0/10
+        && !(a == 192 && b == 0 && c == 0) // IETF Protocol Assignments
+        && !(a == 192 && b == 0 && c == 2) // TEST-NET-1
+        && !(a == 198 && (18..=19).contains(&b)) // Benchmarking / Clash Fake-IP 198.18.0.0/15
+        && !(a == 198 && b == 51 && c == 100) // TEST-NET-2
+        && !(a == 203 && b == 0 && c == 113) // TEST-NET-3
+        && a < 224
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -227,18 +420,64 @@ pub struct DownloadSettings {
     pub claim_folder: Option<String>,
     /// 网络代理设置：跟随系统 / 直连 / 自定义 HTTP 或 SOCKS5
     pub proxy: ProxySettings,
+
+    // ── v2.0 统一新增字段（全部带 #[serde(default)] 保兼容）──
+    #[serde(default)]
+    pub source_policy: DownloadSourcePolicy,
+    #[serde(default)]
+    pub concurrency_mode: ConcurrencyMode,
+    #[serde(default)]
+    pub segment_mode: SegmentMode,
+    #[serde(default = "default_segments_per_file")]
+    pub max_segments_per_file: u8,
+    #[serde(default)]
+    pub disk_write_mode: DiskWriteMode,
+    #[serde(default = "default_disk_writers")]
+    pub max_disk_writers: u8,
+    /// 全局下载限速（KiB/s，0 = 不限速），TokenBucket 实时热生效
+    #[serde(default)]
+    pub speed_limit_kib_per_sec: u32,
+    #[serde(default)]
+    pub metered_policy: MeteredPolicy,
+    #[serde(default = "default_metered_limit_kib")]
+    pub metered_speed_limit_kib_per_sec: u32,
+    /// 零字节本地内容水合开关（仅强哈希文件生效，只读不改外部目录）
+    #[serde(default = "default_true")]
+    pub local_reuse_enabled: bool,
+    /// 可选自定义 RFC 8484 公网 HTTPS DoH 地址（受三道闸防 SSRF）
+    #[serde(default)]
+    pub custom_doh_url: Option<String>,
+    /// 用户自定义的公网 HTTPS 下载端点（受三道闸防 SSRF；仅在开启社区兼容编译特性时生效）
+    #[serde(default)]
+    pub custom_mirror_root: Option<String>,
+    /// Modrinth 官方连败应急回退开关（默认关；CurseForge 永远直连）
+    #[serde(default)]
+    pub modrinth_fallback_mirror: bool,
 }
 
 impl Default for DownloadSettings {
     fn default() -> Self {
         Self {
             doh_enabled: true,
-            max_concurrency: 32,
+            max_concurrency: DEFAULT_CONCURRENCY,
             move_claimed_files: false,
             preferred_platform: Platform::Modrinth,
             auto_dependencies: true,
             claim_folder: None,
             proxy: ProxySettings::default(),
+            source_policy: DownloadSourcePolicy::OfficialOnly,
+            concurrency_mode: ConcurrencyMode::Auto,
+            segment_mode: SegmentMode::Auto,
+            max_segments_per_file: DEFAULT_SEGMENTS_PER_FILE,
+            disk_write_mode: DiskWriteMode::Auto,
+            max_disk_writers: DEFAULT_DISK_WRITERS,
+            speed_limit_kib_per_sec: 0,
+            metered_policy: MeteredPolicy::Warn,
+            metered_speed_limit_kib_per_sec: DEFAULT_METERED_LIMIT_KIB,
+            local_reuse_enabled: true,
+            custom_doh_url: None,
+            custom_mirror_root: None,
+            modrinth_fallback_mirror: false,
         }
     }
 }
@@ -619,6 +858,38 @@ impl Settings {
             .download
             .max_concurrency
             .clamp(MIN_CONCURRENCY, MAX_CONCURRENCY);
+        self.download.max_segments_per_file = self
+            .download
+            .max_segments_per_file
+            .clamp(MIN_SEGMENTS_PER_FILE, MAX_SEGMENTS_PER_FILE);
+        self.download.max_disk_writers = self
+            .download
+            .max_disk_writers
+            .clamp(MIN_DISK_WRITERS, MAX_DISK_WRITERS);
+        self.download.speed_limit_kib_per_sec = self
+            .download
+            .speed_limit_kib_per_sec
+            .min(MAX_SPEED_LIMIT_KIB);
+        self.download.metered_speed_limit_kib_per_sec = self
+            .download
+            .metered_speed_limit_kib_per_sec
+            .clamp(MIN_METERED_LIMIT_KIB, MAX_SPEED_LIMIT_KIB);
+        self.download.custom_doh_url = self
+            .download
+            .custom_doh_url
+            .take()
+            .and_then(|u| validate_public_https_url(&u));
+        self.download.custom_mirror_root = self
+            .download
+            .custom_mirror_root
+            .take()
+            .and_then(|u| validate_public_https_url(&u));
+        #[cfg(not(feature = "community-mirrors"))]
+        {
+            self.download.source_policy = DownloadSourcePolicy::OfficialOnly;
+            self.download.custom_mirror_root = None;
+            self.download.modrinth_fallback_mirror = false;
+        }
         self.game.max_memory_mb = clamp_memory_mb(self.game.max_memory_mb);
         self.game.directory = self
             .game
@@ -675,6 +946,9 @@ impl Settings {
     fn keep_machine_bound(&mut self, from: &Self) {
         self.game.directory = from.game.directory.clone();
         self.download.claim_folder = from.download.claim_folder.clone();
+        self.download.proxy = from.download.proxy.clone();
+        self.download.custom_doh_url = from.download.custom_doh_url.clone();
+        self.download.custom_mirror_root = from.download.custom_mirror_root.clone();
         self.worlds.backup_dir = from.worlds.backup_dir.clone();
         self.game.hooks = from.game.hooks.clone();
         self.game.env_vars = from.game.env_vars.clone();
@@ -703,7 +977,9 @@ pub enum SettingsError {
 
 /// 旧格式 → 新格式：
 /// - 如果旧文件只写了 `game.releaseWebviewWhilePlaying: true` 而没有 `game.afterLaunch`，
-///   平滑迁移为 `game.afterLaunch = "release"`。
+///   平滑迁移为 `game.afterLaunch = "release"`；
+/// - 如果旧文件未写 `download.concurrencyMode`：曾改过 `maxConcurrency != 32` 则保留为 `manual`，
+///   否则迁为 `auto`；移除已废弃的 `download.source`。
 fn migrate(mut value: serde_json::Value) -> serde_json::Value {
     if let Some(game) = value.get_mut("game").and_then(|v| v.as_object_mut())
         && !game.contains_key("afterLaunch")
@@ -716,6 +992,22 @@ fn migrate(mut value: serde_json::Value) -> serde_json::Value {
             "afterLaunch".to_owned(),
             serde_json::Value::String("release".to_owned()),
         );
+    }
+    if let Some(download) = value.get_mut("download").and_then(|v| v.as_object_mut()) {
+        download.remove("source");
+        if !download.contains_key("concurrencyMode") {
+            let max_conc = download
+                .get("maxConcurrency")
+                .and_then(serde_json::Value::as_u64);
+            let mode = match max_conc {
+                Some(n) if n != u64::from(DEFAULT_CONCURRENCY) => "manual",
+                _ => "auto",
+            };
+            download.insert(
+                "concurrencyMode".to_owned(),
+                serde_json::Value::String(mode.to_owned()),
+            );
+        }
     }
     value
 }
@@ -1076,6 +1368,26 @@ mod tests {
         let mut target = Settings::default();
         target.game.directory = Some(r"E:\OtherPC\MC".to_owned());
         target.download.claim_folder = Some(r"E:\OtherDownloads".to_owned());
+        target.download.proxy = ProxySettings {
+            mode: ProxyMode::Custom,
+            scheme: ProxyScheme::Socks5,
+            host: "10.0.0.2".to_owned(),
+            port: 1080,
+        };
+        let mut local_with_proxy = local.clone();
+        local_with_proxy.download.proxy = ProxySettings {
+            mode: ProxyMode::Custom,
+            scheme: ProxyScheme::Http,
+            host: "192.168.1.99".to_owned(),
+            port: 7897,
+        };
+        local_with_proxy.download.max_concurrency = 256;
+        let exported_proxy = local_with_proxy.export_portable().unwrap();
+        assert!(!exported_proxy.contains("192.168.1.99"));
+        let imported_proxy = target.import_portable(&exported_proxy).unwrap();
+        assert_eq!(imported_proxy.download.proxy, target.download.proxy);
+        assert_eq!(imported_proxy.download.max_concurrency, 128);
+
         let imported = target.import_portable(&exported).unwrap();
         assert_eq!(imported.appearance.theme, ThemeMode::Dark);
         assert_eq!(imported.game.default_language, GameLanguage::ZhCn);
@@ -1142,5 +1454,69 @@ mod tests {
         );
         assert_eq!(GameLanguage::GameDefault.resolve(Some("zh-CN")), None);
         assert_eq!(GameLanguage::JaJp.resolve(Some("zh-CN")), Some("ja_jp"));
+    }
+
+    #[test]
+    fn v1_to_v2_concurrency_migration_preserves_custom_and_auto() {
+        let dir = tempfile::tempdir().unwrap();
+        let path_custom = dir.path().join("custom.json");
+        std::fs::write(
+            &path_custom,
+            r#"{ "schemaVersion": 1, "download": { "maxConcurrency": 16 } }"#,
+        )
+        .unwrap();
+        let s_custom = SettingsStore::open(&path_custom).get();
+        assert_eq!(s_custom.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(s_custom.download.concurrency_mode, ConcurrencyMode::Manual);
+        assert_eq!(s_custom.download.max_concurrency, 16);
+
+        let path_default = dir.path().join("default.json");
+        std::fs::write(
+            &path_default,
+            r#"{ "schemaVersion": 1, "download": { "maxConcurrency": 32 } }"#,
+        )
+        .unwrap();
+        let s_default = SettingsStore::open(&path_default).get();
+        assert_eq!(s_default.download.concurrency_mode, ConcurrencyMode::Auto);
+    }
+
+    #[test]
+    fn validates_public_https_urls_and_strips_on_portable_export() {
+        assert_eq!(
+            validate_public_https_url("https://dns.quad9.net/dns-query/").as_deref(),
+            Some("https://dns.quad9.net/dns-query")
+        );
+        assert_eq!(
+            validate_public_https_url("https://1.1.1.1:443/dns-query").as_deref(),
+            Some("https://1.1.1.1/dns-query")
+        );
+        for bad in [
+            "http://dns.quad9.net/dns-query",
+            "https://127.0.0.1/dns-query",
+            "https://192.168.1.1/dns-query",
+            "https://[::1]/dns-query",
+            "https://[::ffff:127.0.0.1]/dns-query",
+            "https://198.18.0.2/dns-query",
+            "https://localhost/dns-query",
+            "https://nas.local/dns-query",
+            "https://user:pass@dns.quad9.net/dns-query",
+            "https://dns.quad9.net:8443/dns-query",
+            "https://dns.quad9.net/dns-query?a=1",
+        ] {
+            assert_eq!(validate_public_https_url(bad), None, "should reject {bad}");
+        }
+
+        let mut local = Settings::default();
+        local.download.custom_doh_url = Some("https://dns.example.org/dns-query".to_owned());
+        let exported = local.export_portable().unwrap();
+        assert!(!exported.contains("dns.example.org"));
+
+        let mut target = Settings::default();
+        target.download.custom_doh_url = Some("https://local.example.org/dns-query".to_owned());
+        let imported = target.import_portable(&exported).unwrap();
+        assert_eq!(
+            imported.download.custom_doh_url.as_deref(),
+            Some("https://local.example.org/dns-query")
+        );
     }
 }

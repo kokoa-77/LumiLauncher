@@ -32,6 +32,7 @@ export function SettingsShell<T extends string>({
   sections,
   current,
   onSection,
+  onSelectItem,
   searchItems,
   footer,
   headerAction,
@@ -45,6 +46,8 @@ export function SettingsShell<T extends string>({
   sections: ShellSection<T>[];
   current: T;
   onSection: (id: T) => void;
+  /** 可选设置项命中回调（用于在切页同时传递目标控件 ID 展开高级区/高亮） */
+  onSelectItem?: (item: ShellSearchItem<T>) => void;
   /** 可选设置项索引：提供时在左栏顶部渲染「搜索设置」输入框 */
   searchItems?: ShellSearchItem<T>[];
   /** 左栏最下面的一行小字（快捷键） */
@@ -114,7 +117,11 @@ export function SettingsShell<T extends string>({
                     key={item.id}
                     type="button"
                     onClick={() => {
-                      onSection(item.section);
+                      if (onSelectItem) {
+                        onSelectItem(item);
+                      } else {
+                        onSection(item.section);
+                      }
                       setQuery("");
                     }}
                     className="flex flex-col items-start rounded-control px-3 py-1.5 text-left transition-colors duration-(--motion-press) hover:bg-surface-hover"

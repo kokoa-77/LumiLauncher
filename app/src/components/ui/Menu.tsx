@@ -12,6 +12,8 @@ export interface MenuItem {
   onSelect: () => void;
   /** 危险操作（删除）：红字，和上面的项之间隔一条线 */
   danger?: boolean;
+  /** 与上一项之间加一条分割线（例如「从 Lumi 移除」这类非破坏性但需视觉区分的底部操作） */
+  separated?: boolean;
 }
 
 /** 下面剩的空间不到这么高就往上弹 */
@@ -156,39 +158,41 @@ export function Menu({
                 }}
                 onClick={(event) => event.stopPropagation()}
               >
-                {items.map(({ key, label: itemLabel, icon: Icon, onSelect, danger }, index) => (
-                  <motion.button
-                    key={key}
-                    type="button"
-                    role="menuitem"
-                    // 往上弹时离按钮最近的是最后一项，从它开始
-                    initial={{ opacity: 0, y: from }}
-                    animate={{
-                      opacity: 1,
-                      y: 0,
-                      transition: {
-                        duration: duration.toggle,
-                        ease: ease.out,
-                        delay: STAGGER * (upward ? items.length - 1 - index : index),
-                      },
-                    }}
-                    onClick={() => {
-                      setAnchor(null);
-                      onSelect();
-                    }}
-                    className={`flex w-full items-center gap-2.5 whitespace-nowrap rounded-item px-2.5 py-2 text-left text-sm transition-colors duration-(--motion-press) hover:bg-surface-hover ${
-                      danger && index > 0 && !items[index - 1]?.danger
-                        ? "relative mt-2 before:absolute before:inset-x-1 before:-top-1 before:h-px before:bg-line"
-                        : ""
-                    } ${danger ? "text-danger" : ""}`}
-                  >
-                    <Icon
-                      className={`size-4 shrink-0 ${danger ? "text-danger" : "text-fg-muted"}`}
-                      aria-hidden
-                    />
-                    {itemLabel}
-                  </motion.button>
-                ))}
+                {items.map(
+                  ({ key, label: itemLabel, icon: Icon, onSelect, danger, separated }, index) => (
+                    <motion.button
+                      key={key}
+                      type="button"
+                      role="menuitem"
+                      // 往上弹时离按钮最近的是最后一项，从它开始
+                      initial={{ opacity: 0, y: from }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                        transition: {
+                          duration: duration.toggle,
+                          ease: ease.out,
+                          delay: STAGGER * (upward ? items.length - 1 - index : index),
+                        },
+                      }}
+                      onClick={() => {
+                        setAnchor(null);
+                        onSelect();
+                      }}
+                      className={`flex w-full items-center gap-2.5 whitespace-nowrap rounded-item px-2.5 py-2 text-left text-sm transition-colors duration-(--motion-press) hover:bg-surface-hover ${
+                        (separated || (danger && !items[index - 1]?.danger)) && index > 0
+                          ? "relative mt-2 before:absolute before:inset-x-1 before:-top-1 before:h-px before:bg-line"
+                          : ""
+                      } ${danger ? "text-danger" : ""}`}
+                    >
+                      <Icon
+                        className={`size-4 shrink-0 ${danger ? "text-danger" : "text-fg-muted"}`}
+                        aria-hidden
+                      />
+                      {itemLabel}
+                    </motion.button>
+                  ),
+                )}
               </motion.div>
             )}
           </AnimatePresence>,

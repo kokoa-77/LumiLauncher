@@ -231,6 +231,8 @@ pub struct SearchQuery<'a> {
     pub sort: SearchSort,
     /// 只看这一个分类（Modrinth 的分类名，例如 `technology`）
     pub category: Option<&'a str>,
+    /// 仅看无需服务端安装的客户端模组（仅 `ContentKind::Mod` 生效）
+    pub client_only: bool,
     pub offset: u32,
     pub limit: u32,
 }
@@ -241,10 +243,17 @@ pub async fn search(client: &Client, query: &SearchQuery<'_>) -> Result<SearchPa
     if let Some(version) = query.game_version {
         facets.push(vec![format!("versions:{version}")]);
     }
-    if query.kind == ContentKind::Mod
-        && let Some(loader) = query.loader
-    {
-        facets.push(vec![format!("categories:{loader}")]);
+    if query.kind == ContentKind::Mod {
+        if let Some(loader) = query.loader {
+            facets.push(vec![format!("categories:{loader}")]);
+        }
+        if query.client_only {
+            facets.push(vec![
+                "client_side:required".to_owned(),
+                "client_side:optional".to_owned(),
+            ]);
+            facets.push(vec!["server_side:unsupported".to_owned()]);
+        }
     }
     push_category(&mut facets, query.category);
     let url = search_url(
@@ -272,21 +281,31 @@ pub const PACK_LOADERS: &[&str] = &["neoforge", "fabric", "forge", "quilt"];
 ///
 /// 注意：搜索的筛选只保证「某个版本用了这个加载器」，不保证最新版也是，
 /// 所以真正装的版本还要用 [`pack_versions`] 再按加载器挑一次。
+#[allow(clippy::too_many_arguments)]
 pub async fn search_modpacks(
     client: &Client,
     text: &str,
+    game_version: Option<&str>,
+    loader: Option<&str>,
     sort: SearchSort,
     category: Option<&str>,
     offset: u32,
     limit: u32,
 ) -> Result<SearchPage, ContentError> {
-    let mut facets = vec![
-        vec!["project_type:modpack".to_owned()],
-        PACK_LOADERS
-            .iter()
-            .map(|l| format!("categories:{l}"))
-            .collect(),
-    ];
+    let mut facets = vec![vec!["project_type:modpack".to_owned()]];
+    if let Some(version) = game_version.filter(|v| !v.trim().is_empty()) {
+        facets.push(vec![format!("versions:{version}")]);
+    }
+    if let Some(loader) = loader.filter(|l| PACK_LOADERS.contains(l)) {
+        facets.push(vec![format!("categories:{loader}")]);
+    } else {
+        facets.push(
+            PACK_LOADERS
+                .iter()
+                .map(|l| format!("categories:{l}"))
+                .collect(),
+        );
+    }
     push_category(&mut facets, category);
     let url = search_url(&format!("{API}/search"), &facets, text, sort, offset, limit)?;
     fetch_page(client, url).await

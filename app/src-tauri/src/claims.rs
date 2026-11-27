@@ -26,6 +26,10 @@ impl ClaimGuard {
     pub fn session(&self) -> &ClaimSession {
         &self.session
     }
+
+    pub fn session_arc(&self) -> Arc<ClaimSession> {
+        self.session.clone()
+    }
 }
 
 impl Drop for ClaimGuard {

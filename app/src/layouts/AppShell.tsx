@@ -173,7 +173,7 @@ export function AppShell() {
   useEffect(() => {
     if (stopAsk) setStopAskLoaded(true);
   }, [stopAsk]);
-  const accountOpen = useAccountStore((s) => s.addOpen || s.skinFor !== null);
+  const accountOpen = useAccountStore((s) => s.addOpen || s.skinFor !== null || s.securityOpen);
   const [accountLoaded, setAccountLoaded] = useState(false);
   useEffect(() => {
     if (accountOpen) setAccountLoaded(true);

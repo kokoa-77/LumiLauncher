@@ -480,7 +480,8 @@ export const resultsKey = (
   query: string,
   sort: SearchSort = "relevance",
   category: string | null = null,
-) => `${kind}|${source}|${target}|${sort}|${category ?? ""}|${query.trim().toLowerCase()}`;
+  extra = "",
+) => `${kind}|${source}|${target}|${sort}|${category ?? ""}|${extra}|${query.trim().toLowerCase()}`;
 
 export function cachedResults(key: string): CachedResults | undefined {
   const hit = results.get(key);

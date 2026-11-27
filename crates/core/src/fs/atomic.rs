@@ -4,9 +4,98 @@
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use tokio_util::sync::CancellationToken;
+
+/// Windows Defender（MsMpEng）等实时扫描短期锁文件时的阶梯退避（总计 ~2.24 秒）。
+const WIN_LOCK_BACKOFF_MS: &[u64] = &[30, 80, 180, 350, 600, 1000];
+
+/// 判断 I/O 错误是否属于可短时重试的文件占用/锁错误（`PermissionDenied` 或 Windows OS 5/32/33）。
+pub fn is_win_lock_error(err: &io::Error) -> bool {
+    err.kind() == io::ErrorKind::PermissionDenied || matches!(err.raw_os_error(), Some(5 | 32 | 33))
+}
+
+fn retry_sync_with_backoff<F>(mut op: F) -> io::Result<()>
+where
+    F: FnMut() -> io::Result<()>,
+{
+    let mut attempt = 0usize;
+    loop {
+        match op() {
+            Ok(()) => return Ok(()),
+            Err(err) if is_win_lock_error(&err) && attempt < WIN_LOCK_BACKOFF_MS.len() => {
+                std::thread::sleep(Duration::from_millis(WIN_LOCK_BACKOFF_MS[attempt]));
+                attempt += 1;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+async fn retry_async_with_backoff<F, Fut>(cancel: &CancellationToken, mut op: F) -> io::Result<()>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = io::Result<()>>,
+{
+    let mut attempt = 0usize;
+    loop {
+        if cancel.is_cancelled() {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+        }
+        match op().await {
+            Ok(()) => return Ok(()),
+            Err(err) if is_win_lock_error(&err) && attempt < WIN_LOCK_BACKOFF_MS.len() => {
+                let delay = Duration::from_millis(WIN_LOCK_BACKOFF_MS[attempt]);
+                attempt += 1;
+                tokio::select! {
+                    () = tokio::time::sleep(delay) => {}
+                    () = cancel.cancelled() => {
+                        return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+                    }
+                }
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+/// 带 Windows 锁文件阶梯退避的同步改名。
+pub fn rename_with_win_retry_sync(from: &Path, to: &Path) -> io::Result<()> {
+    retry_sync_with_backoff(|| fs::rename(from, to))
+}
+
+/// 带 Windows 锁文件阶梯退避的同步删文件（不存在视作成功）。
+pub fn remove_with_win_retry_sync(path: &Path) -> io::Result<()> {
+    retry_sync_with_backoff(|| match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    })
+}
+
+/// 带 Windows 锁文件阶梯退避与取消检查的异步改名。
+pub async fn rename_with_win_retry(
+    from: &Path,
+    to: &Path,
+    cancel: &CancellationToken,
+) -> io::Result<()> {
+    retry_async_with_backoff(cancel, || tokio::fs::rename(from, to)).await
+}
+
+/// 带 Windows 锁文件阶梯退避与取消检查的异步删文件（不存在视作成功）。
+pub async fn remove_with_win_retry(path: &Path, cancel: &CancellationToken) -> io::Result<()> {
+    retry_async_with_backoff(cancel, || async {
+        match tokio::fs::remove_file(path).await {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(err),
+        }
+    })
+    .await
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum AtomicWriteError {
@@ -66,14 +155,12 @@ pub fn write_atomic_from(path: &Path, reader: &mut impl Read) -> Result<u64, Ato
     ));
 
     let result = copy_and_sync(&tmp, reader).and_then(|written| {
-        fs::rename(&tmp, path)?;
+        rename_with_win_retry_sync(&tmp, path)?;
         Ok(written)
     });
     if let Err(source) = &result {
         // 尽力清理临时文件；清理失败不掩盖真正的错误，只记日志。
-        if let Err(cleanup) = fs::remove_file(&tmp)
-            && cleanup.kind() != io::ErrorKind::NotFound
-        {
+        if let Err(cleanup) = remove_with_win_retry_sync(&tmp) {
             tracing::warn!(tmp = %tmp.display(), error = %cleanup, "清理临时文件失败");
         }
         tracing::debug!(path = %path.display(), error = %source, "原子写失败");
@@ -216,5 +303,49 @@ mod tests {
 
         let err = read_json::<Sample>(&path).unwrap_err();
         assert!(matches!(err, ReadJsonError::Parse { .. }));
+    }
+
+    #[test]
+    fn recognizes_windows_lock_errors() {
+        assert!(is_win_lock_error(&io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "locked"
+        )));
+        for code in [5, 32, 33] {
+            assert!(is_win_lock_error(&io::Error::from_raw_os_error(code)));
+        }
+        assert!(!is_win_lock_error(&io::Error::new(
+            io::ErrorKind::NotFound,
+            "missing"
+        )));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn win_lock_retry_recovers_and_honors_cancel() {
+        let mut attempts = 0u32;
+        let cancel = CancellationToken::new();
+        retry_async_with_backoff(&cancel, || {
+            attempts += 1;
+            let n = attempts;
+            async move {
+                if n < 3 {
+                    Err(io::Error::from_raw_os_error(32))
+                } else {
+                    Ok(())
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(attempts, 3);
+
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        let err = retry_async_with_backoff(&cancelled, || async {
+            Err(io::Error::from_raw_os_error(32))
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Interrupted);
     }
 }

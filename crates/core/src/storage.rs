@@ -199,7 +199,13 @@ pub fn clean_cache(
         }
     }
 
-    // 4. 旧启动器日志文件（保留最近 2 份）
+    // 4. 超过 24 小时的孤儿分段碎片（`.part` / `.part.s*` / `.part.meta`）
+    let (orphan_bytes, orphan_files) =
+        crate::net::clean_orphan_part_files(game.root(), std::time::Duration::from_secs(24 * 3600));
+    freed_bytes = freed_bytes.saturating_add(orphan_bytes);
+    removed_files = removed_files.saturating_add(orphan_files);
+
+    // 5. 旧启动器日志文件（保留最近 2 份）
     for old_log in removable_old_logs(&data_dir.join("logs")) {
         let (b, c) = remove_path_counting(&old_log);
         freed_bytes = freed_bytes.saturating_add(b);
@@ -396,6 +402,11 @@ fn scan_cache_targets(
         }
     }
 
+    let (orphan_bytes, orphan_files) =
+        crate::net::scan_orphan_part_files(game.root(), std::time::Duration::from_secs(24 * 3600));
+    bytes = bytes.saturating_add(orphan_bytes);
+    files = files.saturating_add(orphan_files);
+
     for old_log in removable_old_logs(&data_dir.join("logs")) {
         if let Ok(meta) = std::fs::symlink_metadata(&old_log)
             && meta.is_file()
@@ -404,6 +415,11 @@ fn scan_cache_targets(
             files = files.saturating_add(1);
         }
     }
+
+    let (orphan_bytes, orphan_files) =
+        crate::net::scan_orphan_part_files(game.root(), std::time::Duration::from_secs(24 * 3600));
+    bytes = bytes.saturating_add(orphan_bytes);
+    files = files.saturating_add(orphan_files);
 
     (bytes, files)
 }

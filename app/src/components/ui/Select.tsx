@@ -1,6 +1,6 @@
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Search } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { duration, ease } from "@/lib/motion";
 import { VirtualList } from "../VirtualList";
@@ -19,10 +19,15 @@ interface SelectProps {
   disabled?: boolean;
   /** 没有选项时按钮上显示的文字 */
   placeholder?: string;
+  /** 在下拉框顶部提供即时过滤框（适用于 900+ MC 版本等长清单） */
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  emptySearchText?: string;
   className?: string;
 }
 
 const ROW_HEIGHT = 34;
+const SEARCH_HEADER_HEIGHT = 42;
 /** 列表上下的内边距之和（p-1.5） */
 const LIST_PADDING = 12;
 const MAX_LIST_HEIGHT = 288;
@@ -53,20 +58,39 @@ export function Select({
   label,
   disabled = false,
   placeholder = "",
+  searchable = false,
+  searchPlaceholder = "",
+  emptySearchText = "",
   className = "",
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  const [search, setSearch] = useState("");
   const [placement, setPlacement] = useState<Placement | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredOptions = useMemo(() => {
+    if (!searchable) return options;
+    const q = search.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(
+      (o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q),
+    );
+  }, [options, searchable, search]);
+
   const selectedIndex = options.findIndex((o) => o.value === value);
   const selected = options[selectedIndex];
 
   const place = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const listHeight = Math.min(MAX_LIST_HEIGHT, options.length * ROW_HEIGHT + LIST_PADDING);
+    const extraHeader = searchable ? SEARCH_HEADER_HEIGHT : 0;
+    const listHeight = Math.min(
+      MAX_LIST_HEIGHT + extraHeader,
+      Math.max(ROW_HEIGHT, options.length * ROW_HEIGHT) + LIST_PADDING + extraHeader,
+    );
     const below = window.innerHeight - rect.bottom - GAP * 2;
     const above = rect.top - GAP * 2;
     const upward = below < Math.min(listHeight, MIN_SPACE_BELOW) && above > below;
@@ -98,30 +122,30 @@ export function Select({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !searchable) return;
+    const frame = requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open, searchable]);
+
   const openList = () => {
     if (disabled || options.length === 0) return;
     // 只在打开的那一刻算位置（每次渲染都算会触发无限重画）；窗口大小一变就关掉
+    setSearch("");
     place();
     setActive(Math.max(0, selectedIndex));
     setOpen(true);
   };
 
   const choose = (index: number) => {
-    const option = options[index];
+    const option = filteredOptions[index];
     if (option) onChange(option.value);
     setOpen(false);
     buttonRef.current?.focus();
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (!open) {
-      if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
-        event.preventDefault();
-        openList();
-      }
-      return;
-    }
-    const last = options.length - 1;
+  const handleNavigationKey = (event: KeyboardEvent<HTMLElement>): boolean => {
+    const last = Math.max(0, filteredOptions.length - 1);
     const moves: Record<string, number> = {
       ArrowDown: Math.min(last, active + 1),
       ArrowUp: Math.max(0, active - 1),
@@ -133,14 +157,42 @@ export function Select({
     if (event.key in moves) {
       event.preventDefault();
       setActive(moves[event.key] ?? active);
-    } else if (event.key === "Enter" || event.key === " ") {
+      return true;
+    }
+    if (event.key === "Enter") {
       event.preventDefault();
-      choose(active);
-    } else if (event.key === "Escape" || event.key === "Tab") {
+      if (filteredOptions.length > 0) choose(Math.max(0, Math.min(active, last)));
+      return true;
+    }
+    if (event.key === "Escape" || event.key === "Tab") {
       event.stopPropagation();
       setOpen(false);
+      buttonRef.current?.focus();
+      return true;
+    }
+    return false;
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!open) {
+      if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
+        event.preventDefault();
+        openList();
+      }
+      return;
+    }
+    if (!handleNavigationKey(event) && event.key === " ") {
+      event.preventDefault();
+      if (filteredOptions.length > 0) choose(Math.max(0, active));
     }
   };
+
+  const listViewportMax = placement
+    ? Math.max(
+        ROW_HEIGHT,
+        placement.maxHeight - LIST_PADDING - (searchable ? SEARCH_HEADER_HEIGHT : 0),
+      )
+    : MAX_LIST_HEIGHT;
 
   return (
     <>
@@ -188,43 +240,69 @@ export function Select({
                 }}
                 exit={{ opacity: 0, transition: { duration: duration.press, ease: ease.in } }}
               >
-                <VirtualList
-                  items={options}
-                  estimate={ROW_HEIGHT}
-                  activeIndex={active}
-                  style={{
-                    maxHeight: placement.maxHeight - LIST_PADDING,
-                    height: options.length * ROW_HEIGHT,
-                  }}
-                  getKey={(option) => option.value}
-                  render={(option, index) => {
-                    const isSelected = option.value === value;
-                    return (
-                      <div
-                        role="option"
-                        aria-selected={isSelected}
-                        tabIndex={-1}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => choose(index)}
-                        onMouseEnter={() => setActive(index)}
-                        onKeyDown={() => undefined}
-                        // 选中的是主色浅底 + 主色字（docs/DESIGN.md 第 5 节「选中」）；
-                        // 移到的是灰底，移到选中的那项上还是浅底
-                        className={`flex items-center justify-between gap-2 rounded-item px-2.5 text-sm ${
-                          isSelected
-                            ? "bg-accent-soft text-accent"
-                            : index === active
-                              ? "bg-surface-hover text-fg"
-                              : "text-fg"
-                        }`}
-                        style={{ height: ROW_HEIGHT }}
-                      >
-                        <span className="truncate">{option.label}</span>
-                        {isSelected && <Check className="size-4 shrink-0" aria-hidden />}
-                      </div>
-                    );
-                  }}
-                />
+                {searchable && (
+                  <div className="mb-1 flex items-center gap-2 rounded-item border border-line bg-surface px-2.5 py-1.5">
+                    <Search className="size-3.5 shrink-0 text-fg-muted" aria-hidden />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={search}
+                      placeholder={searchPlaceholder}
+                      onChange={(e) => {
+                        setSearch(e.target.value);
+                        setActive(0);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Home" || e.key === "End") return;
+                        handleNavigationKey(e);
+                      }}
+                      className="min-w-0 flex-1 bg-transparent text-fg text-xs outline-none placeholder:text-fg-muted"
+                    />
+                  </div>
+                )}
+                {filteredOptions.length === 0 ? (
+                  <div className="px-2.5 py-3 text-center text-fg-muted text-xs">
+                    {emptySearchText || "—"}
+                  </div>
+                ) : (
+                  <VirtualList
+                    items={filteredOptions}
+                    estimate={ROW_HEIGHT}
+                    activeIndex={active}
+                    style={{
+                      maxHeight: listViewportMax,
+                      height: filteredOptions.length * ROW_HEIGHT,
+                    }}
+                    getKey={(option) => option.value}
+                    render={(option, index) => {
+                      const isSelected = option.value === value;
+                      return (
+                        <div
+                          role="option"
+                          aria-selected={isSelected}
+                          tabIndex={-1}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => choose(index)}
+                          onMouseEnter={() => setActive(index)}
+                          onKeyDown={() => undefined}
+                          // 选中的是主色浅底 + 主色字（docs/DESIGN.md 第 5 节「选中」）；
+                          // 移到的是灰底，移到选中的那项上还是浅底
+                          className={`flex items-center justify-between gap-2 rounded-item px-2.5 text-sm ${
+                            isSelected
+                              ? "bg-accent-soft text-accent"
+                              : index === active
+                                ? "bg-surface-hover text-fg"
+                                : "text-fg"
+                          }`}
+                          style={{ height: ROW_HEIGHT }}
+                        >
+                          <span className="truncate">{option.label}</span>
+                          {isSelected && <Check className="size-4 shrink-0" aria-hidden />}
+                        </div>
+                      );
+                    }}
+                  />
+                )}
               </motion.div>
             )}
           </AnimatePresence>,

@@ -7,7 +7,9 @@ const TEST_CLIENT_ID: &str = "e2f8ba33-0b03-4e3d-924f-e358fec1cb1d";
 
 #[tokio::test]
 async fn browser_uses_pkce_and_a_one_time_loopback_form_post() {
-    let pending = start_login(TEST_CLIENT_ID).await.unwrap();
+    let pending = start_login(TEST_CLIENT_ID, &LoginOptions::default())
+        .await
+        .unwrap();
     let url = pending.url();
     assert_eq!(url.host_str(), Some("login.microsoftonline.com"));
     assert_eq!(url.path(), "/consumers/oauth2/v2.0/authorize");
@@ -24,6 +26,11 @@ async fn browser_uses_pkce_and_a_one_time_loopback_form_post() {
     let state = params["state"].to_string();
     let addr = pending.listener.local_addr().unwrap();
     assert_eq!(addr.ip(), Ipv4Addr::LOCALHOST);
+    let mut favicon = TcpStream::connect(addr).await.unwrap();
+    favicon
+        .write_all(b"GET /favicon.ico HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .await
+        .unwrap();
     let mut forged = TcpStream::connect(addr).await.unwrap();
     let mut correct = TcpStream::connect(addr).await.unwrap();
     send_form(&mut forged, addr.port(), "state=wrong&code=forged").await;
@@ -36,10 +43,18 @@ async fn browser_uses_pkce_and_a_one_time_loopback_form_post() {
     let code = wait_for_code(&pending).await.unwrap();
     drop(pending);
     assert_eq!(code.expose(), "test-auth-code");
+    let mut fav_resp = Vec::new();
+    favicon.read_to_end(&mut fav_resp).await.unwrap();
+    assert!(
+        std::str::from_utf8(&fav_resp)
+            .unwrap()
+            .starts_with("HTTP/1.1 204")
+    );
     let mut response = Vec::new();
     correct.read_to_end(&mut response).await.unwrap();
     let response = std::str::from_utf8(&response).unwrap();
     assert!(response.starts_with("HTTP/1.1 200"));
+    assert!(response.contains("text/html; charset=utf-8"));
     assert!(response.contains("Referrer-Policy: no-referrer"));
     assert!(!response.contains("test-auth-code"));
     assert!(!response.contains(&state));
@@ -48,7 +63,9 @@ async fn browser_uses_pkce_and_a_one_time_loopback_form_post() {
 
 #[tokio::test]
 async fn cancelled_login_closes_listener_without_connecting_to_microsoft() {
-    let pending = start_login(TEST_CLIENT_ID).await.unwrap();
+    let pending = start_login(TEST_CLIENT_ID, &LoginOptions::default())
+        .await
+        .unwrap();
     let addr = pending.listener.local_addr().unwrap();
     let cancel = CancellationToken::new();
     cancel.cancel();
@@ -61,7 +78,9 @@ async fn cancelled_login_closes_listener_without_connecting_to_microsoft() {
 
 #[tokio::test]
 async fn callback_rejects_duplicate_state_and_code_and_rejects_wrong_host() {
-    let pending = start_login(TEST_CLIENT_ID).await.unwrap();
+    let pending = start_login(TEST_CLIENT_ID, &LoginOptions::default())
+        .await
+        .unwrap();
     let addr = pending.listener.local_addr().unwrap();
     let state = pending.state.expose();
     let mut stream = TcpStream::connect(addr).await.unwrap();
@@ -137,6 +156,34 @@ fn accepts_only_recognized_java_entitlements_and_well_formed_profile() {
         Some("https://textures.minecraft.net/texture/abcd")
     );
     assert!(read_java_profile(br#"{"id":"123456789abc4def8000000000000000","name":"Alex","skins":[{"state":"ACTIVE","variant":"SLIM","url":"https://textures.minecraft.net.evil.example/texture/abcd"}]}"#).unwrap().skin_url.is_none());
+
+    let caped = read_java_profile(br#"{"id":"123456789abc4def8000000000000000","name":"Alex","skins":[{"state":"ACTIVE","variant":"CLASSIC","url":"http://textures.minecraft.net/texture/1122aabb"}],"capes":[{"id":"migrator-1","state":"ACTIVE","url":"http://textures.minecraft.net/texture/cafe","alias":"Migrator"},{"id":"evil","state":"INACTIVE","url":"https://evil.example/texture/1","alias":"Evil"}]}"#).unwrap();
+    assert_eq!(
+        caped.skin_url.as_deref(),
+        Some("https://textures.minecraft.net/texture/1122aabb")
+    );
+    assert_eq!(caped.capes.len(), 1);
+    assert_eq!(caped.capes[0].id, "migrator-1");
+    assert_eq!(caped.capes[0].alias, "Migrator");
+    assert_eq!(
+        caped.capes[0].url,
+        "https://textures.minecraft.net/texture/cafe"
+    );
+    assert!(caped.capes[0].active);
+}
+
+#[test]
+fn builds_rfc7578_skin_multipart_body_and_localized_html() {
+    let (boundary, body) = build_skin_multipart(b"PNGDATA", true).unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains(&format!("--{boundary}")));
+    assert!(text.contains("name=\"variant\"\r\n\r\nslim"));
+    assert!(text.contains("filename=\"skin.png\""));
+    assert!(text.contains("PNGDATA"));
+
+    let en_html = branded_callback_html("en", HtmlOutcome::Success);
+    assert!(en_html.contains("<html lang=\"en\">"));
+    assert!(en_html.contains("Lumi Launcher"));
 }
 
 #[test]
@@ -265,7 +312,14 @@ async fn refuses_unknown_license_missing_profile_unauthorized_and_restricted_acc
         ),
     ];
     let (outcome, _) = mock_exchange(&restricted).await;
-    assert_eq!(outcome.err(), Some(AuthError::AccountRestricted));
+    assert_eq!(outcome.err(), Some(AuthError::XboxChildAccount));
+    let banned = [
+        ("200 OK", OAUTH),
+        ("200 OK", XBOX_USER),
+        ("401 Unauthorized", r#"{"XErr":2148916227}"#),
+    ];
+    let (outcome, _) = mock_exchange(&banned).await;
+    assert_eq!(outcome.err(), Some(AuthError::XboxAccountBanned));
     let revoked = [(
         "400 Bad Request",
         r#"{"error":"invalid_grant","error_description":"fake-secret"}"#,
@@ -301,6 +355,9 @@ async fn mock_exchange(
         minecraft_login: &format!("{base}/authentication/login_with_xbox"),
         entitlements: &format!("{base}/entitlements/mcstore"),
         profile: &format!("{base}/minecraft/profile"),
+        skins: &format!("{base}/minecraft/profile/skins"),
+        skins_active: &format!("{base}/minecraft/profile/skins/active"),
+        capes_active: &format!("{base}/minecraft/profile/capes/active"),
     };
     let (done, stop) = (CancellationToken::new(), CancellationToken::new());
     let mock = reply_to_requests(&listener, replies, &done);
@@ -312,7 +369,7 @@ async fn mock_exchange(
         ("refresh_token", renewal.expose()),
     ];
     let exchange = async {
-        let outcome = verify(&client, &endpoints, &form, Some(&renewal), &stop).await;
+        let outcome = verify(&client, &endpoints, &form, Some(&renewal), &stop, &|_| {}).await;
         done.cancel();
         outcome
     };

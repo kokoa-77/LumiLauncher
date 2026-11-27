@@ -342,6 +342,24 @@ impl From<launcher_core::saves::servers::ServersError> for AppError {
     }
 }
 
+impl From<launcher_core::upgrade::UpgradeError> for AppError {
+    fn from(error: launcher_core::upgrade::UpgradeError) -> Self {
+        use launcher_core::upgrade::UpgradeError;
+        match error {
+            UpgradeError::LinkedInstance => failure("upgrade.linked", &error),
+            UpgradeError::Unchanged => failure("upgrade.unchanged", &error),
+            UpgradeError::NotFound => failure("instance.not_found", &error),
+            UpgradeError::EmptyCloneName => failure("instance.name_empty", &error),
+            UpgradeError::Cancelled => AppError::new("upgrade.cancelled", "已取消"),
+            UpgradeError::Instance(e) => e.into(),
+            UpgradeError::Copy(e) => e.into(),
+            UpgradeError::Install(e) => e.into(),
+            UpgradeError::Content(e) => e.into(),
+            UpgradeError::UnsafePath(e) => e.into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -350,10 +368,10 @@ mod tests {
 
     #[test]
     fn import_hash_mismatch_explains_the_check_failure() {
-        let error = ModpackError::Download(DownloadError::Failed(vec![FileFailure {
-            path: "fixture.jar".into(),
-            reason: "SHA-1 校验失败：应为 expected，实际 actual".into(),
-        }]));
+        let error = ModpackError::Download(DownloadError::Failed(vec![FileFailure::simple(
+            "fixture.jar".into(),
+            "SHA-1 校验失败：应为 expected，实际 actual".into(),
+        )]));
         let error = AppError::from(error);
         assert_eq!(error.code, "download.integrity");
         assert!(error.message.contains("完整性校验"));

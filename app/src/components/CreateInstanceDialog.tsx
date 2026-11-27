@@ -1,34 +1,75 @@
-import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { unwrap } from "@/lib/api";
-import { commands, type LoaderKind, type LoaderVersion } from "@/lib/bindings";
+import {
+  commands,
+  type GameVersionCategory,
+  type GameVersionEntry,
+  type LoaderKind,
+  type LoaderVersion,
+} from "@/lib/bindings";
+import { fallbackLoaderChoice, isLoaderCompatible, LOADER_LABELS } from "@/lib/loaders";
 import { reportError } from "@/lib/report";
+import { LoaderBadgeIcon } from "./art/LoaderBadgeIcon";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { Field, TextInput } from "./ui/Field";
-import { Segmented } from "./ui/Segmented";
 import { Select } from "./ui/Select";
 
 type LoaderChoice = "vanilla" | LoaderKind;
-const LABELS: Record<LoaderKind, string> = {
-  neoforge: "NeoForge",
-  fabric: "Fabric",
-  forge: "Forge",
-  quilt: "Quilt",
-};
+
 interface CatalogResult {
   key: string;
   versions: LoaderVersion[] | "unsupported" | "error";
 }
 
-/** 新建实例向导：名字、游戏版本、加载器。确认后在后台安装，进度在任务中心。 */
+const CATEGORIES: { id: GameVersionCategory; labelKey: string }[] = [
+  { id: "release", labelKey: "create.category.release" },
+  { id: "snapshot", labelKey: "create.category.snapshot" },
+  { id: "aprilFools", labelKey: "create.category.aprilFools" },
+  { id: "ancient", labelKey: "create.category.ancient" },
+];
+
+const LOADER_CHOICES: { id: LoaderChoice; labelKey?: string }[] = [
+  { id: "vanilla", labelKey: "create.vanilla" },
+  { id: "neoforge" },
+  { id: "fabric" },
+  { id: "forge" },
+  { id: "quilt" },
+  { id: "legacyfabric" },
+  { id: "babric" },
+];
+
+function orderCategoryEntries(
+  entries: GameVersionEntry[],
+  category: GameVersionCategory,
+): GameVersionEntry[] {
+  const list = entries.filter((entry) => entry.category === category);
+  if (category === "release") {
+    const idx = list.findIndex((entry) => entry.isLatestRelease);
+    if (idx > 0) {
+      const latest = list[idx];
+      if (latest) return [latest, ...list.slice(0, idx), ...list.slice(idx + 1)];
+    }
+  } else if (category === "snapshot") {
+    const idx = list.findIndex((entry) => entry.isLatestSnapshot);
+    if (idx > 0) {
+      const latest = list[idx];
+      if (latest) return [latest, ...list.slice(0, idx), ...list.slice(idx + 1)];
+    }
+  }
+  return list;
+}
+
+/** 新建实例向导 v2：全版本矩阵（正式/快照/愚人节/远古）、可搜索版本清单与全加载器兼容筛选。 */
 export function CreateInstanceDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation();
-  const [versions, setVersions] = useState<string[]>([]);
+  const [entries, setEntries] = useState<GameVersionEntry[]>([]);
+  const [category, setCategory] = useState<GameVersionCategory>("release");
   const [pickedGameVersion, setPickedGameVersion] = useState<string | null>(null);
-  const gameVersion = pickedGameVersion ?? versions[0] ?? "";
-  const [loader, setLoader] = useState<LoaderChoice>("neoforge");
+  const [loader, setLoader] = useState<LoaderChoice>("vanilla");
   const [catalog, setCatalog] = useState<CatalogResult | null>(null);
   const [picked, setPicked] = useState<{ key: string; version: string } | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -37,13 +78,13 @@ export function CreateInstanceDialog({ open, onClose }: { open: boolean; onClose
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!open || versions.length > 0) return;
+    if (!open || entries.length > 0) return;
     let current = true;
     commands
-      .catalogGameVersions()
+      .catalogGameVersionEntries()
       .then(unwrap)
       .then((list) => {
-        if (current) setVersions(list);
+        if (current) setEntries(list);
       })
       .catch((error: unknown) => {
         if (current) reportError(error, "读取游戏版本列表");
@@ -51,14 +92,39 @@ export function CreateInstanceDialog({ open, onClose }: { open: boolean; onClose
     return () => {
       current = false;
     };
-  }, [open, versions.length]);
+  }, [open, entries.length]);
 
-  const key = `${gameVersion}:${loader}:${attempt}`;
+  const categoryCounts = useMemo(() => {
+    const counts: Record<GameVersionCategory, number> = {
+      release: 0,
+      snapshot: 0,
+      aprilFools: 0,
+      ancient: 0,
+    };
+    for (const entry of entries) counts[entry.category] += 1;
+    return counts;
+  }, [entries]);
+
+  const visibleEntries = useMemo(
+    () => orderCategoryEntries(entries, category),
+    [entries, category],
+  );
+
+  const gameVersion =
+    pickedGameVersion && visibleEntries.some((v) => v.id === pickedGameVersion)
+      ? pickedGameVersion
+      : (visibleEntries[0]?.id ?? "");
+
+  const effectiveLoader: LoaderChoice = gameVersion
+    ? fallbackLoaderChoice(loader, gameVersion)
+    : loader;
+
+  const key = `${gameVersion}:${effectiveLoader}:${attempt}`;
   useEffect(() => {
-    if (!open || !gameVersion || loader === "vanilla") return;
+    if (!open || !gameVersion || effectiveLoader === "vanilla") return;
     let current = true;
     commands
-      .catalogLoaderVersions(gameVersion, loader)
+      .catalogLoaderVersions(gameVersion, effectiveLoader)
       .then(unwrap)
       .then((list) => {
         if (current) setCatalog({ key, versions: list ?? "unsupported" });
@@ -71,7 +137,7 @@ export function CreateInstanceDialog({ open, onClose }: { open: boolean; onClose
     return () => {
       current = false;
     };
-  }, [open, gameVersion, loader, key]);
+  }, [open, gameVersion, effectiveLoader, key]);
 
   // 按请求标识匹配，切换游戏或加载器时不会拿上一组的版本去创建。
   const catalogVersions = catalog?.key === key ? catalog.versions : undefined;
@@ -80,8 +146,8 @@ export function CreateInstanceDialog({ open, onClose }: { open: boolean; onClose
   const loaderVersion = loaderVersions?.some((v) => v.version === pickedVersion)
     ? (pickedVersion ?? "")
     : ((loaderVersions?.find((v) => v.stable) ?? loaderVersions?.[0])?.version ?? "");
-  const isVanilla = loader === "vanilla";
-  const loaderLabel = isVanilla ? "" : LABELS[loader];
+  const isVanilla = effectiveLoader === "vanilla";
+  const loaderLabel = isVanilla ? "" : LOADER_LABELS[effectiveLoader];
   const autoName =
     loaderLabel && gameVersion
       ? `${gameVersion}-${loaderLabel}${loaderVersion ? ` ${loaderVersion}` : ""}`
@@ -91,9 +157,29 @@ export function CreateInstanceDialog({ open, onClose }: { open: boolean; onClose
     !busy && name.trim() !== "" && gameVersion !== "" && (isVanilla || loaderVersion !== "");
 
   const close = () => {
+    setCategory("release");
+    setLoader("vanilla");
     setPickedGameVersion(null);
     setPicked(null);
     onClose();
+  };
+
+  const selectGameVersion = (nextVersion: string) => {
+    setPicked(null);
+    setCatalog(null);
+    setPickedGameVersion(nextVersion);
+    setLoader((prev) => fallbackLoaderChoice(prev, nextVersion));
+  };
+
+  const selectCategory = (nextCategory: GameVersionCategory) => {
+    if (nextCategory === category) return;
+    const nextList = orderCategoryEntries(entries, nextCategory);
+    const first = nextList[0]?.id ?? "";
+    setCategory(nextCategory);
+    setPickedGameVersion(first || null);
+    setPicked(null);
+    setCatalog(null);
+    if (first) setLoader((prev) => fallbackLoaderChoice(prev, first));
   };
 
   const create = async () => {
@@ -103,7 +189,7 @@ export function CreateInstanceDialog({ open, onClose }: { open: boolean; onClose
         await commands.instancesCreate(
           name.trim(),
           gameVersion,
-          isVanilla ? null : { kind: loader, version: loaderVersion },
+          isVanilla ? null : { kind: effectiveLoader, version: loaderVersion },
         ),
       );
       toast.success(t("create.started", { name: name.trim() }));
@@ -116,11 +202,14 @@ export function CreateInstanceDialog({ open, onClose }: { open: boolean; onClose
     }
   };
 
+  const latestLabel = t("create.latestBadge");
+
   return (
     <Dialog
       open={open}
       onClose={close}
       title={t("create.title")}
+      wide
       footer={
         <>
           <Button variant="ghost" onClick={close}>
@@ -145,39 +234,106 @@ export function CreateInstanceDialog({ open, onClose }: { open: boolean; onClose
             }}
           />
         </Field>
-        <Field label={t("create.gameVersion")}>
+
+        <div className="flex flex-col gap-2">
+          <span className="font-medium text-sm">{t("create.gameVersion")}</span>
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="tablist"
+            aria-label={t("create.gameVersion")}
+          >
+            {CATEGORIES.map((item) => {
+              const active = item.id === category;
+              const count = categoryCounts[item.id];
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => selectCategory(item.id)}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-control border px-3 text-sm transition-colors duration-(--motion-press) ${
+                    active
+                      ? "border-accent/45 bg-accent-soft font-medium text-accent"
+                      : "border-line bg-surface text-fg-muted hover:bg-surface-hover hover:text-fg"
+                  }`}
+                >
+                  {active && <Check className="size-3.5 shrink-0" aria-hidden />}
+                  <span>{t(item.labelKey)}</span>
+                  {entries.length > 0 && (
+                    <span className="text-xs tabular-nums opacity-70">{count}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
           <Select
             label={t("create.gameVersion")}
             value={gameVersion}
-            disabled={versions.length === 0}
+            disabled={visibleEntries.length === 0}
             placeholder={t("common.loading")}
-            onChange={(version) => {
-              setPicked(null);
-              setCatalog(null);
-              setPickedGameVersion(version);
-            }}
-            options={versions.map((v) => ({ value: v, label: v }))}
-          />
-        </Field>
-        <div className="flex flex-col gap-1.5">
-          <span className="font-medium text-sm">{t("create.loader")}</span>
-          <Segmented
-            label={t("create.loader")}
-            value={loader}
-            onChange={(kind) => {
-              setPicked(null);
-              setCatalog(null);
-              setLoader(kind);
-            }}
-            options={[
-              { value: "neoforge", label: LABELS.neoforge },
-              { value: "fabric", label: LABELS.fabric },
-              { value: "forge", label: LABELS.forge },
-              { value: "quilt", label: LABELS.quilt },
-              { value: "vanilla", label: t("create.vanilla") },
-            ]}
+            searchable
+            searchPlaceholder={t("create.searchVersion")}
+            emptySearchText={t("create.noSearchMatch")}
+            onChange={selectGameVersion}
+            options={visibleEntries.map((v) => ({
+              value: v.id,
+              label:
+                (category === "release" && v.isLatestRelease) ||
+                (category === "snapshot" && v.isLatestSnapshot)
+                  ? `${v.id} · ${latestLabel}`
+                  : v.id,
+            }))}
           />
         </div>
+
+        <div className="flex flex-col gap-2">
+          <span className="font-medium text-sm">{t("create.loader")}</span>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("create.loader")}>
+            {LOADER_CHOICES.map((choice) => {
+              const selected = choice.id === effectiveLoader;
+              const compatible =
+                choice.id === "vanilla" ||
+                !gameVersion ||
+                isLoaderCompatible(choice.id, gameVersion);
+              const label =
+                choice.id === "vanilla" ? t("create.vanilla") : LOADER_LABELS[choice.id];
+              return (
+                <button
+                  key={choice.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  disabled={!compatible}
+                  title={compatible ? label : t("create.loaderIncompatibleHint")}
+                  onClick={() => {
+                    setPicked(null);
+                    setCatalog(null);
+                    setLoader(choice.id);
+                  }}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-control border px-2.5 text-sm transition-colors duration-(--motion-press) ${
+                    selected
+                      ? "border-accent/45 bg-accent-soft font-medium text-accent"
+                      : compatible
+                        ? "border-line bg-surface text-fg hover:bg-surface-hover"
+                        : "cursor-not-allowed border-line/60 bg-surface/50 text-fg-muted opacity-45"
+                  }`}
+                >
+                  {selected ? (
+                    <Check className="size-3.5 shrink-0" aria-hidden />
+                  ) : (
+                    <LoaderBadgeIcon
+                      loader={choice.id === "vanilla" ? null : choice.id}
+                      className="size-3.5 shrink-0"
+                    />
+                  )}
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {!isVanilla && (
           <Field
             label={t("create.loaderVersion", { loader: loaderLabel })}
@@ -199,6 +355,9 @@ export function CreateInstanceDialog({ open, onClose }: { open: boolean; onClose
                 value={loaderVersion}
                 disabled={!loaderVersions?.length}
                 placeholder={loaderVersions ? "" : t("common.loading")}
+                searchable={(loaderVersions?.length ?? 0) > 8}
+                searchPlaceholder={t("create.searchLoaderVersion")}
+                emptySearchText={t("create.noSearchMatch")}
                 onChange={(version) => setPicked({ key, version })}
                 options={(loaderVersions ?? []).map((v) => ({
                   value: v.version,

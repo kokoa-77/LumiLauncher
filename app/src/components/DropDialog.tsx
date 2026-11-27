@@ -78,6 +78,8 @@ const LOADER_NAME: Record<string, string> = {
   forge: "Forge",
   fabric: "Fabric",
   quilt: "Quilt",
+  legacyfabric: "Legacy Fabric",
+  babric: "Babric",
 };
 const loaderName = (id: string) => LOADER_NAME[id] ?? id;
 

@@ -1,11 +1,21 @@
-import { CircleAlert, CircleCheck, Download, FileDown, Package } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  CircleAlert,
+  CircleCheck,
+  Download,
+  FileDown,
+  Package,
+} from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { unwrap } from "@/lib/api";
 import {
+  type BodyFormat,
   type ContentSource,
   commands,
+  type LoaderKind,
   type PackChoice,
   type PackReadiness,
   type PackVersion,
@@ -16,7 +26,10 @@ import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { Field, TextInput } from "./ui/Field";
 import { HoverHint, Truncated } from "./ui/HoverCard";
+import { LightSpinner } from "./ui/LightSpinner";
 import { Select } from "./ui/Select";
+
+const RichText = lazy(() => import("@/components/discover/RichText"));
 
 /** 整合包从哪来：本地文件（后端弹系统选择窗口）、拖进窗口的文件（一次性编号），或者 Modrinth / CurseForge 上的一个项目 */
 export type PackSourceRef =
@@ -26,6 +39,15 @@ export type PackSourceRef =
 
 const MB = 1024 * 1024;
 const formatMb = (bytes: number) => `${(bytes / MB).toFixed(1)} MB`;
+
+const LOADER_LABEL: Record<LoaderKind, string> = {
+  neoforge: "NeoForge",
+  forge: "Forge",
+  fabric: "Fabric",
+  quilt: "Quilt",
+  legacyfabric: "Legacy Fabric",
+  babric: "Babric",
+};
 
 type RowState = "ok" | "auto";
 
@@ -49,7 +71,7 @@ function Readiness({
 }: {
   readiness: PackReadiness;
   gameVersion: string;
-  loader: { known: true; version: string } | { known: false } | null;
+  loader: { known: true; label: string; version: string } | { known: false } | null;
 }) {
   const { t } = useTranslation();
   return (
@@ -64,12 +86,12 @@ function Readiness({
         {loader?.known && (
           <ReadyRow
             state={r.loaderInstalled ? "ok" : "auto"}
-            label={`NeoForge ${loader.version}`}
+            label={`${loader.label} ${loader.version}`}
             value={r.loaderInstalled ? t("import.installed") : t("import.autoInstall")}
           />
         )}
         {loader && !loader.known && (
-          <ReadyRow state="auto" label="NeoForge" value={t("import.loaderByPack")} />
+          <ReadyRow state="auto" label={t("import.loader")} value={t("import.loaderByPack")} />
         )}
         <ReadyRow
           state={r.javaFound ? "ok" : "auto"}
@@ -110,7 +132,13 @@ export function ImportPackDialog({
   const [choice, setChoice] = useState<PackChoice | null>(null);
   // 在线安装
   const [versions, setVersions] = useState<PackVersion[] | null>(null);
+  const [mcFilter, setMcFilter] = useState("all");
+  const [releaseOnly, setReleaseOnly] = useState(false);
   const [versionId, setVersionId] = useState("");
+  const [changelogOpen, setChangelogOpen] = useState(false);
+  const [changelogs, setChangelogs] = useState<
+    Record<string, { body: string; format: BodyFormat } | "loading" | "empty">
+  >({});
   const [readiness, setReadiness] = useState<PackReadiness | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -180,7 +208,11 @@ export function ImportPackDialog({
     const current = requestRef.current;
     setChoice(null);
     setVersions(null);
+    setMcFilter("all");
+    setReleaseOnly(false);
     setVersionId("");
+    setChangelogOpen(false);
+    setChangelogs({});
     setReadiness(null);
     setFailure(null);
     if (source.kind === "remote") {
@@ -222,7 +254,84 @@ export function ImportPackDialog({
   };
 
   const remote = source?.kind === "remote" ? source : null;
-  const version = versions?.find((v) => v.id === versionId);
+
+  const mcVersions = useMemo(() => {
+    if (!versions) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const v of versions) {
+      for (const gv of v.gameVersions) {
+        if (!seen.has(gv)) {
+          seen.add(gv);
+          out.push(gv);
+        }
+      }
+    }
+    return out;
+  }, [versions]);
+
+  const hasBetaVersions = useMemo(() => Boolean(versions?.some((v) => !v.release)), [versions]);
+
+  const visibleVersions = useMemo(() => {
+    if (!versions) return [];
+    return versions.filter((v) => {
+      if (releaseOnly && !v.release) return false;
+      if (mcFilter !== "all" && !v.gameVersions.includes(mcFilter)) return false;
+      return true;
+    });
+  }, [versions, mcFilter, releaseOnly]);
+
+  const version =
+    visibleVersions.find((v) => v.id === versionId) ?? versions?.find((v) => v.id === versionId);
+
+  const selectVersion = (next: PackVersion | undefined) => {
+    if (!next) return;
+    setVersionId(next.id);
+    setChangelogOpen(false);
+    setFailure(null);
+    void loadReadiness(next);
+  };
+
+  const applyFilter = (nextMc: string, nextReleaseOnly: boolean) => {
+    setMcFilter(nextMc);
+    setReleaseOnly(nextReleaseOnly);
+    if (!versions) return;
+    const nextList = versions.filter((v) => {
+      if (nextReleaseOnly && !v.release) return false;
+      if (nextMc !== "all" && !v.gameVersions.includes(nextMc)) return false;
+      return true;
+    });
+    if (nextList.length > 0 && !nextList.some((v) => v.id === versionId)) {
+      const preferred = nextList.find((v) => v.release) ?? nextList[0];
+      selectVersion(preferred);
+    }
+  };
+
+  const toggleChangelog = async () => {
+    if (!version || !remote) return;
+    const nextOpen = !changelogOpen;
+    setChangelogOpen(nextOpen);
+    if (!nextOpen || changelogs[version.id]) return;
+    if (version.changelog) {
+      setChangelogs((prev) => ({
+        ...prev,
+        [version.id]: { body: version.changelog ?? "", format: version.changelogFormat },
+      }));
+      return;
+    }
+    setChangelogs((prev) => ({ ...prev, [version.id]: "loading" }));
+    try {
+      const text = unwrap(
+        await commands.discoverVersionChangelog(remote.source, remote.projectId, version.id),
+      ).trim();
+      setChangelogs((prev) => ({
+        ...prev,
+        [version.id]: text ? { body: text, format: version.changelogFormat } : "empty",
+      }));
+    } catch {
+      setChangelogs((prev) => ({ ...prev, [version.id]: "empty" }));
+    }
+  };
 
   const start = async () => {
     setBusy(true);
@@ -310,35 +419,123 @@ export function ImportPackDialog({
 
         {remote && versions && versions.length > 0 && (
           <>
+            {(mcVersions.length > 1 || hasBetaVersions) && (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {mcVersions.length > 1 ? (
+                  <div className="min-w-40 flex-1">
+                    <Select
+                      label={t("packUpdate.filterMc")}
+                      value={mcFilter}
+                      disabled={busy}
+                      onChange={(next) => applyFilter(next, releaseOnly)}
+                      options={[
+                        { value: "all", label: t("packUpdate.allMcVersions") },
+                        ...mcVersions.map((gv) => ({ value: gv, label: `Minecraft ${gv}` })),
+                      ]}
+                    />
+                  </div>
+                ) : (
+                  <span />
+                )}
+                {hasBetaVersions && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => applyFilter(mcFilter, !releaseOnly)}
+                    className={`rounded-control border px-3 py-1.5 text-xs transition-colors duration-(--motion-press) ${
+                      releaseOnly
+                        ? "border-accent/40 bg-accent-soft font-medium text-accent"
+                        : "border-line bg-surface text-fg-muted hover:text-fg"
+                    }`}
+                  >
+                    {t("packUpdate.releaseOnly")}
+                  </button>
+                )}
+              </div>
+            )}
             <Field label={t("import.version")}>
-              <Select
-                label={t("import.version")}
-                value={versionId}
-                disabled={busy}
-                onChange={(id) => {
-                  setVersionId(id);
-                  setFailure(null);
-                  void loadReadiness(versions.find((v) => v.id === id));
-                }}
-                options={versions.map((v) => ({
-                  value: v.id,
-                  label: [
-                    v.versionNumber,
-                    v.gameVersions.join(" / "),
-                    v.release ? null : t("import.beta"),
-                  ]
-                    .filter(Boolean)
-                    .join(" · "),
-                }))}
-              />
+              {visibleVersions.length > 0 ? (
+                <Select
+                  label={t("import.version")}
+                  value={versionId}
+                  disabled={busy}
+                  onChange={(id) => selectVersion(visibleVersions.find((v) => v.id === id))}
+                  options={visibleVersions.map((v) => ({
+                    value: v.id,
+                    label: [
+                      v.versionNumber,
+                      v.gameVersions.join(" / "),
+                      v.loaders.length > 0 ? v.loaders.join(" / ") : null,
+                      v.release ? null : t("import.beta"),
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
+                  }))}
+                />
+              ) : (
+                <p className="rounded-row border border-line bg-surface/50 px-3 py-2 text-fg-muted text-sm">
+                  {t("packUpdate.noFilterMatch")}
+                </p>
+              )}
             </Field>
             {version && (
-              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-                <dt className="text-fg-muted">{t("import.game")}</dt>
-                <dd>Minecraft {version.gameVersions.join(" / ")} · NeoForge</dd>
-                <dt className="text-fg-muted">{t("import.packFile")}</dt>
-                <dd>{t("import.packFileValue", { size: formatMb(version.size ?? 0) })}</dd>
-              </dl>
+              <>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+                  <dt className="text-fg-muted">{t("import.game")}</dt>
+                  <dd>
+                    {[
+                      `Minecraft ${version.gameVersions.join(" / ")}`,
+                      version.loaders.length > 0
+                        ? version.loaders.join(" / ")
+                        : t("import.loaderByPack"),
+                    ].join(" · ")}
+                  </dd>
+                  <dt className="text-fg-muted">{t("import.packFile")}</dt>
+                  <dd>{t("import.packFileValue", { size: formatMb(version.size ?? 0) })}</dd>
+                </dl>
+                <div className="rounded-row border border-line bg-surface/50">
+                  <button
+                    type="button"
+                    onClick={() => void toggleChangelog()}
+                    className="flex w-full items-center justify-between px-3 py-2 font-medium text-fg text-xs transition-colors duration-(--motion-press) hover:bg-surface-hover"
+                  >
+                    <span>{t("packUpdate.changelog")}</span>
+                    {changelogOpen ? (
+                      <ChevronUp className="size-3.5 text-fg-muted" aria-hidden />
+                    ) : (
+                      <ChevronDown className="size-3.5 text-fg-muted" aria-hidden />
+                    )}
+                  </button>
+                  {changelogOpen && (
+                    <div className="max-h-36 overflow-y-auto border-line border-t px-3 py-2 text-xs">
+                      {changelogs[version.id] === "loading" ? (
+                        <div className="flex items-center gap-2 text-fg-muted">
+                          <LightSpinner className="size-4" />
+                          <span>{t("packUpdate.loadingChangelog")}</span>
+                        </div>
+                      ) : changelogs[version.id] && changelogs[version.id] !== "empty" ? (
+                        <Suspense
+                          fallback={
+                            <p className="text-fg-muted">{t("packUpdate.loadingChangelog")}</p>
+                          }
+                        >
+                          <RichText
+                            body={
+                              (changelogs[version.id] as { body: string; format: BodyFormat }).body
+                            }
+                            format={
+                              (changelogs[version.id] as { body: string; format: BodyFormat })
+                                .format
+                            }
+                          />
+                        </Suspense>
+                      ) : (
+                        <p className="text-fg-muted">{t("packUpdate.noChangelog")}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
             {readiness && version && (
               <Readiness
@@ -369,7 +566,9 @@ export function ImportPackDialog({
               <dt className="text-fg-muted">{t("import.game")}</dt>
               <dd>
                 Minecraft {p.gameVersion} ·{" "}
-                {p.loader ? `NeoForge ${p.loader.version}` : t("create.vanilla")}
+                {p.loader
+                  ? `${LOADER_LABEL[p.loader.kind]} ${p.loader.version}`
+                  : t("create.vanilla")}
               </dd>
               <dt className="text-fg-muted">{t("import.files")}</dt>
               <dd>
@@ -418,10 +617,29 @@ export function ImportPackDialog({
                 </div>
               </div>
             )}
+            {p.patchCount > 0 && (
+              <div className="flex items-start gap-3 rounded-panel border border-line p-3">
+                <Package className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
+                <div className="min-w-0 flex-1 text-sm">
+                  <p>{t("import.patchesNotice", { n: p.patchCount })}</p>
+                  {p.patchNames.length > 0 && (
+                    <Truncated
+                      as="p"
+                      className="line-clamp-2 text-fg-muted text-xs"
+                      text={p.patchNames.join(" · ")}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
             <Readiness
               readiness={choice.readiness}
               gameVersion={p.gameVersion}
-              loader={p.loader ? { known: true, version: p.loader.version } : null}
+              loader={
+                p.loader
+                  ? { known: true, label: LOADER_LABEL[p.loader.kind], version: p.loader.version }
+                  : null
+              }
             />
           </>
         )}

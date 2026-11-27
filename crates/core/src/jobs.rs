@@ -19,10 +19,11 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak, mpsc};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::fs::{read_json, write_json_atomic};
+use crate::net::FailureDiagnosis;
 use crate::now_millis;
 
 /// 下载历史最多留多少条（这次打开后结束的 + 以前的）
@@ -34,7 +35,7 @@ const EVENT_CHANNEL_CAPACITY: usize = 256;
 /// 算速度用最近多久的进度
 const RATE_WINDOW: Duration = Duration::from_secs(5);
 /// 至少攒够这么久的进度才报速度（刚开始那一下不准）
-const RATE_MIN_SPAN: Duration = Duration::from_millis(800);
+const RATE_MIN_SPAN: Duration = Duration::from_millis(300);
 const HISTORY_FORMAT: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,6 +43,7 @@ const HISTORY_FORMAT: u32 = 1;
 #[serde(rename_all = "camelCase")]
 pub enum JobState {
     Running,
+    Paused,
     Succeeded,
     Failed,
     Cancelled,
@@ -51,7 +53,70 @@ pub enum JobState {
 
 impl JobState {
     pub fn is_finished(self) -> bool {
-        !matches!(self, JobState::Running)
+        !matches!(self, JobState::Running | JobState::Paused)
+    }
+}
+
+/// 独立于 `CancellationToken` 的真暂停控制器：暂停时释放全部网络/磁盘/内存信号量。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunState {
+    Running,
+    Paused,
+}
+
+#[derive(Clone)]
+pub struct PauseControl {
+    tx: watch::Sender<RunState>,
+}
+
+impl PauseControl {
+    pub fn new() -> Self {
+        let (tx, _) = watch::channel(RunState::Running);
+        Self { tx }
+    }
+
+    pub fn pause(&self) {
+        let _ = self.tx.send_replace(RunState::Paused);
+    }
+
+    pub fn resume(&self) {
+        let _ = self.tx.send_replace(RunState::Running);
+    }
+
+    pub fn is_paused(&self) -> bool {
+        *self.tx.borrow() == RunState::Paused
+    }
+
+    /// 当任务从 `Running` 切到 `Paused` 时立即唤醒（若当前已暂停则直接返回）。
+    pub async fn paused_signal(&self) {
+        let mut rx = self.tx.subscribe();
+        while *rx.borrow_and_update() != RunState::Paused {
+            if rx.changed().await.is_err() {
+                std::future::pending::<()>().await;
+            }
+        }
+    }
+
+    /// 阻塞直到恢复运行；若等待期间被取消则返回 `false`。
+    pub async fn wait_resumed(&self, cancel: &CancellationToken) -> bool {
+        let mut rx = self.tx.subscribe();
+        while *rx.borrow_and_update() == RunState::Paused {
+            tokio::select! {
+                res = rx.changed() => {
+                    if res.is_err() {
+                        return false;
+                    }
+                }
+                () = cancel.cancelled() => return false,
+            }
+        }
+        !cancel.is_cancelled()
+    }
+}
+
+impl Default for PauseControl {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -131,6 +196,18 @@ pub struct JobSnapshot {
     pub retryable: bool,
     /// 有几个文件第一个候选地址下不下来、换了备用地址才下好
     pub fallbacks: u32,
+    /// 失败的文件数量（供「仅重试失败 (N)」使用）
+    #[serde(default)]
+    pub failed_count: u32,
+    /// 本地水合或同盘硬链接复用的字节数
+    #[serde(default)]
+    pub reused_bytes: f64,
+    /// 本地水合或同盘硬链接复用的文件数
+    #[serde(default)]
+    pub reused_files: u32,
+    /// 结构化六层根因诊断（供驾驶舱一键自愈卡片显示）
+    #[serde(default)]
+    pub diagnosis: Option<FailureDiagnosis>,
 }
 
 /// 开任务时说明它是什么
@@ -203,6 +280,7 @@ impl Rate {
 struct Record {
     snapshot: JobSnapshot,
     token: CancellationToken,
+    pause: PauseControl,
     last_emit: Option<Instant>,
     retry: Option<serde_json::Value>,
     transient: bool,
@@ -436,7 +514,12 @@ impl JobRegistry {
             eta: None,
             retryable: meta.retry.is_some(),
             fallbacks: 0,
+            failed_count: 0,
+            reused_bytes: 0.0,
+            reused_files: 0,
+            diagnosis: None,
         };
+        let pause = PauseControl::new();
 
         {
             let mut state = self.lock();
@@ -452,6 +535,7 @@ impl JobRegistry {
                 Record {
                     snapshot: snapshot.clone(),
                     token: token.clone(),
+                    pause: pause.clone(),
                     last_emit: None,
                     retry: meta.retry,
                     transient: meta.transient,
@@ -472,16 +556,77 @@ impl JobRegistry {
             id,
             registry: self.clone(),
             token,
+            pause,
             finished: false,
         })
     }
 
-    /// 请求取消。返回任务是否存在且仍在运行。
+    /// 请求暂停。返回任务是否存在且当前正在运行。
+    pub fn pause(&self, id: &str) -> bool {
+        let snapshot = {
+            let mut state = self.lock();
+            let Some(record) = state.records.get_mut(id) else {
+                return false;
+            };
+            if record.snapshot.state != JobState::Running {
+                return false;
+            }
+            record.pause.pause();
+            record.snapshot.state = JobState::Paused;
+            record.snapshot.speed = None;
+            record.snapshot.eta = None;
+            Some(record.snapshot.clone())
+        };
+        if let Some(snap) = snapshot {
+            tracing::info!(job = %id, "已请求暂停任务");
+            self.emit(snap);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 恢复已暂停的任务。
+    pub fn resume(&self, id: &str) -> bool {
+        let snapshot = {
+            let mut state = self.lock();
+            let Some(record) = state.records.get_mut(id) else {
+                return false;
+            };
+            if record.snapshot.state != JobState::Paused {
+                return false;
+            }
+            record.rate.reset();
+            record.net.reset();
+            record.pause.resume();
+            record.snapshot.state = JobState::Running;
+            Some(record.snapshot.clone())
+        };
+        if let Some(snap) = snapshot {
+            tracing::info!(job = %id, "已恢复任务");
+            self.emit(snap);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 当前是否有尚未结束（运行中或已暂停）的任务。
+    pub fn has_active_jobs(&self) -> bool {
+        let state = self.lock();
+        state
+            .records
+            .values()
+            .any(|r| !r.snapshot.state.is_finished())
+    }
+
+    /// 请求取消。返回任务是否存在且仍在运行/暂停。
     pub fn cancel(&self, id: &str) -> bool {
         let state = self.lock();
         match state.records.get(id) {
             Some(record) if !record.snapshot.state.is_finished() => {
                 record.token.cancel();
+                record.pause.resume();
                 tracing::info!(job = %id, "已请求取消任务");
                 true
             }
@@ -624,6 +769,10 @@ impl JobRegistry {
             };
             record.snapshot.speed = speed;
             record.snapshot.eta = eta;
+            if record.snapshot.state == JobState::Paused {
+                record.snapshot.speed = None;
+                record.snapshot.eta = None;
+            }
             let reached_total = progress.total.is_some_and(|t| progress.done >= t);
             let due = record.last_emit.is_none_or(|t| t.elapsed() >= throttle);
             if force || reached_total || due {
@@ -634,7 +783,14 @@ impl JobRegistry {
         });
     }
 
-    fn finish(&self, id: &str, final_state: JobState, error: Option<String>) {
+    fn finish_with_details(
+        &self,
+        id: &str,
+        final_state: JobState,
+        error: Option<String>,
+        failed_count: u32,
+        diagnosis: Option<FailureDiagnosis>,
+    ) {
         let snapshot = {
             let mut state = self.lock();
             let Some(record) = state.records.get_mut(id) else {
@@ -645,6 +801,8 @@ impl JobRegistry {
             }
             record.snapshot.state = final_state;
             record.snapshot.error = error;
+            record.snapshot.failed_count = failed_count;
+            record.snapshot.diagnosis = diagnosis;
             record.snapshot.finished_at = Some(now_millis() as f64);
             record.snapshot.speed = None;
             record.snapshot.eta = None;
@@ -671,6 +829,10 @@ impl JobRegistry {
         }
         self.emit(snapshot);
         self.persist();
+    }
+
+    fn finish(&self, id: &str, final_state: JobState, error: Option<String>) {
+        self.finish_with_details(id, final_state, error, 0, None);
     }
 }
 
@@ -780,6 +942,7 @@ pub struct JobHandle {
     id: String,
     registry: JobRegistry,
     token: CancellationToken,
+    pause: PauseControl,
     finished: bool,
 }
 
@@ -800,6 +963,10 @@ impl JobHandle {
     /// 取消令牌，传给下载等子操作。
     pub fn cancel_token(&self) -> CancellationToken {
         self.token.clone()
+    }
+
+    pub fn pause_control(&self) -> PauseControl {
+        self.pause.clone()
     }
 
     pub fn is_cancelled(&self) -> bool {
@@ -910,6 +1077,19 @@ impl JobHandle {
         });
     }
 
+    /// 记录本任务中本地零字节水合节省的字节数与文件数。
+    pub fn set_reused(&self, bytes: u64, files: u64) {
+        self.registry.modify(&self.id, |record| {
+            let f = u32::try_from(files).unwrap_or(u32::MAX);
+            if record.snapshot.reused_bytes == bytes as f64 && record.snapshot.reused_files == f {
+                return Change::None;
+            }
+            record.snapshot.reused_bytes = bytes as f64;
+            record.snapshot.reused_files = f;
+            Change::Shown
+        });
+    }
+
     pub fn succeed(mut self) {
         self.finished = true;
         self.registry.finish(&self.id, JobState::Succeeded, None);
@@ -920,6 +1100,23 @@ impl JobHandle {
         self.finished = true;
         self.registry
             .finish(&self.id, JobState::Failed, Some(error.into()));
+    }
+
+    /// 以结构化诊断与失败计数结束。
+    pub fn fail_with_diagnosis(
+        mut self,
+        error: impl Into<String>,
+        failed_count: u32,
+        diagnosis: Option<FailureDiagnosis>,
+    ) {
+        self.finished = true;
+        self.registry.finish_with_details(
+            &self.id,
+            JobState::Failed,
+            Some(error.into()),
+            failed_count,
+            diagnosis,
+        );
     }
 
     pub fn cancelled(mut self) {
@@ -1098,9 +1295,9 @@ mod tests {
         let t0 = Instant::now();
         assert_eq!(rate.sample(t0, 0.0, Some(1000.0)), (None, None));
         assert_eq!(
-            rate.sample(t0 + Duration::from_millis(500), 50.0, Some(950.0)),
+            rate.sample(t0 + Duration::from_millis(200), 50.0, Some(950.0)),
             (None, None),
-            "不到 0.8 秒先不报"
+            "不到 0.3 秒先不报"
         );
         let (speed, eta) = rate.sample(t0 + Duration::from_secs(2), 200.0, Some(800.0));
         assert_eq!(speed, Some(100.0));
@@ -1339,5 +1536,31 @@ mod tests {
         let path = dir.path().join("jobs-history.json");
         std::fs::write(&path, "{ 坏了").unwrap();
         assert!(history_registry(&path).history().is_empty());
+    }
+
+    #[tokio::test]
+    async fn pause_resume_and_cancel_while_paused_work_cleanly() {
+        let jobs = registry();
+        let job = jobs
+            .start("k-pause", "测试暂停", ProgressUnit::Bytes)
+            .unwrap();
+        let id = job.id().to_owned();
+        let ctrl = job.pause_control();
+
+        assert!(jobs.pause(&id));
+        assert!(ctrl.is_paused());
+        assert_eq!(jobs.list()[0].state, JobState::Paused);
+        assert!(jobs.has_active_jobs());
+
+        assert!(jobs.resume(&id));
+        assert!(!ctrl.is_paused());
+        assert_eq!(jobs.list()[0].state, JobState::Running);
+
+        assert!(jobs.pause(&id));
+        let token = job.cancel_token();
+        let waiter = tokio::spawn(async move { ctrl.wait_resumed(&token).await });
+        assert!(jobs.cancel(&id));
+        assert!(!waiter.await.unwrap());
+        job.cancelled();
     }
 }

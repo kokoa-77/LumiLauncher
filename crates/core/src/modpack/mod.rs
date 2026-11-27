@@ -1,15 +1,17 @@
-//! 整合包：本地导入（Modrinth `.mrpack`、CurseForge `.zip`）、从 Modrinth 下载、导入前检查缺什么、
-//! 把实例导出成 `.mrpack`（以后还有更新）。
+//! 整合包：本地导入（Modrinth `.mrpack`、CurseForge `.zip`、MultiMC / Prism `.zip`）、
+//! 从 Modrinth 下载、导入前检查缺什么、把实例导出成 `.mrpack`。
 //!
-//! 两种格式各自读取、检查，得到同一种 [`PackPlan`]，再走同一条导入流程（[`plan::import`]）。
+//! 各格式各自读取、检查，得到同一种 [`PackPlan`]，再走同一条导入流程（[`plan::import`]）。
 
 mod check;
 pub mod curseforge;
 pub mod export;
 pub mod mrpack;
+pub mod multimc;
 pub mod plan;
 pub mod ready;
 pub mod remote;
+pub mod update;
 
 use std::path::{Path, PathBuf};
 
@@ -73,9 +75,12 @@ pub fn detect(pack_path: &Path) -> Result<PackFormat, ModpackError> {
         Ok(PackFormat::Modrinth)
     } else if has(curseforge::MANIFEST_FILE) {
         Ok(PackFormat::CurseForge)
+    } else if multimc::detect_root_prefix(&archive).is_some() {
+        Ok(PackFormat::MultiMc)
     } else {
         Err(ModpackError::Invalid(
-            "认不出这个整合包：里面既没有 modrinth.index.json，也没有 manifest.json".to_owned(),
+            "认不出这个整合包：里面没有 modrinth.index.json、manifest.json 或 mmc-pack.json"
+                .to_owned(),
         ))
     }
 }
@@ -88,7 +93,9 @@ pub enum ModpackError {
     /// 出于安全拒绝导入（路径越界、符号链接、陌生下载域名……）
     #[error("出于安全考虑拒绝导入：{0}")]
     Rejected(String),
-    #[error("暂不支持 {0} 整合包（目前支持 NeoForge 和原版，Fabric、Forge、Quilt 以后支持）")]
+    #[error(
+        "暂不支持 {0} 整合包（当前支持原版、NeoForge、Fabric、Quilt、Legacy Fabric、Babric 与 Forge 1.5.2+）"
+    )]
     UnsupportedLoader(String),
     /// 联网查 Modrinth 失败
     #[error(transparent)]

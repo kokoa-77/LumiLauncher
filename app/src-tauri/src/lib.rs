@@ -16,6 +16,7 @@ mod installer;
 mod instances;
 mod linked;
 mod logging;
+mod pack_update;
 mod portable;
 mod records;
 mod recovery;
@@ -40,7 +41,10 @@ use launcher_core::content::curseforge::CurseForge;
 use launcher_core::content::favorites::Favorites;
 use launcher_core::java::JavaPrefsStore;
 use launcher_core::jobs::JobRegistry;
-use launcher_core::net::{Doh, build_client_with_doh, build_client_with_proxy};
+use launcher_core::net::{
+    Doh, DownloadEngine, ProxyWatcher, TelemetryEventKind, clean_orphan_part_files,
+    is_metered_network,
+};
 use launcher_core::paths::GameDir;
 #[cfg(any(debug_assertions, test))]
 use specta_typescript::Typescript;
@@ -106,10 +110,16 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             linked::foreign_import,
             downloads::jobs_history,
             downloads::jobs_retry,
+            downloads::jobs_retry_failed,
+            downloads::jobs_pause,
+            downloads::jobs_resume,
             downloads::jobs_remove,
             downloads::jobs_clear_history,
             downloads::net_doh_test,
             downloads::net_diagnostics,
+            downloads::net_runtime_status,
+            downloads::net_test_proxy,
+            downloads::net_apply_quick_fix,
             downloads::claim_folder_info,
             downloads::claim_folder_choose,
             downloads::claim_folder_reset,
@@ -118,6 +128,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             game::instances_create,
             game::instances_repair_files,
             game::catalog_game_versions,
+            game::catalog_game_version_entries,
             game::catalog_neoforge_versions,
             game::catalog_loader_versions,
             game::launch_start,
@@ -139,6 +150,10 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             game::content_rollback,
             game::content_crash_offer,
             game::content_restore_snapshot,
+            game::content_timeline,
+            game::content_restore_timeline_node,
+            game::content_mod_deps,
+            game::content_mod_impact,
             game::content_set_many_enabled,
             recovery::content_recovered,
             backups::backups_list,
@@ -163,6 +178,12 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             game::modpack_install,
             game::modpack_discard,
             game::modpack_import,
+            pack_update::modpack_update_versions,
+            pack_update::modpack_update_preview_remote,
+            pack_update::modpack_update_preview_file,
+            pack_update::modpack_update_discard,
+            pack_update::modpack_update_start,
+            pack_update::modpack_update_rollback,
             claims::claim_list,
             claims::claim_skip,
             claims::claim_pick,
@@ -219,11 +240,22 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             system::java_delete,
             instances::instances_settings_get,
             instances::instances_settings_set,
+            instances::instances_notes_get,
+            instances::instances_notes_set,
             instances::instances_export_preview,
+            instances::instances_export_match,
+            instances::instances_export_discard,
             instances::instances_export,
             instances::instances_reveal_export,
             instances::instances_copy,
             instances::instances_delete,
+            instances::instances_cover_pick,
+            instances::instances_cover_set_preset,
+            instances::instances_cover_clear,
+            instances::instances_upgrade_preview,
+            instances::instances_upgrade_cancel_preview,
+            instances::instances_upgrade_discard,
+            instances::instances_upgrade_start,
             instances::instances_set_group,
             instances::instances_set_pinned,
             instances::instances_rename_group,
@@ -233,15 +265,24 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             shortcuts::window_show,
             accounts::accounts_list,
             accounts::accounts_skin,
+            accounts::accounts_cape_texture,
             accounts::accounts_select,
             accounts::accounts_remove,
             accounts::accounts_finish_onboarding,
             accounts::accounts_restart_onboarding,
             accounts::accounts_microsoft_login,
+            accounts::accounts_microsoft_reopen_browser,
+            accounts::accounts_microsoft_copy_url,
             accounts::accounts_microsoft_cancel,
+            accounts::accounts_prewarm,
+            accounts::accounts_skin_refresh,
+            accounts::accounts_skin_upload,
+            accounts::accounts_skin_reset,
+            accounts::accounts_cape_set,
         ])
         .events(collect_events![
             events::JobUpdated,
+            events::TransferTelemetryUpdated,
             events::SessionUpdated,
             events::GameLogBatch,
             events::ClaimUpdated,
@@ -250,6 +291,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::FilesDropped,
             events::LaunchRecordSaved,
             events::LaunchAuthBlocked,
+            events::AuthProgressUpdated,
+            events::AccountHealthUpdated,
             events::InstancesChanged,
             updates::UpdateProgress,
             backups::BackupAsk,
@@ -412,14 +455,72 @@ pub fn run() {
                     "MCL_IGNORE_SYSTEM_JAVA 已设置：不用电脑上的 Java，只用启动器下载的"
                 );
             }
-            // 下载域名先问 DoH，并应用代理设置（设置里改了立刻生效）
+            // 下载域名先问 RFC 8484 纯 IP DoH，并挂载 ProxyWatcher + 全局三池下载引擎
             let current_download = settings.get().download;
+            let proxy_watcher = std::sync::Arc::new(ProxyWatcher::new());
             let doh = std::sync::Arc::new(Doh::new(current_download.doh_enabled)?);
-            let client = match build_client_with_proxy(doh.clone(), &current_download.proxy) {
-                Ok(client) => client,
+            let snap = proxy_watcher.snapshot();
+            let engine = match doh
+                .sync_proxy_with_snapshot(&current_download.proxy, Some(&snap))
+                .and_then(|()| {
+                    DownloadEngine::new_with_paths(
+                        doh.clone(),
+                        proxy_watcher.clone(),
+                        &current_download.proxy,
+                        data_dir.clone(),
+                        game_root.clone(),
+                    )
+                }) {
+                Ok(engine) => std::sync::Arc::new(engine),
                 Err(error) => {
                     tracing::warn!(%error, "启动时自定义代理无效，回退为系统代理");
-                    build_client_with_doh(doh.clone())?
+                    let fallback = launcher_core::config::ProxySettings::default();
+                    let _ = doh.sync_proxy_with_snapshot(&fallback, Some(&snap));
+                    std::sync::Arc::new(DownloadEngine::new_with_paths(
+                        doh.clone(),
+                        proxy_watcher.clone(),
+                        &fallback,
+                        data_dir.clone(),
+                        game_root.clone(),
+                    )?)
+                }
+            };
+            engine.apply_settings(&current_download);
+            engine.set_metered(is_metered_network());
+            let linked = linked::Linked::open(data_dir.join("linked-roots.json"));
+            engine.set_external_roots(linked.root_paths());
+            events::spawn_telemetry_emitter(app.handle().clone(), engine.clone(), jobs.clone());
+            // 启动 15s 后低优先级清理超过 72h 的孤儿分段碎片
+            {
+                let gc_root = game_root.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                    let _ = tauri::async_runtime::spawn_blocking(move || {
+                        let (bytes, files) = clean_orphan_part_files(
+                            &gc_root,
+                            std::time::Duration::from_secs(72 * 3600),
+                        );
+                        if files > 0 {
+                            tracing::info!(files, bytes, "启动后台清理孤儿分段碎片完成");
+                        }
+                    })
+                    .await;
+                });
+            }
+            let client = engine.h2_client();
+            let auth_client = match launcher_core::net::build_auth_client(
+                doh.clone(),
+                &current_download.proxy,
+                Some(&snap),
+            ) {
+                Ok(client) => client,
+                Err(error) => {
+                    tracing::warn!(%error, "认证客户端使用默认系统代理回退");
+                    launcher_core::net::build_auth_client(
+                        doh.clone(),
+                        &launcher_core::config::ProxySettings::default(),
+                        Some(&snap),
+                    )?
                 }
             };
             let curseforge = CurseForge::from_env(client.clone());
@@ -445,6 +546,9 @@ pub fn run() {
                 game_dir_from_env,
                 ignore_system_java,
                 client: RwLock::new(client),
+                auth_client: RwLock::new(auth_client),
+                engine,
+                proxy_watcher,
                 doh,
                 curseforge,
                 downloads_dir: app.path().download_dir().ok(),
@@ -453,6 +557,10 @@ pub fn run() {
                 sessions: Sessions::default(),
                 catalog: Catalog::default(),
                 pending_imports: Mutex::default(),
+                pending_upgrades: Mutex::default(),
+                upgrade_preview_cancels: Mutex::default(),
+                pending_pack_updates: Mutex::default(),
+                pending_exports: Mutex::default(),
                 drops: Mutex::default(),
                 search_cache: TtlCache::new(state::DISCOVER_CACHE_TTL, 300),
                 detail_cache: TtlCache::new(state::DISCOVER_CACHE_TTL, 100),
@@ -463,13 +571,69 @@ pub fn run() {
                 turns: turns::InstanceTurns::default(),
                 recovery: recovery::RecoveryNotes::default(),
                 names: launcher_core::content::names::NameBook::default(),
-                linked: linked::Linked::open(data_dir.join("linked-roots.json")),
+                linked,
                 accounts,
+                failure_receipts: Mutex::default(),
             });
             // 挂上的别家目录：别家新装、删掉的版本跟着变，放后台不耽误首屏
             linked::spawn_rescan(app.handle());
             // 上次改到一半被关掉的实例：后台退回改之前
             recovery::spawn(app.handle());
+
+            // 每 1 秒热感知系统代理、计费网络状态与休眠唤醒，瞬时重置 DoH/Fake-IP 租约并重建三池连接
+            let watch_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                interval.tick().await;
+                loop {
+                    interval.tick().await;
+                    let state = watch_app.state::<AppState>();
+                    state.engine.set_metered(is_metered_network());
+                    let proxy = state.settings.get().download.proxy;
+                    if let Some((epoch, snap, woke)) = state.proxy_watcher.poll(&proxy) {
+                        tracing::info!(
+                            epoch,
+                            woke,
+                            sys_enabled = snap.enabled,
+                            "检测到网络或系统代理变更，热重建连接池并重置 DoH"
+                        );
+                        state.engine.telemetry().push_event(
+                            TelemetryEventKind::RouteSwitched,
+                            if woke {
+                                "系统休眠唤醒，已丢弃老化连接并重建连接池"
+                            } else {
+                                "系统代理发生切换，已热切换连接池"
+                            },
+                        );
+                        if woke {
+                            state.accounts.clear_warm_sessions();
+                        }
+                        if let Err(err) = state.doh.sync_proxy_with_snapshot(&proxy, Some(&snap)) {
+                            tracing::warn!(%err, "热更新 DoH 客户端代理失败");
+                        }
+                        state.doh.on_network_epoch_change();
+                        match state.engine.rebuild_clients(&proxy, Some(&snap)) {
+                            Ok(next) => {
+                                *state.client.write().unwrap_or_else(|e| e.into_inner()) =
+                                    next.clone();
+                                state.curseforge.set_client(next);
+                            }
+                            Err(err) => {
+                                tracing::warn!(%err, "热重建 HTTP 客户端池失败");
+                            }
+                        }
+                        if let Ok(next_auth) = launcher_core::net::build_auth_client(
+                            state.doh.clone(),
+                            &proxy,
+                            Some(&snap),
+                        ) {
+                            *state.auth_client.write().unwrap_or_else(|e| e.into_inner()) =
+                                next_auth;
+                        }
+                    }
+                }
+            });
 
             window::spawn_show_fallback(app.handle());
             Ok(())

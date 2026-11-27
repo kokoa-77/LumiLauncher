@@ -2636,6 +2636,7 @@ dependencies = [
  "trash",
  "uuid",
  "win-screenshot",
+ "windows",
  "windows-native-keyring-store",
  "winreg",
  "xcap",

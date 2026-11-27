@@ -109,7 +109,7 @@ function DownloadRow({
   const settings = useAppStore((s) => s.settings);
   const version = useAppStore((s) => s.info?.version ?? null);
   const [retrying, setRetrying] = useState(false);
-  const running = job.state === "running";
+  const running = job.state === "running" || job.state === "paused";
   const title = jobTitle(job, t);
   const fraction = jobFraction(job.progress);
   const tone = stateTone(job.state);
@@ -163,10 +163,14 @@ function DownloadRow({
           <p className="min-w-0 truncate font-medium text-sm">{title}</p>
           <Tag>{t(`downloads.source.${job.source}`)}</Tag>
           {running ? (
-            <span className="flex shrink-0 items-center gap-1 text-fg-muted text-xs">
-              <LightSpinner className="size-3.5" />
-              {t("tasks.state.running")}
-            </span>
+            job.state === "paused" ? (
+              <Dot tone={tone}>{t("tasks.state.paused")}</Dot>
+            ) : (
+              <span className="flex shrink-0 items-center gap-1 text-fg-muted text-xs">
+                <LightSpinner className="size-3.5" />
+                {t("tasks.state.running")}
+              </span>
+            )
           ) : (
             <Dot tone={tone}>{t(`tasks.state.${job.state}`)}</Dot>
           )}

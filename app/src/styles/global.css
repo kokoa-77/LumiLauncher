@@ -36,6 +36,8 @@
   --color-on-danger: var(--on-danger);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
   --color-scrim: var(--scrim);
   --color-hero-scrim: var(--hero-scrim);
   --color-hero-tint: var(--hero-tint);

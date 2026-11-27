@@ -1195,6 +1195,12 @@ mod tests {
     }
 
     #[test]
+    fn host_header_constants_never_include_neoforge_cdn() {
+        assert!(!KEY_HOSTS.contains(&"neoforged.forgecdn.net"));
+        assert!(!DOWNLOAD_HOSTS.contains(&"neoforged.forgecdn.net"));
+    }
+
+    #[test]
     fn search_hits_reuse_the_common_shape() {
         let json = r#"{"id":238222,"name":"Just Enough Items (JEI)","summary":"View Items",
             "classId":6,"links":{"websiteUrl":"https://www.curseforge.com/minecraft/mc-mods/jei"},

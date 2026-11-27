@@ -19,7 +19,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::error::AppError;
-use crate::game::{Pick, any_game_running, downloader, pick, report};
+use crate::game::{Pick, any_game_running, pick, report};
 use crate::state::AppState;
 
 /// 以管理员身份再开一次启动器时带的参数：只整理内存，然后退出
@@ -306,7 +306,11 @@ pub fn java_install(
     let id = job.id().to_owned();
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
-        let downloader = downloader(&state);
+        let downloader = crate::game::downloader_for_job(
+            &state,
+            launcher_core::net::DownloadPriority::Interactive,
+            &job,
+        );
         let locator = state.java_locator();
         let cancel = job.cancel_token();
         let ctx = JavaContext {
@@ -325,7 +329,10 @@ pub fn java_install(
                 job.succeed();
             }
             Err(_) if cancel.is_cancelled() => job.cancelled(),
-            Err(error) => job.fail(AppError::from(error).message),
+            Err(error) => {
+                let app_err = state.capture_app_error(&job, &label, error);
+                state.finish_failed_job(job, app_err.message);
+            }
         }
     });
     Ok(id)

@@ -417,7 +417,7 @@ function RecordDetail({
           }`}
         >
           <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1">
+          <span className="min-w-0 flex-1 select-text">
             {problem}
             {record.hasCrashReport && view !== "crash" && (
               <button
@@ -517,7 +517,7 @@ function RecordDetail({
               itemClassName="px-2"
               render={(mod) => (
                 <div className="flex items-center gap-3 rounded-row px-3 py-2">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 select-text">
                     <p className={`truncate text-sm ${mod.enabled ? "text-fg" : "text-fg-muted"}`}>
                       {mod.title}
                       {mod.version && (

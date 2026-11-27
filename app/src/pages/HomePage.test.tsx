@@ -24,11 +24,19 @@ const base: InstanceSummary = {
   gameVersion: "1.21.11",
   loader: "NeoForge 21.11.14-beta",
   pack: null,
+  packVersion: null,
+  packSource: null,
+  packProjectId: null,
+  packVersionId: null,
+  packRollback: null,
   createdAt: null,
   lastPlayed: null,
   group: null,
   pinnedAt: null,
   linked: null,
+  coverUrl: null,
+  coverFit: "cover",
+  coverPreset: null,
 };
 
 function renderHome(instance: InstanceSummary) {

@@ -1,23 +1,48 @@
-//! 网络层：统一的 HTTP 客户端、并发校验下载引擎、DoH 与连通性诊断，以及查询 Minecraft 服务器状态（`status`、`srv`）。
+//! 网络层：统一的 HTTP 客户端、分段/并发校验下载引擎、本地水合复用、网络指纹记忆、DoH 与连通性诊断。
 //!
 //! 所有元数据与文件下载均直连官方源（Mojang、各加载器官方仓库、Modrinth、CurseForge）。
 
+pub mod diagnosis;
 pub mod diagnostics;
+pub mod dns_wire;
 pub mod doh;
 pub mod download;
+pub mod edge_opt;
 pub mod http;
+pub mod hydrator;
 pub mod mclogs;
+#[cfg(feature = "community-mirrors")]
+pub mod mirror;
+pub mod profile;
+pub mod proxy_watch;
+pub mod segmented;
 pub mod srv;
 pub mod status;
+pub mod telemetry;
+pub mod throttle;
 
+pub use diagnosis::{FailureDiagnosis, QuickFixAction, RootCauseKind};
 pub use diagnostics::{EndpointProbe, EndpointStatus, probe_endpoints};
-pub use doh::{DnsProbe, Doh, build_client_with_doh, build_client_with_proxy};
+pub use doh::{DnsProbe, Doh, TransportDnsAction, build_client_with_doh, build_client_with_proxy};
 pub use download::{
-    DENIED_PREFIX, DownloadError, DownloadItem, DownloadProgress, DownloadReport, Downloader,
-    FileFailure, HostHeader, sha1_file,
+    DENIED_PREFIX, DownloadEngine, DownloadError, DownloadItem, DownloadPriority, DownloadProgress,
+    DownloadReport, Downloader, FailedDownloadEntry, FileFailure, HostHeader,
+    PartialFailureReceipt, sha1_file,
 };
-pub use http::{HttpError, build_client, get_bytes, get_json};
+pub use http::{
+    ClientBundle, HttpError, build_auth_client, build_client, expand_official_fallbacks, get_bytes,
+    get_bytes_with_doh, get_json, official_fallback_urls,
+};
+pub use hydrator::LocalHydrator;
 pub use mclogs::{MclogsError, MclogsUpload, sanitize_for_upload, upload_log};
+pub use profile::{HostPerfProfile, NetworkProfileStore, compute_network_signature};
+pub use proxy_watch::ProxyWatcher;
+pub use segmented::{clean_orphan_part_files, has_resumable_artifacts, scan_orphan_part_files};
+pub use telemetry::{
+    ActiveRouteKind, TelemetryEvent, TelemetryEventKind, TelemetryHub, TransferTelemetry,
+    TransportProtocol,
+};
+pub use throttle::{DiskMediaDetector, DiskMediaKind, TokenBucket, is_metered_network};
 
 /// `https://` 地址的主机名（小写，去掉用户名和端口）。不是 https 的返回 `None`。
 pub fn url_host(url: &str) -> Option<String> {

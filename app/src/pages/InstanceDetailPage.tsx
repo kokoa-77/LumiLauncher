@@ -1,28 +1,30 @@
 import {
+  ArrowUpCircle,
   Copy,
   FolderOpen,
   Globe,
   Image as ImageIcon,
   Layers,
+  MonitorUp,
   MoreHorizontal,
+  NotebookPen,
+  PackageCheck,
   PackageOpen,
   ScrollText,
   Share,
-  Trash2,
-  Unlink,
   Wrench,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
+import { CoverEmblem, resolveDefaultCover } from "@/components/art/InstanceDefaultCover";
+import { LoaderBadgeIcon } from "@/components/art/LoaderBadgeIcon";
 import { LumiIcon } from "@/components/art/LumiIcon";
 import { openInstanceFolder } from "@/components/HomeHero";
-import { instanceSubtitle } from "@/components/InstanceCard";
 import { InstanceCover } from "@/components/InstanceTile";
 import { ContentTab } from "@/components/instance/ContentTab";
 import { CopyDialog, DeleteDialog } from "@/components/instance/CopyDeleteDialogs";
-import { ExportDialog } from "@/components/instance/ExportDialog";
 import {
   type InstanceSection,
   InstanceSettingsDialog,
@@ -31,22 +33,30 @@ import { LogTab } from "@/components/instance/LogTab";
 import { RepairDialog } from "@/components/instance/RepairDialog";
 import { ScreenshotsTab } from "@/components/instance/ScreenshotsTab";
 import { WorldsTab } from "@/components/instance/WorldsTab";
-import { instanceMenuItems } from "@/components/instanceMenu";
 import { PlayButton } from "@/components/PlayButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconButton } from "@/components/ui/IconButton";
 import { Menu } from "@/components/ui/Menu";
 import { Tabs } from "@/components/ui/Tabs";
-import type { ContentKind } from "@/lib/bindings";
+import { unwrap } from "@/lib/api";
+import { type ContentKind, commands } from "@/lib/bindings";
 import { imageAt, useCoverAccent, useWorldAccent } from "@/lib/cover";
 import { PAGE } from "@/lib/layout";
 import { duration, ease } from "@/lib/motion";
 import { useGameStore } from "@/stores/game";
 
-type Tab = "content" | "worlds" | "screenshots" | "log";
-const TABS: Tab[] = ["content", "worlds", "screenshots", "log"];
+const ExportDialog = lazy(() => import("@/components/instance/ExportDialog"));
+const InstanceNotesCard = lazy(() => import("@/components/instance/InstanceNotesCard"));
+const UpgradeVersionDialog = lazy(() => import("@/components/instance/UpgradeVersionDialog"));
+const UpdatePackDialog = lazy(() => import("@/components/instance/UpdatePackDialog"));
+
+/** 实例详情页静默检测整合包新版的会话级缓存（键包含当前版本，更新/回滚后自动失效） */
+const packUpdateOfferCache = new Map<string, string | null>();
+
+type Tab = "content" | "worlds" | "screenshots" | "log" | "notes";
+const TABS: Tab[] = ["content", "worlds", "screenshots", "log", "notes"];
 /** 横幅「⋯」菜单打开的弹窗 */
-type Action = "export" | "copy" | "delete" | "repair";
+type Action = "export" | "copy" | "delete" | "repair" | "upgrade" | "packUpdate";
 const KINDS: ContentKind[] = ["mod", "shader", "resourcePack"];
 
 const TAB_ICON = {
@@ -54,6 +64,7 @@ const TAB_ICON = {
   worlds: Globe,
   screenshots: ImageIcon,
   log: ScrollText,
+  notes: NotebookPen,
 } as const;
 
 /**
@@ -72,9 +83,51 @@ export function InstanceDetailPage() {
   const recentLoaded = useGameStore((s) => s.recentWorlds !== null);
   const [action, setAction] = useState<Action | null>(null);
   const [settingsSection, setSettingsSection] = useState<InstanceSection | null>(null);
+  const [packUpdateVersion, setPackUpdateVersion] = useState<string | null>(null);
   // 整套界面换成这个实例最近那个世界的颜色（招牌 2）
   const color = useCoverAccent(world?.imageUrl);
   useWorldAccent(recentLoaded ? color : undefined);
+
+  const packCacheKey =
+    instance && !instance.linked && instance.packSource && instance.packProjectId
+      ? `${instance.id}:${instance.packVersionId ?? instance.packVersion ?? ""}`
+      : null;
+
+  useEffect(() => {
+    if (!packCacheKey || !instance) {
+      setPackUpdateVersion(null);
+      return;
+    }
+    if (packUpdateOfferCache.has(packCacheKey)) {
+      setPackUpdateVersion(packUpdateOfferCache.get(packCacheKey) ?? null);
+      return;
+    }
+    let cancelled = false;
+    setPackUpdateVersion(null);
+    commands
+      .modpackUpdateVersions(instance.id)
+      .then(unwrap)
+      .then((list) => {
+        if (cancelled) return;
+        const candidate =
+          list.find((v) => v.release && v.gameVersions.includes(instance.gameVersion)) ??
+          list.find((v) => v.recommended) ??
+          list[0];
+        const isNewer =
+          Boolean(candidate) &&
+          candidate?.id !== instance.packVersionId &&
+          candidate?.versionNumber !== instance.packVersion;
+        const nextVersion = isNewer && candidate ? candidate.versionNumber : null;
+        packUpdateOfferCache.set(packCacheKey, nextVersion);
+        setPackUpdateVersion(nextVersion);
+      })
+      .catch(() => {
+        if (!cancelled) setPackUpdateVersion(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [packCacheKey, instance]);
 
   const tabParam = params.get("tab") as Tab | null;
   const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : "content";
@@ -96,11 +149,12 @@ export function InstanceDetailPage() {
     );
   }
 
-  const onHero = !!world?.imageUrl;
-  const iconOnly = world?.imageKind === "icon";
+  const iconOnly = !instance.coverUrl && world?.imageKind === "icon";
   // 完整显示的自选图（立绘）：横幅太扁放不下，横幅只铺它的颜色，立绘的上半身当名字左边的头像
-  const figure = world?.imageKind === "custom" && world.imageFit === "contain";
-  const letter = Array.from(instance.name.trim())[0]?.toUpperCase() ?? "?";
+  const figure =
+    !instance.coverUrl && world?.imageKind === "custom" && world.imageFit === "contain";
+  const onHero = Boolean(instance.coverUrl || (world?.imageUrl && !iconOnly && !figure));
+  const { emblem, palette } = resolveDefaultCover(instance);
 
   return (
     <div className={`${PAGE} flex h-full flex-col gap-5`}>
@@ -121,7 +175,16 @@ export function InstanceDetailPage() {
         <div className="absolute inset-0 bg-linear-to-r from-hero-scrim from-10% via-hero-scrim/75 via-40% to-hero-scrim/0" />
         <div className="relative flex w-full items-center gap-4 px-6 text-on-hero">
           {(iconOnly || figure || !onHero) && (
-            <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-row bg-surface shadow-raised ring-1 ring-hero-chip-line">
+            <div
+              className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-row bg-surface shadow-raised ring-1 ring-hero-chip-line"
+              style={
+                !iconOnly && !figure
+                  ? {
+                      background: `linear-gradient(135deg, ${palette.deep} 0%, ${palette.mid} 100%)`,
+                    }
+                  : undefined
+              }
+            >
               {iconOnly && world?.imageUrl ? (
                 <img
                   src={world.imageUrl}
@@ -135,22 +198,45 @@ export function InstanceDetailPage() {
                   className="size-full object-cover object-top"
                 />
               ) : (
-                <span className="font-semibold text-2xl text-accent">{letter}</span>
+                <CoverEmblem
+                  emblem={emblem}
+                  accent={palette.accent}
+                  glow={palette.glow}
+                  className="size-10"
+                />
               )}
             </div>
           )}
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 select-text">
             <h1 className="truncate font-semibold text-3xl leading-tight">{instance.name}</h1>
-            <p className="mt-0.5 truncate text-on-hero-muted text-sm">
-              {[
-                instanceSubtitle(instance),
-                instance.linked &&
-                  t("detail.linkedFrom", { launcher: t(`launchers.${instance.linked}`) }),
-                world?.name,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-on-hero-muted text-sm tabular-nums">
+              <LoaderBadgeIcon
+                loader={instance.loader}
+                title={instance.loader ?? t("create.vanilla")}
+                className="size-4 shrink-0"
+              />
+              <span className="truncate">
+                {[
+                  instance.gameVersion,
+                  instance.loader,
+                  instance.linked &&
+                    t("detail.linkedFrom", { launcher: t(`launchers.${instance.linked}`) }),
+                  world?.name,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+              {packUpdateVersion && (
+                <button
+                  type="button"
+                  onClick={() => setAction("packUpdate")}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-tag bg-hero-chip px-2 py-0.5 font-medium text-on-hero text-xs ring-1 ring-hero-chip-line ring-inset backdrop-blur-md transition-colors duration-(--motion-press) hover:bg-hero-chip-hover"
+                >
+                  <ArrowUpCircle className="size-3.5 text-accent" aria-hidden />
+                  <span>{t("packUpdate.updatePill", { version: packUpdateVersion })}</span>
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <IconButton
@@ -168,7 +254,32 @@ export function InstanceDetailPage() {
               size="cta"
               icon={MoreHorizontal}
               items={[
-                ...instanceMenuItems(instance, t),
+                ...(!instance.linked && instance.pack
+                  ? [
+                      {
+                        key: "packUpdate",
+                        label: t("detail.menu.packUpdate"),
+                        icon: PackageCheck,
+                        onSelect: () => setAction("packUpdate"),
+                      },
+                    ]
+                  : []),
+                {
+                  key: "upgrade",
+                  label: t("detail.menu.upgrade"),
+                  icon: ArrowUpCircle,
+                  onSelect: () => setAction("upgrade"),
+                },
+                ...(!instance.linked && !instance.pack
+                  ? [
+                      {
+                        key: "packUpdate",
+                        label: t("detail.menu.packUpdate"),
+                        icon: PackageCheck,
+                        onSelect: () => setAction("packUpdate"),
+                      },
+                    ]
+                  : []),
                 {
                   key: "folder",
                   label: t("detail.menu.openFolder"),
@@ -187,6 +298,12 @@ export function InstanceDetailPage() {
                   icon: Copy,
                   onSelect: () => setAction("copy"),
                 },
+                {
+                  key: "shortcut",
+                  label: t("shortcut.menu"),
+                  icon: MonitorUp,
+                  onSelect: () => void useGameStore.getState().createShortcut(instance.id),
+                },
                 ...(instance.linked
                   ? []
                   : [
@@ -197,21 +314,6 @@ export function InstanceDetailPage() {
                         onSelect: () => setAction("repair"),
                       },
                     ]),
-                // 挂上的别家版本只从 Lumi 里移除，别家的文件不动
-                instance.linked
-                  ? {
-                      key: "delete",
-                      label: t("detail.menu.unlink"),
-                      icon: Unlink,
-                      onSelect: () => setAction("delete"),
-                    }
-                  : {
-                      key: "delete",
-                      label: t("detail.menu.delete"),
-                      icon: Trash2,
-                      danger: true,
-                      onSelect: () => setAction("delete"),
-                    },
               ]}
             />
             <PlayButton instanceId={instance.id} large size="md" />
@@ -261,12 +363,19 @@ export function InstanceDetailPage() {
             }}
           />
         )}
+        {tab === "notes" && (
+          <Suspense fallback={null}>
+            <InstanceNotesCard instance={instance} />
+          </Suspense>
+        )}
       </motion.div>
 
       <InstanceSettingsDialog
         instance={instance}
         section={settingsSection}
         onSection={setSettingsSection}
+        onUpgrade={() => setAction("upgrade")}
+        onDelete={() => setAction("delete")}
         onClose={() => setSettingsSection(null)}
       />
       <RepairDialog
@@ -274,12 +383,22 @@ export function InstanceDetailPage() {
         open={action === "repair"}
         onClose={() => setAction(null)}
       />
-      <ExportDialog
-        instance={instance}
-        open={action === "export"}
-        onClose={() => setAction(null)}
-      />
+      {action === "export" && (
+        <Suspense fallback={null}>
+          <ExportDialog instance={instance} open onClose={() => setAction(null)} />
+        </Suspense>
+      )}
       <CopyDialog instance={instance} open={action === "copy"} onClose={() => setAction(null)} />
+      {action === "upgrade" && (
+        <Suspense fallback={null}>
+          <UpgradeVersionDialog instance={instance} open onClose={() => setAction(null)} />
+        </Suspense>
+      )}
+      {action === "packUpdate" && (
+        <Suspense fallback={null}>
+          <UpdatePackDialog instance={instance} open onClose={() => setAction(null)} />
+        </Suspense>
+      )}
       <DeleteDialog
         instance={instance}
         open={action === "delete"}

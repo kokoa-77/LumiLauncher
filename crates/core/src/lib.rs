@@ -26,6 +26,7 @@ pub mod saves;
 pub mod shortcut;
 pub mod storage;
 pub mod sync;
+pub mod upgrade;
 
 /// 当前毫秒级 Unix 时间戳。
 pub fn now_millis() -> u64 {

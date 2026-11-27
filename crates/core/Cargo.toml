@@ -10,6 +10,8 @@ publish.workspace = true
 [features]
 # 应用壳开启它，让核心类型可以导出成 TypeScript
 specta = ["dep:specta"]
+# V1.1 社区加速镜像开关（审核版默认关闭，关闭时产物二进制零第三方镜像字符串）
+community-mirrors = []
 
 [dependencies]
 base64 = { workspace = true }
@@ -37,6 +39,7 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
 windows-native-keyring-store = { workspace = true }
 trash = { workspace = true }
 win-screenshot = { workspace = true }

@@ -127,7 +127,8 @@ function Fact({ icon: Icon, label, value }: { icon: typeof Clock; label: string;
  * 从列表点进来时先用列表里的信息把页头画出来，详情读到了再补全，不让你对着空白等。
  */
 export function ProjectPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const showZh = i18n.language === "zh-CN";
   const location = useLocation();
   const [params] = useSearchParams();
   const { source, projectId = "" } = useParams<{ source: ContentSource; projectId: string }>();
@@ -193,9 +194,9 @@ export function ProjectPage() {
 
   const menu = useEntryMenu(entry ?? toEntry(emptyHit(source, projectId)));
   const banner = detail?.gallery[0]?.url ?? entry?.hit.galleryUrl ?? null;
-  // 标题栏「现在在哪」的最后一级显示项目名（直接打开、刷新后也有）
+  // 标题栏「现在在哪」的最后一级显示项目名（直接打开、刷新后也有；仅中文界面显示中文译名）
   const setPageTitle = useAppStore((s) => s.setPageTitle);
-  const title = entry ? (entry.hit.titleZh ?? entry.hit.title) : null;
+  const title = entry ? (showZh && entry.hit.titleZh) || entry.hit.title : null;
   useEffect(() => {
     setPageTitle(title);
     return () => setPageTitle(null);
@@ -221,6 +222,7 @@ export function ProjectPage() {
   }
 
   const { hit } = entry;
+  const zhTitle = showZh ? hit.titleZh : null;
   const since = formatSince(hit.updated, t);
   const published = formatSince(detail?.published, t);
   const gallery = detail?.gallery ?? [];
@@ -236,7 +238,7 @@ export function ProjectPage() {
 
   return (
     <div className={`${PAGE} flex flex-col gap-6`}>
-      <header className="relative isolate flex min-h-60 flex-col justify-end overflow-hidden rounded-panel border border-line">
+      <header className="relative isolate overflow-hidden rounded-panel">
         {banner ? (
           <img src={banner} alt="" className="-z-10 absolute inset-0 size-full object-cover" />
         ) : soft ? (
@@ -245,37 +247,38 @@ export function ProjectPage() {
           <div className="-z-10 absolute inset-0 bg-accent-soft" />
         )}
         <div className="-z-10 absolute inset-0 bg-hero-tint" />
-        <div className="-z-10 absolute inset-0 bg-linear-to-t from-hero-scrim from-15% via-hero-scrim/60 to-transparent" />
-        <div className="flex flex-wrap items-end gap-5 p-6 text-on-hero">
+        <div className="-z-10 absolute inset-0 bg-linear-to-r from-hero-scrim from-20% via-hero-scrim/80 via-60% to-hero-scrim/35" />
+        <div className="-z-10 absolute inset-0 bg-linear-to-t from-hero-scrim/45 to-transparent" />
+        <div className="flex flex-wrap items-start gap-5 p-6 text-on-hero">
           <ProjectIcon
             entry={entry}
-            className="size-20 shrink-0 rounded-panel shadow-overlay ring-1 ring-hero-chip-line"
+            className="size-20 shrink-0 rounded-row bg-surface shadow-raised ring-1 ring-hero-chip-line"
           />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 select-text">
             <h1 className="truncate font-semibold text-3xl leading-tight">
-              {hit.titleZh ?? hit.title}
-              {hit.titleZh && (
-                <span className="ml-3 font-normal text-lg text-on-hero-muted">{hit.title}</span>
-              )}
+              {zhTitle ?? hit.title}
             </h1>
-            <div className="mt-1 flex items-center gap-2 text-on-hero-muted text-sm">
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-on-hero-muted text-sm">
+              {zhTitle && <Truncated className="max-w-full truncate" text={hit.title} />}
+              {zhTitle && hit.author && <span aria-hidden>·</span>}
               <AuthorLink entry={entry} />
             </div>
             <Truncated
               as="p"
-              className="mt-2 line-clamp-2 max-w-3xl text-on-hero-muted text-sm"
+              className="mt-2 line-clamp-2 max-w-2xl text-on-hero-muted text-sm"
               text={hit.description}
             />
             <div className="mt-3">
               <Tags entry={entry} kind={kind} max={6} tone="hero" />
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 pt-0.5">
             <FavoriteButton entry={entry} kind={kind} tone="hero" />
             <Menu label={t("discover.menu")} items={menu} trigger="hero" />
             <InstallButton
               state={installer.stateOf(entry, kind, installed)}
               kind={kind}
+              prominent
               disabled={kind !== "modpack" && !instanceId}
               onClick={() => void installer.start(entry, kind)}
             />
@@ -308,7 +311,7 @@ export function ProjectPage() {
             ]}
           />
           {tab === "about" ? (
-            <div className="rounded-panel border border-line bg-surface p-6 shadow-raised">
+            <div className="select-text rounded-panel border border-line bg-surface p-6 shadow-raised">
               {detail ? (
                 detail.body.trim() ? (
                   <Suspense fallback={<LightSpinner className="size-5 text-accent" />}>

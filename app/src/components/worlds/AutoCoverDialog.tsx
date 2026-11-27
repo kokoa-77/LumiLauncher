@@ -2,7 +2,6 @@ import { Check, Images, Lock, Unlock } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { formatTime } from "@/components/HistoryDialog";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -11,6 +10,7 @@ import { Tag } from "@/components/ui/Tag";
 import { unwrap } from "@/lib/api";
 import { type AutoCoverView, commands } from "@/lib/bindings";
 import { imageAt } from "@/lib/cover";
+import { formatDateTime as formatTime } from "@/lib/format";
 import { reportError } from "@/lib/report";
 import { useGameStore } from "@/stores/game";
 

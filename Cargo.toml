@@ -35,8 +35,8 @@ base64 = "0.23"
 sha2 = "0.11"
 # 截图缩成窗口大小再交给界面（省网页内核的内存）；只开 PNG、JPEG，ICO 给桌面快捷方式的图标
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "ico"] }
-# 只用来读电脑的总内存和空闲内存（自动分配内存）；只开 system 功能
-sysinfo = { version = "0.40", default-features = false, features = ["system"] }
+# 只用来读电脑的总内存和空闲内存（自动分配内存）及挂载磁盘介质；只开 system 和 disk 功能
+sysinfo = { version = "0.40", default-features = false, features = ["system", "disk"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -79,6 +79,7 @@ specta = { version = "=2.0.0-rc.26", features = ["derive"] }
 specta-typescript = "=0.0.13"
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 windows-version = "0.1"
+windows = { version = "0.62", default-features = false, features = ["Networking_Connectivity"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

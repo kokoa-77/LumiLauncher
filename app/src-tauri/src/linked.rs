@@ -23,7 +23,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::error::AppError;
 use crate::events::{InstancesChanged, emit};
-use crate::game::{Pick, downloader, phase_label, pick, pick_java_for, report, report_loader};
+use crate::game::{Pick, phase_label, pick, pick_java_for, report, report_loader};
 use crate::state::AppState;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -69,6 +69,10 @@ impl Linked {
                 Vec::new()
             }
         }
+    }
+
+    pub(crate) fn root_paths(&self) -> Vec<PathBuf> {
+        self.roots().into_iter().map(|r| r.path).collect()
     }
 
     /// 改清单：读 → 改 → 原子写回
@@ -345,6 +349,7 @@ pub async fn linked_roots_add(
         hidden: Vec::new(),
     };
     state.linked.change(|roots| roots.push(stored))?;
+    state.engine.set_external_roots(state.linked.root_paths());
     tracing::info!(root = %path.display(), "挂上了别家的目录");
     let sync_path = path.clone();
     tauri::async_runtime::spawn_blocking(move || sync_one(&game, &sync_path, &[]))
@@ -405,6 +410,7 @@ pub fn linked_roots_remove(state: State<'_, AppState>, id: String) -> Result<u32
     state
         .linked
         .change(|roots| roots.retain(|r| path_key(&r.path) != key))?;
+    state.engine.set_external_roots(state.linked.root_paths());
     tracing::info!(root = %target.path.display(), removed, "移除了挂上的目录");
     Ok(u32::try_from(removed).unwrap_or(u32::MAX))
 }
@@ -550,7 +556,11 @@ pub fn foreign_import(
         job.set_instance(imported.id.clone());
         // 游戏本体和加载器：现在就装好，导完直接能玩（装失败也不要紧，启动时还会补）
         let installed = async {
-            let downloader = downloader(&state);
+            let downloader = crate::game::downloader_for_job(
+                &state,
+                launcher_core::net::DownloadPriority::Batch,
+                &job,
+            );
             let java =
                 pick_java_for(&state, &job, &downloader, &imported.config.game_version).await?;
             let work_dir = game.root().join(".mcl-tmp").join("create");
@@ -573,7 +583,7 @@ pub fn foreign_import(
                 },
             )
             .await
-            .map_err(AppError::from)
+            .map_err(|e| state.capture_app_error(&job, "补全游戏文件", e))
         }
         .await;
         match installed {
@@ -581,10 +591,13 @@ pub fn foreign_import(
             Err(_) if job.is_cancelled() => job.cancelled(),
             Err(error) => {
                 tracing::warn!(instance = %imported.id, error = %error.message, "导入后装游戏本体失败，启动时再补");
-                job.fail(format!(
-                    "文件已经导入，游戏本体没装完（启动时会再装）：{}",
-                    error.message
-                ));
+                state.finish_failed_job(
+                    job,
+                    format!(
+                        "文件已经导入，游戏本体没装完（启动时会再装）：{}",
+                        error.message
+                    ),
+                );
             }
         }
     });

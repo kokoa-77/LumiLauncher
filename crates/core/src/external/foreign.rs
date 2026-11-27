@@ -223,6 +223,11 @@ fn prism(folder: &Path) -> Option<ForeignInstance> {
             .and_then(|c| text(c.get("version")).or_else(|| text(c.get("cachedVersion"))))
     };
     let game_version = version_of("net.minecraft")?;
+    let has_legacy_intermediary = components.iter().any(|c| {
+        c.get("uid")
+            .and_then(Value::as_str)
+            .is_some_and(|uid| uid.eq_ignore_ascii_case("net.legacyfabric.intermediary"))
+    });
     let loader = [
         ("net.neoforged", LoaderKind::NeoForge),
         ("net.minecraftforge", LoaderKind::Forge),
@@ -230,7 +235,21 @@ fn prism(folder: &Path) -> Option<ForeignInstance> {
         ("org.quiltmc.quilt-loader", LoaderKind::Quilt),
     ]
     .into_iter()
-    .find_map(|(uid, kind)| version_of(uid).map(|version| LoaderRef { kind, version }));
+    .find_map(|(uid, kind)| {
+        version_of(uid).map(|version| {
+            let kind = if kind == LoaderKind::Fabric && game_version == "b1.7.3" {
+                LoaderKind::Babric
+            } else if kind == LoaderKind::Fabric
+                && (has_legacy_intermediary
+                    || LoaderKind::LegacyFabric.installable_for(&game_version))
+            {
+                LoaderKind::LegacyFabric
+            } else {
+                kind
+            };
+            LoaderRef { kind, version }
+        })
+    });
     let cfg = std::fs::read_to_string(folder.join("instance.cfg")).unwrap_or_default();
     let name = ini_value(&cfg, "name")
         .filter(|n| !n.is_empty())
@@ -268,6 +287,8 @@ fn curseforge_loader(name: &str, game_version: &str) -> Option<LoaderRef> {
         "forge" => LoaderKind::Forge,
         "fabric" => LoaderKind::Fabric,
         "quilt" => LoaderKind::Quilt,
+        "legacyfabric" | "legacy-fabric" => LoaderKind::LegacyFabric,
+        "babric" => LoaderKind::Babric,
         _ => return None,
     };
     let version = rest
@@ -345,9 +366,63 @@ pub fn import(
         cancel,
         on_progress,
     )?;
-    let config = InstanceConfig::new(&foreign.name, &foreign.game_version, foreign.loader.clone());
+    let mut config =
+        InstanceConfig::new(&foreign.name, &foreign.game_version, foreign.loader.clone());
+    let prism_extras = if matches!(foreign.launcher, Launcher::Prism | Launcher::MultiMc) {
+        match crate::modpack::multimc::read_folder_extras(&foreign.folder) {
+            Ok(extras) => {
+                config.recommended_memory_mb = extras.cfg.recommended_memory_mb;
+                config.overrides = extras.cfg.overrides.clone().normalized();
+                if let Some(bundle) = &extras.patches
+                    && foreign
+                        .loader
+                        .as_ref()
+                        .is_some_and(|l| l.kind == LoaderKind::Forge)
+                    && bundle.provides_legacy_forge()
+                {
+                    // Prism/MultiMC 自带 Forge patches（如 GTNH）时直接以原版为底图加载补丁
+                    config.version_id = foreign.game_version.clone();
+                }
+                Some(extras)
+            }
+            Err(error) => {
+                tracing::warn!(%error, folder = %foreign.folder.display(), "读取 Prism/MultiMC 补丁失败，按普通实例导入");
+                None
+            }
+        }
+    } else {
+        None
+    };
     match instance::register(game, &id, &config) {
         Ok(instance) => {
+            if let Some(extras) = prism_extras {
+                if let Some(bundle) = &extras.patches
+                    && let Err(error) = crate::meta::patches::save_for_instance(&dest, bundle)
+                {
+                    tracing::warn!(%error, to = %id, "保存 Prism/MultiMC 补丁失败");
+                }
+                if let Some(notes) = &extras.cfg.notes
+                    && let Err(error) = crate::fs::write_atomic(
+                        &dest.join(instance::META_DIR).join("notes.md"),
+                        notes.as_bytes(),
+                    )
+                {
+                    tracing::warn!(%error, to = %id, "保存 Prism/MultiMC 实例笔记失败");
+                }
+                let libs_root = dest
+                    .join(instance::META_DIR)
+                    .join(crate::meta::patches::LOCAL_LIBS_DIR);
+                for (src, rel) in extras.local_libraries {
+                    if let Ok(target) = crate::fs::safe_join(&libs_root, &rel) {
+                        if let Some(parent) = target.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        if let Err(error) = std::fs::copy(&src, &target) {
+                            tracing::warn!(%error, src = %src.display(), "复制 Prism/MultiMC 本地补丁库失败");
+                        }
+                    }
+                }
+            }
             tracing::info!(
                 launcher = foreign.launcher.label(),
                 to = %id,
@@ -519,5 +594,73 @@ mod tests {
         // 再导入一次：换个名字，不覆盖
         let again = import(&game, &foreign, &CancellationToken::new(), |_| {}).unwrap();
         assert_eq!(again.id, "Pack (2)");
+    }
+
+    #[test]
+    fn import_prism_preserves_patches_jvm_args_local_libs_and_notes() {
+        let temp = tempfile::tempdir().unwrap();
+        let game = GameDir::new(temp.path().join("ours"));
+        let folder = temp.path().join("prism").join("instances").join("GTNH");
+        write(
+            &folder.join("instance.cfg"),
+            "[General]\nname=GTNH\nOverrideMemory=true\nMaxMemAlloc=8192\nOverrideJavaArgs=true\nJvmArgs=-XX:+UseZGC\nnotes=Play with Java 21\n",
+        );
+        write(
+            &folder.join("mmc-pack.json"),
+            r#"{"formatVersion":1,"components":[
+                {"uid":"org.lwjgl3","version":"3.3.3"},
+                {"uid":"net.minecraft","version":"1.7.10"},
+                {"uid":"net.minecraftforge","version":"10.13.4.1614"},
+                {"uid":"com.gtnewhorizons.lwjgl3ify.forgepatches","version":"1.0"}
+            ]}"#,
+        );
+        write(
+            &folder.join("patches").join("net.minecraftforge.json"),
+            r#"{"uid":"net.minecraftforge","mainClass":"net.minecraft.launchwrapper.Launch","+tweakers":["cpw.mods.fml.common.launcher.FMLTweaker"],"libraries":[{"name":"net.minecraftforge:forge:1.7.10-10.13.4.1614","url":"https://maven.minecraftforge.net"}]}"#,
+        );
+        write(
+            &folder
+                .join("patches")
+                .join("com.gtnewhorizons.lwjgl3ify.forgepatches.json"),
+            r#"{"uid":"com.gtnewhorizons.lwjgl3ify.forgepatches","compatibleJavaMajors":[17,21],"libraries":[{"name":"com.gtnewhorizons:helper:1.0","MMC-hint":"local","MMC-filename":"helper.jar"}]}"#,
+        );
+        write(&folder.join("libraries").join("helper.jar"), "local");
+        write(
+            &folder.join(".minecraft").join("mods").join("gt.jar"),
+            "mod",
+        );
+
+        let foreign = inspect(&folder).unwrap();
+        let imported = import(&game, &foreign, &CancellationToken::new(), |_| {}).unwrap();
+        assert_eq!(
+            imported.version_id(),
+            "1.7.10",
+            "补丁自带老 Forge 时以原版为底图"
+        );
+        assert_eq!(imported.config.recommended_memory_mb, Some(8192));
+        assert_eq!(
+            imported.config.overrides.memory.unwrap().max_memory_mb,
+            8192
+        );
+        assert_eq!(
+            imported.config.overrides.launch.as_ref().unwrap().jvm_args,
+            "-XX:+UseZGC"
+        );
+        let dir = imported.game_dir(&game).unwrap();
+        let bundle = crate::meta::patches::load_for_instance(&dir)
+            .unwrap()
+            .unwrap();
+        assert!(bundle.replace_lwjgl2);
+        assert_eq!(bundle.preferred_java_major(), Some(21));
+        assert!(
+            dir.join("Lumi")
+                .join("libraries")
+                .join("helper.jar")
+                .is_file()
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("Lumi").join("notes.md")).unwrap(),
+            "Play with Java 21"
+        );
     }
 }

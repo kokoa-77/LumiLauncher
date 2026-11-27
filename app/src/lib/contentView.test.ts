@@ -63,12 +63,21 @@ describe("实例内容的排序筛选", () => {
     ]);
   });
 
-  it("筛选启用、停用、有更新", () => {
+  it("筛选启用、停用、有更新、孤儿前置", () => {
     expect(titles(viewContent(items, { ...base, filter: "disabled" }))).toEqual(["Create"]);
     expect(viewContent(items, { ...base, filter: "enabled" })).toHaveLength(3);
     expect(
       titles(viewContent(items, { ...base, filter: "updates", updates: { "jade.jar": update } })),
     ).toEqual(["Jade"]);
+    expect(
+      titles(
+        viewContent(items, {
+          ...base,
+          filter: "orphans",
+          orphans: new Set(["appleskin.jar"]),
+        }),
+      ),
+    ).toEqual(["AppleSkin"]);
   });
 
   it("搜索名字、文件名和作者，不分大小写", () => {

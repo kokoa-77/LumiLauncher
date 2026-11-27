@@ -22,6 +22,7 @@ import { router } from "./router";
 import { useAccountStore } from "./stores/accounts";
 import { useAppStore, useEffectsLevel } from "./stores/app";
 import { initGameEvents } from "./stores/game";
+import { initTelemetryEvents } from "./stores/telemetry";
 import { useUpdateStore } from "./stores/updates";
 
 export function App() {
@@ -51,9 +52,10 @@ export function App() {
     void commands.appSetUiLanguage(i18n.language).catch(() => undefined);
   }, [i18n.language]);
 
-  // 订阅后端事件（任务进度、游戏状态、日志），读取实例列表
+  // 订阅后端事件（任务进度、游戏状态、日志、10 Hz 遥测），读取实例列表
   useEffect(() => {
     let stop: (() => void) | undefined;
+    let stopTelemetry: (() => void) | undefined;
     let cancelled = false;
     initGameEvents()
       .then((unlisten) => {
@@ -61,9 +63,16 @@ export function App() {
         else stop = unlisten;
       })
       .catch((error: unknown) => reportError(error, "订阅后端事件"));
+    initTelemetryEvents()
+      .then((unlisten) => {
+        if (cancelled) unlisten();
+        else stopTelemetry = unlisten;
+      })
+      .catch((error: unknown) => logError(error, "订阅遥测事件"));
     return () => {
       cancelled = true;
       stop?.();
+      stopTelemetry?.();
     };
   }, []);
 

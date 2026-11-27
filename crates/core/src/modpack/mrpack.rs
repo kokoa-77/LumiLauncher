@@ -19,12 +19,14 @@ use crate::net::url_host;
 pub(super) const INDEX_FILE: &str = "modrinth.index.json";
 const OVERRIDES: &str = "overrides/";
 const CLIENT_OVERRIDES: &str = "client-overrides/";
-/// Modrinth 规范允许的下载域名（平台上传时也按这个检查）
+/// Modrinth 规范允许的下载域名（并兼容早期 `.mrpack` 引用的 CurseForge 官方 CDN；所有文件均强制 HTTPS + SHA-1 校验）
 const ALLOWED_HOSTS: &[&str] = &[
     "cdn.modrinth.com",
     "github.com",
     "raw.githubusercontent.com",
     "gitlab.com",
+    "edge.forgecdn.net",
+    "mediafilez.forgecdn.net",
 ];
 
 #[derive(Debug, Deserialize)]
@@ -138,6 +140,9 @@ pub fn inspect(pack_path: &Path) -> Result<PackPlan, ModpackError> {
         manual_files: Vec::new(),
         from_modrinth: 0,
         recommended_memory_mb: None,
+        patch_count: 0,
+        patch_names: Vec::new(),
+        java_majors: Vec::new(),
     };
     Ok(PackPlan {
         preview,
@@ -145,6 +150,11 @@ pub fn inspect(pack_path: &Path) -> Result<PackPlan, ModpackError> {
         pack_path: pack_path.to_path_buf(),
         downloads,
         overrides,
+        skip_loader_install: false,
+        patches: None,
+        local_libraries: Vec::new(),
+        overrides_config: crate::instance::InstanceOverrides::default(),
+        notes: None,
     })
 }
 
@@ -166,6 +176,8 @@ fn loader_of(dependencies: &HashMap<String, String>) -> Result<Option<LoaderRef>
         "fabric-loader" => LoaderKind::Fabric,
         "quilt-loader" => LoaderKind::Quilt,
         "forge" => LoaderKind::Forge,
+        "legacy-fabric-loader" => LoaderKind::LegacyFabric,
+        "babric-loader" => LoaderKind::Babric,
         other => {
             return Err(ModpackError::UnsupportedLoader(format!(
                 "{other} {version}"
@@ -366,10 +378,20 @@ mod tests {
 
     #[test]
     fn only_allows_modrinth_download_hosts() {
+        for ok in [
+            "https://cdn.modrinth.com/a.jar",
+            "https://edge.forgecdn.net/files/3193/541/mod.jar",
+            "https://mediafilez.forgecdn.net/files/3193/541/mod.jar",
+        ] {
+            let p = pack(&index(&file("mods/a.jar", ok), NEOFORGE), &[], false);
+            assert!(inspect(p.path()).is_ok(), "{ok}");
+        }
         for bad in [
             "http://cdn.modrinth.com/a.jar",
+            "http://edge.forgecdn.net/a.jar",
             "https://evil.example.com/a.jar",
             "https://cdn.modrinth.com.evil.com/a.jar",
+            "https://edge.forgecdn.net.evil.com/a.jar",
             "https://user@evil.com/cdn.modrinth.com/a.jar",
         ] {
             let p = pack(&index(&file("mods/a.jar", bad), NEOFORGE), &[], false);
@@ -389,12 +411,15 @@ mod tests {
 
     #[test]
     fn reads_all_supported_pack_loaders() {
-        for (dependency, kind) in [
-            ("fabric-loader", LoaderKind::Fabric),
-            ("quilt-loader", LoaderKind::Quilt),
-            ("forge", LoaderKind::Forge),
+        for (mc, dependency, kind) in [
+            ("1.21.1", "fabric-loader", LoaderKind::Fabric),
+            ("1.21.1", "quilt-loader", LoaderKind::Quilt),
+            ("1.21.1", "forge", LoaderKind::Forge),
+            ("1.7.10", "forge", LoaderKind::Forge),
+            ("1.8.9", "legacy-fabric-loader", LoaderKind::LegacyFabric),
+            ("b1.7.3", "babric-loader", LoaderKind::Babric),
         ] {
-            let dependencies = format!(r#""minecraft":"1.21.1","{dependency}":"1.2.3""#);
+            let dependencies = format!(r#""minecraft":"{mc}","{dependency}":"1.2.3""#);
             let p = pack(&index("", &dependencies), &[], false);
             assert_eq!(
                 inspect(p.path()).unwrap().preview.loader,

@@ -152,6 +152,8 @@ fn loader_of(mc: &str, loaders: &[ModLoader]) -> Result<Option<LoaderRef>, Modpa
         "forge" => LoaderKind::Forge,
         "fabric" => LoaderKind::Fabric,
         "quilt" => LoaderKind::Quilt,
+        "legacyfabric" | "legacy-fabric" => LoaderKind::LegacyFabric,
+        "babric" => LoaderKind::Babric,
         other => {
             return Err(ModpackError::UnsupportedLoader(format!(
                 "{other} {version}"
@@ -330,6 +332,9 @@ pub async fn resolve(
             .recommended_ram
             .filter(|mb| (512..=65_536).contains(mb))
             .and_then(|mb| u32::try_from(mb).ok()),
+        patch_count: 0,
+        patch_names: Vec::new(),
+        java_majors: Vec::new(),
     };
     Ok(PackPlan {
         preview,
@@ -337,6 +342,11 @@ pub async fn resolve(
         pack_path,
         downloads,
         overrides,
+        skip_loader_install: false,
+        patches: None,
+        local_libraries: Vec::new(),
+        overrides_config: crate::instance::InstanceOverrides::default(),
+        notes: None,
     })
 }
 
@@ -445,14 +455,27 @@ mod tests {
     }
 
     #[test]
-    fn reads_supported_loaders_and_rejects_old_forge() {
-        for (id, kind, version) in [
-            ("forge-52.1.20", LoaderKind::Forge, "52.1.20"),
-            ("fabric-0.16.9", LoaderKind::Fabric, "0.16.9"),
-            ("quilt-0.24.0", LoaderKind::Quilt, "0.24.0"),
+    fn reads_supported_loaders_including_legacy_forge_and_rejects_unsupported() {
+        for (mc, id, kind, version) in [
+            ("1.21.1", "forge-52.1.20", LoaderKind::Forge, "52.1.20"),
+            ("1.21.1", "fabric-0.16.9", LoaderKind::Fabric, "0.16.9"),
+            ("1.21.1", "quilt-0.24.0", LoaderKind::Quilt, "0.24.0"),
+            (
+                "1.12.2",
+                "forge-14.23.5.2860",
+                LoaderKind::Forge,
+                "14.23.5.2860",
+            ),
+            (
+                "1.7.10",
+                "forge-10.13.4.1614",
+                LoaderKind::Forge,
+                "10.13.4.1614",
+            ),
         ] {
             let loaders = format!(r#"{{"id":"{id}","primary":true}}"#);
-            let p = pack(&manifest(&loaders, ""), &[]);
+            let json = manifest(&loaders, "").replace("1.21.1", mc);
+            let p = pack(&json, &[]);
             assert_eq!(
                 inspect(p.path()).unwrap().loader,
                 Some(LoaderRef {
@@ -461,9 +484,9 @@ mod tests {
                 })
             );
         }
-        let old = manifest(r#"{"id":"forge-14.23.5.2860","primary":true}"#, "")
-            .replace("1.21.1", "1.12.2");
-        let p = pack(&old, &[]);
+        let too_old =
+            manifest(r#"{"id":"forge-6.6.2.534","primary":true}"#, "").replace("1.21.1", "1.4.7");
+        let p = pack(&too_old, &[]);
         assert!(matches!(
             inspect(p.path()),
             Err(ModpackError::UnsupportedLoader(_))

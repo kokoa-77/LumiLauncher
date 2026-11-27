@@ -116,6 +116,10 @@ mod tests {
                 .unwrap(),
             PathBuf::from("D:/mc/libraries/org/lwjgl/lwjgl/3.3.3/lwjgl-3.3.3.jar")
         );
+        assert_eq!(
+            game.version_jar("3D Shareware v1.34").unwrap(),
+            PathBuf::from("D:/mc/versions/3D Shareware v1.34/3D Shareware v1.34.jar")
+        );
     }
 
     #[test]

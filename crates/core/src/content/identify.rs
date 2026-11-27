@@ -114,6 +114,10 @@ impl IdentityCache {
         self.file_hashes.get(key)
     }
 
+    pub fn hash_count(&self) -> usize {
+        self.file_hashes.len()
+    }
+
     pub fn remember_hash(&mut self, key: String, sha1: String) {
         self.file_hashes.insert(key, sha1);
     }

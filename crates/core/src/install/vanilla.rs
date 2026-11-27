@@ -21,7 +21,54 @@ use crate::net::{DownloadItem, DownloadProgress, Downloader};
 use crate::paths::GameDir;
 
 const LIBRARIES_BASE: &str = "https://libraries.minecraft.net";
+const FORGE_MAVEN_BASE: &str = "https://maven.minecraftforge.net";
+const MAVEN_CENTRAL_BASE: &str = "https://repo1.maven.org/maven2";
 const RESOURCES_BASE: &str = "https://resources.download.minecraft.net";
+
+pub(crate) fn normalize_library_repo_url(base: &str) -> String {
+    let trimmed = base.trim().trim_end_matches('/');
+    if trimmed.eq_ignore_ascii_case("http://files.minecraftforge.net/maven")
+        || trimmed.eq_ignore_ascii_case("https://files.minecraftforge.net/maven")
+        || trimmed.eq_ignore_ascii_case("http://maven.minecraftforge.net")
+    {
+        return FORGE_MAVEN_BASE.to_owned();
+    }
+    if trimmed.eq_ignore_ascii_case("http://libraries.minecraft.net") {
+        return LIBRARIES_BASE.to_owned();
+    }
+    if trimmed.eq_ignore_ascii_case("http://repo1.maven.org/maven2")
+        || trimmed.eq_ignore_ascii_case("http://repo.maven.apache.org/maven2")
+    {
+        return MAVEN_CENTRAL_BASE.to_owned();
+    }
+    trimmed.to_owned()
+}
+
+pub(crate) fn library_fallback_urls(primary_base: Option<&str>, relative: &str) -> Vec<String> {
+    let normalized = primary_base.map(normalize_library_repo_url);
+    let mut urls = Vec::new();
+    let mut push_unique = |base: &str| {
+        let candidate = format!("{}/{relative}", base.trim_end_matches('/'));
+        if !urls.contains(&candidate) {
+            urls.push(candidate);
+        }
+    };
+    if let Some(base) = normalized.as_deref()
+        && !base.is_empty()
+    {
+        push_unique(base);
+    }
+    push_unique(LIBRARIES_BASE);
+    if normalized
+        .as_deref()
+        .is_some_and(|b| b.contains("minecraftforge.net"))
+        || normalized.is_none()
+    {
+        push_unique(FORGE_MAVEN_BASE);
+        push_unique(MAVEN_CENTRAL_BASE);
+    }
+    urls
+}
 /// 从清单补版本描述文件的最大次数（原版 ← 加载器 ← 自定义，够用了）
 const MAX_FETCH_ROUNDS: usize = 4;
 
@@ -77,6 +124,8 @@ pub struct InstalledVersion {
     pub asset_index_id: Option<String>,
     /// 旧版本的资源目录（`${game_assets}`），新版本为 `None`
     pub legacy_assets_dir: Option<PathBuf>,
+    /// `1.6` 以前版本需要将资源映射至游戏工作目录下的 `resources/`
+    pub map_to_resources: bool,
     pub log_config: Option<PathBuf>,
 }
 
@@ -163,6 +212,16 @@ pub fn plan_libraries(
 }
 
 fn main_file(lib: &Library, game: &GameDir) -> Result<Option<LibraryFile>, InstallError> {
+    let on_classpath = !lib.download_only;
+    if let Some(local) = &lib.local_path {
+        return Ok(Some(LibraryFile {
+            name: lib.name.clone(),
+            path: local.clone(),
+            download: None,
+            on_classpath,
+            extract_natives: None,
+        }));
+    }
     if let Some(artifact) = lib.downloads.as_ref().and_then(|d| d.artifact.as_ref()) {
         let Some(relative) = artifact
             .path
@@ -183,7 +242,7 @@ fn main_file(lib: &Library, game: &GameDir) -> Result<Option<LibraryFile>, Insta
             name: lib.name.clone(),
             path,
             download,
-            on_classpath: true,
+            on_classpath,
             extract_natives: None,
         }));
     }
@@ -196,17 +255,17 @@ fn main_file(lib: &Library, game: &GameDir) -> Result<Option<LibraryFile>, Insta
     let relative = coord.path();
     let path = game.library(&relative)?;
     let base = lib.url.as_deref().unwrap_or(LIBRARIES_BASE);
-    let url = format!("{}/{relative}", base.trim_end_matches('/'));
+    let urls = library_fallback_urls(Some(base), &relative);
     Ok(Some(LibraryFile {
         name: lib.name.clone(),
         path: path.clone(),
         download: Some(DownloadItem {
-            urls: vec![url],
+            urls,
             path,
             sha1: lib.sha1.clone(),
             size: lib.size,
         }),
-        on_classpath: true,
+        on_classpath,
         extract_natives: None,
     }))
 }
@@ -401,7 +460,9 @@ where
     }
 
     let mut legacy_assets_dir = None;
+    let mut map_to_resources = false;
     if let Some((id, parsed)) = index {
+        map_to_resources = parsed.map_to_resources;
         let target = if parsed.map_to_resources {
             Some(game.root().join("resources"))
         } else if parsed.is_virtual {
@@ -436,6 +497,7 @@ where
         client_jar,
         natives_dir,
         legacy_assets_dir,
+        map_to_resources,
         log_config,
     })
 }
@@ -639,5 +701,32 @@ mod tests {
             "1.19 以后的本地库也放 classpath，由 LWJGL 自己解压"
         );
         assert!(files.iter().all(|f| f.download.is_some()));
+    }
+
+    #[test]
+    fn legacy_library_urls_upgrade_to_https_with_official_fallbacks() {
+        let forge_lib = Library {
+            name: "com.typesafe.akka:akka-actor_2.11:2.3.3".into(),
+            url: Some("http://files.minecraftforge.net/maven/".into()),
+            ..Library::default()
+        };
+        let version = VersionJson {
+            libraries: vec![forge_lib],
+            ..VersionJson::default()
+        };
+        let files = plan_libraries(&version, &GameDir::new("D:/mc"), &windows()).unwrap();
+        let urls = &files[0].download.as_ref().unwrap().urls;
+        assert_eq!(
+            urls[0],
+            "https://maven.minecraftforge.net/com/typesafe/akka/akka-actor_2.11/2.3.3/akka-actor_2.11-2.3.3.jar"
+        );
+        assert!(
+            urls.iter()
+                .any(|u| u.starts_with("https://libraries.minecraft.net/"))
+        );
+        assert!(
+            urls.iter()
+                .any(|u| u.starts_with("https://repo1.maven.org/maven2/"))
+        );
     }
 }

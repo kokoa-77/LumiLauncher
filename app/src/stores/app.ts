@@ -38,6 +38,8 @@ interface AppStore {
   lowEnd: boolean | null;
   /** 设置弹窗：开着时是哪一类，关着为 null */
   settingsSection: SettingsSection | null;
+  /** 设置搜索或诊断跳转时自动展开/滚动的高亮目标 ID */
+  settingsFocusId: string | null;
   /** 命令面板（Ctrl + K）开着吗 */
   paletteOpen: boolean;
   /** 当前页面自己报的名字（项目详情页读到名字后填，标题栏「现在在哪」的最后一级用） */
@@ -55,7 +57,8 @@ interface AppStore {
   /** 乐观更新：界面立刻变，保存失败再退回原值 */
   saveSettings: (next: Settings) => Promise<void>;
   setLowEnd: (lowEnd: boolean) => void;
-  openSettings: (section?: SettingsSection) => void;
+  openSettings: (section?: SettingsSection, focusId?: string | null) => void;
+  clearSettingsFocus: () => void;
   closeSettings: () => void;
   setPaletteOpen: (open: boolean) => void;
 }
@@ -66,6 +69,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   gameDir: null,
   lowEnd: cachedLowEnd(),
   settingsSection: null,
+  settingsFocusId: null,
   paletteOpen: false,
   pageTitle: null,
   backdrop: null,
@@ -118,12 +122,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ lowEnd });
   },
 
-  openSettings(section = "appearance") {
-    set({ settingsSection: section });
+  openSettings(section = "appearance", focusId = null) {
+    set({ settingsSection: section, settingsFocusId: focusId });
+  },
+
+  clearSettingsFocus() {
+    set({ settingsFocusId: null });
   },
 
   closeSettings() {
-    set({ settingsSection: null });
+    set({ settingsSection: null, settingsFocusId: null });
   },
 
   setPageTitle(pageTitle) {

@@ -22,15 +22,15 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
         replacement,
     };
     vec![
-        // JSON 字段："accessToken": "xxx"
+        // JSON 字段："accessToken": "xxx" / "identityToken": "xxx" / "RpsTicket": "xxx"
         rule(
-            r#"(?i)("(?:access_?token|refresh_?token|id_?token|client_?secret|password|api[-_]?key|x-api-key|authorization|xuid)"\s*:\s*")(?:\\.|[^"\\])*(")"#,
+            r#"(?i)("(?:access_?token|refresh_?token|id_?token|identity_?token|rps_?ticket|user_?tokens|code_?verifier|client_?secret|password|api[-_]?key|x-api-key|authorization|xuid)"\s*:\s*")(?:\\.|[^"\\])*(")"#,
             "${1}<redacted>${2}",
         ),
-        // 查询参数或表单：access_token=xxx
+        // 查询参数或表单：access_token=xxx / code=xxx / state=xxx / code_verifier=xxx
         rule(
-            r"(?i)\b(access_?token|refresh_?token|id_?token|client_?secret|password|api[-_]?key)=([^&\s]+)",
-            "${1}=<redacted>",
+            r"(?i)(^|[?&\s])(access_?token|refresh_?token|id_?token|code_?verifier|client_?secret|password|api[-_]?key|code|state)=([^&\s]+)",
+            "${1}${2}=<redacted>",
         ),
         // 请求头：Authorization: Bearer xxx / x-api-key: xxx
         rule(
@@ -39,9 +39,11 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
         ),
         rule(r"(?i)\b(x-api-key\s*:\s*)\S+", "${1}<redacted>"),
         rule(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]+", "${1}<redacted>"),
-        // Minecraft 启动参数：--accessToken xxx
+        // Xbox XBL3.0 票据：XBL3.0 x=uhs;token
+        rule(r#"(?i)\b(XBL3\.0\s+x=)[^\s"']+"#, "${1}<redacted>"),
+        // Minecraft 启动参数：--accessToken xxx / --session xxx
         rule(
-            r#"(?i)(--(?:access_?token|xuid|client_?secret)["']?(?:\s*[,=]\s*|\s+))(?:"(?:\\.|[^"\\])*"|'[^']*'|[^,\s\]]+)"#,
+            r#"(?i)(--(?:access_?token|session|xuid|client_?secret)["']?(?:\s*[,=]\s*|\s+))(?:"(?:\\.|[^"\\])*"|'[^']*'|[^,\s\]]+)"#,
             "${1}<redacted>",
         ),
         // 任意位置的 JWT（三段 base64url）
@@ -51,6 +53,18 @@ static RULES: LazyLock<Vec<Rule>> = LazyLock::new(|| {
         ),
     ]
 });
+
+/// 常量时间字节序列比对，避免凭据或 OAuth `state` 比较时泄漏长度外的时序特征。
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    let max_len = a.len().max(b.len());
+    let mut diff = a.len() ^ b.len();
+    for i in 0..max_len {
+        let lhs = a.get(i).copied().unwrap_or(0);
+        let rhs = b.get(i).copied().unwrap_or(0);
+        diff |= usize::from(lhs ^ rhs);
+    }
+    diff == 0
+}
 
 /// 把文本里的敏感值替换成 `<redacted>`。没有命中时不分配新字符串。
 pub fn redact(text: &str) -> Cow<'_, str> {
@@ -68,7 +82,7 @@ pub fn redact(text: &str) -> Cow<'_, str> {
 }
 
 /// 敏感值的包装。`Debug` 和 `Display` 都只显示 `<redacted>`，真实值必须显式调用 `expose`。
-#[derive(Clone, PartialEq, Eq, Default)]
+#[derive(Clone, Default)]
 pub struct Secret<T>(T);
 
 impl<T> Secret<T> {
@@ -78,6 +92,12 @@ impl<T> Secret<T> {
 
     pub fn expose(&self) -> &T {
         &self.0
+    }
+}
+
+impl<T: AsRef<str>> Secret<T> {
+    pub fn eq_constant_time(&self, other: &str) -> bool {
+        constant_time_eq(self.0.as_ref().as_bytes(), other.as_bytes())
     }
 }
 
@@ -146,5 +166,31 @@ mod tests {
         let secret = Secret::new("super-secret".to_owned());
         assert_eq!(format!("{secret:?} {secret}"), "<redacted> <redacted>");
         assert_eq!(secret.expose(), "super-secret");
+        assert!(secret.eq_constant_time("super-secret"));
+        assert!(!secret.eq_constant_time("super-secre"));
+        assert!(!secret.eq_constant_time("super-secret2"));
+    }
+
+    #[test]
+    fn masks_legacy_session_oauth_and_xbox_tickets() {
+        let legacy = redact("java -jar mc.jar --username Steve --session SESS123 --version 1.5.2");
+        assert!(!legacy.contains("SESS123"));
+        assert!(legacy.contains("--username Steve"));
+
+        let oauth = redact("code=MY_AUTH_CODE&state=MY_STATE&code_verifier=MY_VERIFIER&ok=1");
+        assert!(!oauth.contains("MY_AUTH_CODE"));
+        assert!(!oauth.contains("MY_STATE"));
+        assert!(!oauth.contains("MY_VERIFIER"));
+        assert!(oauth.contains("ok=1"));
+
+        let xbox = redact(
+            r#"{"identityToken":"XBL3.0 x=12345;BIGTOKEN","RpsTicket":"d=MSA_TOK"} XBL3.0 x=999;BARE"#,
+        );
+        assert!(!xbox.contains("BIGTOKEN"));
+        assert!(!xbox.contains("MSA_TOK"));
+        assert!(!xbox.contains("BARE"));
+        assert!(constant_time_eq(b"abc", b"abc"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+        assert!(!constant_time_eq(b"abc", b"abcd"));
     }
 }

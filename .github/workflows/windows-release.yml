@@ -85,10 +85,11 @@ jobs:
             '::warning::MCL_CURSEFORGE_KEY is not set; CurseForge online browsing and downloads will be disabled in this pre-review build (Modrinth works normally).'
           }
 
-      - name: Build unsigned pre-review installer
+      - name: Build unsigned test installer
         if: ${{ !inputs.sign }}
         env:
           LUMI_MICROSOFT_CLIENT_ID: ${{ vars.LUMI_MICROSOFT_CLIENT_ID }}
+          LUMI_MICROSOFT_CALLBACK_PATH: ${{ vars.LUMI_MICROSOFT_CALLBACK_PATH }}
           MCL_CURSEFORGE_KEY: ${{ secrets.MCL_CURSEFORGE_KEY }}
         run: pnpm --dir app tauri build --ci --bundles nsis --target x86_64-pc-windows-msvc -- --locked
 
@@ -97,6 +98,7 @@ jobs:
         env:
           LUMI_UPDATER_PUBKEY: ${{ vars.LUMI_UPDATER_PUBKEY }}
           LUMI_MICROSOFT_CLIENT_ID: ${{ vars.LUMI_MICROSOFT_CLIENT_ID }}
+          LUMI_MICROSOFT_CALLBACK_PATH: ${{ vars.LUMI_MICROSOFT_CALLBACK_PATH }}
           MCL_CURSEFORGE_KEY: ${{ secrets.MCL_CURSEFORGE_KEY }}
         run: |
           $env:LUMI_UPDATER_PUBKEY = ([string] $env:LUMI_UPDATER_PUBKEY).Trim()

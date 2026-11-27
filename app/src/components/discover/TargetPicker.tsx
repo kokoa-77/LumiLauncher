@@ -2,12 +2,17 @@ import { Check, ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { InstanceDefaultCover } from "@/components/art/InstanceDefaultCover";
+import { LoaderBadgeIcon } from "@/components/art/LoaderBadgeIcon";
 import { instanceSubtitle } from "@/components/InstanceCard";
 import type { InstanceSummary, WorldView } from "@/lib/bindings";
-import { imageAt } from "@/lib/cover";
+import { imageAt, useCoverAccent } from "@/lib/cover";
 import { duration, ease, spring } from "@/lib/motion";
 
-/** 实例的小封面：最近那个世界的截图（只有图标的按像素放大），没有存档时是名字的第一个字 */
+/**
+ * 实例的小封面（全站共用：资源中心「装到」、添加内容页头、下载任务、命令面板）：
+ * 优先自定义/整合包封面 → 存档真实截图 → 微光矢量默认封面（有 64×64 存档图标时继承其主色调）。
+ */
 export function InstanceThumb({
   instance,
   world,
@@ -17,21 +22,37 @@ export function InstanceThumb({
   world: WorldView | undefined;
   className: string;
 }) {
-  const letter = Array.from(instance.name.trim())[0]?.toUpperCase() ?? "?";
+  const customUrl = instance.coverUrl;
+  const worldShotUrl = world?.imageUrl && world.imageKind !== "icon" ? world.imageUrl : null;
+  const iconToneUrl =
+    !customUrl && !worldShotUrl && world?.imageUrl && world.imageKind === "icon"
+      ? world.imageUrl
+      : undefined;
+  const iconTone = useCoverAccent(iconToneUrl);
+
   return (
-    <span
-      className={`relative grid shrink-0 place-items-center overflow-hidden bg-accent-soft ${className}`}
-    >
-      {world?.imageUrl ? (
+    <span className={`relative block shrink-0 overflow-hidden bg-surface-2 ${className}`}>
+      {customUrl ? (
         <img
-          src={world.imageKind === "icon" ? world.imageUrl : imageAt(world.imageUrl, 96)}
+          src={customUrl.startsWith("http") ? customUrl : imageAt(customUrl, 128)}
           alt=""
-          className={`absolute inset-0 size-full object-cover ${
-            world.imageKind === "icon" ? "[image-rendering:pixelated]" : ""
+          className={`absolute inset-0 size-full ${
+            instance.coverFit === "contain" ? "object-contain" : "object-cover"
           }`}
         />
+      ) : worldShotUrl ? (
+        <img
+          src={imageAt(worldShotUrl, 128)}
+          alt=""
+          className="absolute inset-0 size-full object-cover"
+        />
       ) : (
-        <span className="font-semibold text-accent text-xs">{letter}</span>
+        <InstanceDefaultCover
+          instance={instance}
+          compact
+          worldHue={iconTone?.hue}
+          className="absolute inset-0 size-full"
+        />
       )}
     </span>
   );
@@ -139,8 +160,13 @@ export function TargetPicker({
                     >
                       {instance.name}
                     </span>
-                    <span className="block truncate text-fg-muted text-xs">
-                      {instanceSubtitle(instance)}
+                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-fg-muted text-xs">
+                      <LoaderBadgeIcon
+                        loader={instance.loader}
+                        title={instance.loader ?? t("create.vanilla")}
+                        className="size-3.5 shrink-0"
+                      />
+                      <span className="truncate">{instanceSubtitle(instance)}</span>
                     </span>
                   </span>
                   {selected && <Check className="size-4 shrink-0 text-accent" aria-hidden />}

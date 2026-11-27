@@ -62,14 +62,28 @@ pub(super) fn validate_custom_game(args: &[String]) -> Result<(), LaunchParamete
 }
 
 pub(super) fn validate_version_game(args: &[&str]) -> Result<(), LaunchParameterError> {
+    // 1.6 以前与 Beta/Alpha 远古版本（如 b1.7.3、a1.2.6、rd-132211）使用位置认证前缀：
+    // `<玩家名> <会话令牌> [--gameDir ... --assetsDir ...]`。
+    // 放行时严格要求前两项恰好为 `${auth_player_name}` 与 `${auth_session}`，
+    // 且后续参数不得夹带身份覆盖或额外会话占位符。
+    let positional_legacy =
+        args.len() >= 2 && args[0] == "${auth_player_name}" && args[1] == "${auth_session}";
     let mut seen = std::collections::HashSet::new();
-    let mut args = args.iter().copied();
-    while let Some(arg) = args.next() {
+    let mut iter = args
+        .iter()
+        .copied()
+        .skip(if positional_legacy { 2 } else { 0 });
+    while let Some(arg) = iter.next() {
         if !protected_game_arg(arg) {
-            if contains_session_placeholder(arg) {
+            if contains_session_placeholder(arg)
+                || (positional_legacy && contains_identity_placeholder(arg))
+            {
                 return Err(LaunchParameterError::Version);
             }
             continue;
+        }
+        if positional_legacy {
+            return Err(LaunchParameterError::Version);
         }
         let (key, inline) = match arg.split_once('=') {
             Some((key, value)) => (key, Some(value)),
@@ -78,19 +92,31 @@ pub(super) fn validate_version_game(args: &[&str]) -> Result<(), LaunchParameter
         let Some((_, expected)) = GAME_IDENTITY.iter().find(|(flag, _)| *flag == key) else {
             return Err(LaunchParameterError::Version);
         };
-        if !seen.insert(key) || inline.or_else(|| args.next()) != Some(*expected) {
+        if !seen.insert(key) || inline.or_else(|| iter.next()) != Some(*expected) {
             return Err(LaunchParameterError::Version);
         }
     }
 
-    let valid = seen.contains("--username")
-        && (seen.contains("--session")
-            || (seen.contains("--accessToken") && seen.contains("--uuid")));
+    let valid = positional_legacy
+        || (seen.contains("--username")
+            && (seen.contains("--session")
+                || (seen.contains("--accessToken") && seen.contains("--uuid"))));
     if valid {
         Ok(())
     } else {
         Err(LaunchParameterError::Version)
     }
+}
+
+fn contains_identity_placeholder(arg: &str) -> bool {
+    [
+        "${auth_player_name}",
+        "${auth_uuid}",
+        "${auth_access_token}",
+        "${auth_session}",
+    ]
+    .iter()
+    .any(|placeholder| arg.contains(placeholder))
 }
 
 pub(super) fn validate_env(vars: &[EnvVar]) -> Result<(), LaunchParameterError> {
@@ -363,6 +389,32 @@ mod tests {
         );
         assert_eq!(
             validate_version_game(&["--fullscreen"]),
+            Err(LaunchParameterError::Version)
+        );
+        // 官方 1.6 以前 / Beta / Alpha 位置认证参数
+        assert!(
+            validate_version_game(&[
+                "${auth_player_name}",
+                "${auth_session}",
+                "--gameDir",
+                "${game_directory}",
+                "--assetsDir",
+                "${game_assets}",
+            ])
+            .is_ok()
+        );
+        assert!(validate_version_game(&["${auth_player_name}", "${auth_session}"]).is_ok());
+        assert_eq!(
+            validate_version_game(&[
+                "${auth_player_name}",
+                "${auth_session}",
+                "--accessToken",
+                "evil",
+            ]),
+            Err(LaunchParameterError::Version)
+        );
+        assert_eq!(
+            validate_version_game(&["OtherPlayer", "${auth_session}"]),
             Err(LaunchParameterError::Version)
         );
     }

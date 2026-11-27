@@ -13,11 +13,14 @@ use serde::Serialize;
 use super::ModpackError;
 use crate::content::claim::{ClaimSession, ManualFile};
 use crate::content::store::{ContentStore, STORE_DIR};
-use crate::fs::{safe_join, write_atomic_from};
+use crate::fs::{safe_join, write_atomic, write_atomic_from};
 use crate::install::processors::LoaderContext;
 use crate::install::{InstallPhase, LoaderProgress, install_files, load_or_fetch_version, loaders};
-use crate::instance::{self, Instance, InstanceConfig, LoaderRef, PackSource};
+use crate::instance::{
+    self, Instance, InstanceConfig, InstanceOverrides, LoaderRef, META_DIR, PackSource,
+};
 use crate::meta::Environment;
+use crate::meta::patches::{self, InstancePatches, LOCAL_LIBS_DIR};
 use crate::net::{DownloadItem, DownloadProgress};
 
 /// 整合包格式。
@@ -29,14 +32,17 @@ pub enum PackFormat {
     Modrinth,
     /// `.zip`，里面有 `manifest.json`
     CurseForge,
+    /// `.zip`，里面有 `mmc-pack.json`（MultiMC / Prism Launcher 实例包）
+    MultiMc,
 }
 
 impl PackFormat {
     /// 写进实例信息的来源类型
-    fn source_kind(self) -> &'static str {
+    pub(super) fn source_kind(self) -> &'static str {
         match self {
             PackFormat::Modrinth => "mrpack",
             PackFormat::CurseForge => "curseforge",
+            PackFormat::MultiMc => "multimc",
         }
     }
 }
@@ -66,6 +72,12 @@ pub struct PackPreview {
     pub from_modrinth: u32,
     /// 作者推荐的内存（MB）：CurseForge 整合包的清单里有，Modrinth 整合包没有这个字段
     pub recommended_memory_mb: Option<u32>,
+    /// MultiMC / Prism 整合包含有的底层补丁数（`patches/*.json`）
+    pub patch_count: u32,
+    /// 补丁可读名称列表（供导入预览展示）
+    pub patch_names: Vec<String>,
+    /// 补丁显式声明的兼容 Java 主版本列表（如 GTNH 声明 `[17, 21]`）
+    pub java_majors: Vec<u32>,
 }
 
 /// 整合包在平台上的出处（从平台下载的才有）。
@@ -85,12 +97,27 @@ pub struct PackPlan {
     pub(super) downloads: Vec<PlannedFile>,
     /// 压缩包条目名 → 实例里的相对路径（按覆盖顺序）
     pub(super) overrides: Vec<(String, String)>,
+    /// 加载器已由包内 `patches/*.json` 完整提供（如 1.7.10 GTNH），跳过标准加载器安装器
+    pub(super) skip_loader_install: bool,
+    /// MultiMC / Prism 实例级补丁（导入成功后写入 `Lumi/patches.json`）
+    pub(super) patches: Option<InstancePatches>,
+    /// MultiMC / Prism 本地补丁库（压缩包条目名 → `Lumi/libraries/` 下的相对路径）
+    pub(super) local_libraries: Vec<(String, String)>,
+    /// MultiMC / Prism `instance.cfg` 导出的实例覆盖设置（内存/JVM/窗口）
+    pub(super) overrides_config: InstanceOverrides,
+    /// 实例笔记（写入 `Lumi/notes.md`）
+    pub(super) notes: Option<String>,
 }
 
 impl PackPlan {
     /// 整合包文件在哪（只给后端用：重试本地导入时记下来）
     pub fn pack_path(&self) -> &Path {
         &self.pack_path
+    }
+
+    /// 加载器是否已由包内 `patches/*.json` 完整提供（跳过标准加载器安装器）
+    pub fn skip_loader_install(&self) -> bool {
+        self.skip_loader_install
     }
 }
 
@@ -170,8 +197,10 @@ where
         })?;
     tracing::info!(pack = %plan.preview.name, version = %plan.preview.version, "开始导入整合包");
 
-    // 1. 加载器（已装过的瞬间跳过）
-    let version_id = if let Some(loader) = &plan.preview.loader {
+    // 1. 加载器（已装过的瞬间跳过；若由包内补丁直接提供，如 1.7.10 GTNH，则以原版为底图）
+    let version_id = if let Some(loader) = &plan.preview.loader
+        && !plan.skip_loader_install
+    {
         let loader_work = staging.join("loader");
         let loader_ctx = LoaderContext {
             work_dir: &loader_work,
@@ -230,19 +259,31 @@ where
         }
     }
 
-    // 4. 覆盖文件（按覆盖顺序）
+    // 4. 覆盖文件（按覆盖顺序）与 MultiMC/Prism 本地补丁库
     on_progress(ImportProgress::Overrides);
     {
         let pack = plan.pack_path.clone();
         let overrides = plan.overrides.clone();
+        let local_libs = plan.local_libraries.clone();
         let content = content.clone();
-        tokio::task::spawn_blocking(move || extract_overrides(&pack, &overrides, &content))
-            .await
-            .map_err(|e| ModpackError::Invalid(format!("解压任务异常结束：{e}")))??;
+        tokio::task::spawn_blocking(move || {
+            extract_overrides(&pack, &overrides, &content)?;
+            if !local_libs.is_empty() {
+                let libs_root = content.join(META_DIR).join(LOCAL_LIBS_DIR);
+                extract_overrides(&pack, &local_libs, &libs_root)?;
+            }
+            Ok::<_, ModpackError>(())
+        })
+        .await
+        .map_err(|e| ModpackError::Invalid(format!("解压任务异常结束：{e}")))??;
     }
 
-    // 5. 游戏本体文件（导入完就能直接玩）
-    let version = load_or_fetch_version(game, &version_id, ctx.loader.client).await?;
+    // 5. 游戏本体文件与补丁依赖库（导入完就能直接玩）
+    let mut version = load_or_fetch_version(game, &version_id, ctx.loader.client).await?;
+    if let Some(bundle) = &plan.patches {
+        version = patches::apply(version, bundle, &content)
+            .map_err(crate::install::InstallError::from)?;
+    }
     install_files(
         version,
         game,
@@ -282,8 +323,10 @@ where
         version: plan.preview.version.clone(),
         project_id: plan.origin.as_ref().map(|o| o.project_id.clone()),
         version_id: plan.origin.as_ref().map(|o| o.version_id.clone()),
+        cover_url: None,
     });
     config.recommended_memory_mb = plan.preview.recommended_memory_mb;
+    config.overrides = plan.overrides_config.clone().normalized();
     config.version_id = version_id;
     let registered = instance::register(game, &id, &config);
     if registered.is_err() {
@@ -293,11 +336,20 @@ where
         }
     }
     let instance = registered?;
+    if let Some(bundle) = &plan.patches {
+        patches::save_for_instance(&target, bundle)?;
+    }
+    if let Some(notes) = &plan.notes {
+        write_atomic(&target.join(META_DIR).join("notes.md"), notes.as_bytes())?;
+    }
+    if let Err(error) = super::update::write_origin_after_import(&target, plan).await {
+        tracing::warn!(%error, instance = %instance.id, "写入整合包基线清单失败，后续更新将按兼容模式处理");
+    }
     tracing::info!(instance = %instance.id, "整合包导入完成");
     Ok(instance)
 }
 
-fn extract_overrides(
+pub(super) fn extract_overrides(
     pack: &Path,
     overrides: &[(String, String)],
     content: &Path,

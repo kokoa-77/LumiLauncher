@@ -2,14 +2,16 @@ import { useTranslation } from "react-i18next";
 import { useAccountStore } from "@/stores/accounts";
 import { Dialog } from "../ui/Dialog";
 import { AccountForm } from "./AccountForm";
+import { AccountSecurityDialog } from "./AccountSecurityDialog";
 import { SkinControls, SkinPreview } from "./SkinPanel";
 
-/** Microsoft 登录和皮肤预览弹窗。第一次用到时才加载。 */
+/** Microsoft 登录、账户安全透明中心与官方皮肤/披风工坊弹窗（首次打开按需加载）。 */
 export function AccountDialogs() {
   return (
     <>
       <AddAccountDialog />
       <SkinDialog />
+      <AccountSecurityDialog />
     </>
   );
 }
@@ -48,7 +50,7 @@ function SkinDialog() {
         <div className="flex flex-col gap-5 sm:flex-row">
           <SkinPreview account={account} />
           <div className="min-w-0 flex-1">
-            <SkinControls />
+            <SkinControls account={account} />
           </div>
         </div>
       )}

@@ -1,8 +1,8 @@
-import { LogOut, Plus, Shirt } from "lucide-react";
+import { Check, LogOut, Plus, ShieldCheck, Shirt } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AccountView } from "@/lib/bindings";
+import type { AccountHealthStatus, AccountView } from "@/lib/bindings";
 import { duration, ease, spring } from "@/lib/motion";
 import { useAccountStore, useCurrentAccount, useSkin } from "@/stores/accounts";
 import { PlayerHead } from "../PlayerHead";
@@ -11,9 +11,23 @@ import { IconButton } from "../ui/IconButton";
 import { Tag } from "../ui/Tag";
 import { SkinFigure } from "./SkinFigure";
 
+function healthDotClass(status: AccountHealthStatus | undefined): string {
+  switch (status) {
+    case "ready":
+      return "bg-emerald-500";
+    case "needsRelogin":
+    case "networkError":
+      return "bg-amber-500";
+    case "verifying":
+      return "bg-accent animate-pulse";
+    default:
+      return "bg-fg-muted/45";
+  }
+}
+
 /**
  * 右上角的账号胶囊（像素头像 + 名字 + 账号类型）和点开的账号弹层：
- * 上面是 2D 人物、名字和皮肤预览；下面是切换账号、退出和添加账号。
+ * 上面是 2D 人物、名字、会话健康、皮肤与安全中心入口；下面是切换账号、二次确认退出和添加账号。
  */
 export function AccountMenu() {
   const { t } = useTranslation();
@@ -22,6 +36,7 @@ export function AccountMenu() {
   const open = useAccountStore((s) => s.menuOpen);
   const setOpen = useAccountStore((s) => s.setMenuOpen);
   const setAddOpen = useAccountStore((s) => s.setAddOpen);
+  const healthStatus = useAccountStore((s) => (current ? s.health[current.id]?.status : undefined));
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -60,7 +75,12 @@ export function AccountMenu() {
           </span>
         )}
         <span className="max-w-32 truncate">{name}</span>
-        {current && <Tag className="px-1.5! py-0! text-2xs">{t("account.microsoft.label")}</Tag>}
+        {current && (
+          <Tag className="flex items-center gap-1 px-1.5! py-0! text-2xs">
+            <span className={`size-1.5 rounded-full ${healthDotClass(healthStatus)}`} aria-hidden />
+            {t("account.microsoft.label")}
+          </Tag>
+        )}
       </button>
       <AnimatePresence>
         {open && current && (
@@ -91,10 +111,12 @@ export function AccountMenu() {
   );
 }
 
-/** 弹层上半：2D 人物、名字和皮肤预览。 */
+/** 弹层上半：2D 人物、名字、皮肤工坊与安全中心入口。 */
 function CurrentCard({ account, skin }: { account: AccountView; skin: string | null }) {
   const { t } = useTranslation();
   const openSkin = useAccountStore((s) => s.openSkin);
+  const setSecurityOpen = useAccountStore((s) => s.setSecurityOpen);
+  const healthStatus = useAccountStore((s) => s.health[account.id]?.status);
   return (
     <div className="flex items-center gap-4 p-4">
       <div className="grid h-36 w-20 shrink-0 place-items-center rounded-panel bg-surface-2">
@@ -106,22 +128,40 @@ function CurrentCard({ account, skin }: { account: AccountView; skin: string | n
       </div>
       <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
         <p className="w-full truncate font-semibold text-base">{account.name}</p>
-        <Tag>{t("account.microsoft.label")}</Tag>
-        <Button size="sm" variant="outline" onClick={() => openSkin(account.id)}>
-          <Shirt className="size-3.5" aria-hidden />
-          {t("skin.preview")}
-        </Button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Tag className="flex items-center gap-1">
+            <span className={`size-1.5 rounded-full ${healthDotClass(healthStatus)}`} aria-hidden />
+            {t("account.microsoft.label")}
+          </Tag>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button size="sm" variant="outline" onClick={() => openSkin(account.id)}>
+            <Shirt className="size-3.5" aria-hidden />
+            {t("skin.preview")}
+          </Button>
+          <IconButton label={t("security.open")} size="sm" onClick={() => setSecurityOpen(true)}>
+            <ShieldCheck className="size-3.5 text-accent" aria-hidden />
+          </IconButton>
+        </div>
       </div>
     </div>
   );
 }
 
-/** 切换 Microsoft 账号。 */
+/** 切换 Microsoft 账号（退出采用轻量两次点击确认）。 */
 function AccountList({ currentId }: { currentId: string }) {
   const { t } = useTranslation();
   const accounts = useAccountStore((s) => s.accounts);
   const select = useAccountStore((s) => s.select);
   const remove = useAccountStore((s) => s.remove);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!confirmRemoveId) return;
+    const timer = window.setTimeout(() => setConfirmRemoveId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmRemoveId]);
+
   return (
     <div className="border-line border-t p-2">
       <p className="px-2 pt-1 pb-1.5 text-fg-muted text-xs">{t("account.list")}</p>
@@ -131,8 +171,16 @@ function AccountList({ currentId }: { currentId: string }) {
             key={account.id}
             account={account}
             selected={account.id === currentId}
-            onSelect={() => void select(account.id)}
-            onRemove={() => void remove(account.id)}
+            confirming={confirmRemoveId === account.id}
+            onSelect={() => {
+              setConfirmRemoveId(null);
+              void select(account.id);
+            }}
+            onRequestRemove={() => setConfirmRemoveId(account.id)}
+            onConfirmRemove={() => {
+              setConfirmRemoveId(null);
+              void remove(account.id);
+            }}
           />
         ))}
       </ul>
@@ -143,16 +191,21 @@ function AccountList({ currentId }: { currentId: string }) {
 function AccountRow({
   account,
   selected,
+  confirming,
   onSelect,
-  onRemove,
+  onRequestRemove,
+  onConfirmRemove,
 }: {
   account: AccountView;
   selected: boolean;
+  confirming: boolean;
   onSelect: () => void;
-  onRemove: () => void;
+  onRequestRemove: () => void;
+  onConfirmRemove: () => void;
 }) {
   const { t } = useTranslation();
   const skin = useSkin(account);
+  const status = useAccountStore((s) => s.health[account.id]?.status);
   return (
     <li
       className={`group flex items-center gap-1 rounded-row pr-1 transition-colors duration-(--motion-press) ${
@@ -171,17 +224,28 @@ function AccountRow({
         >
           {account.name}
         </span>
-        <Tag className="text-2xs">{t("account.microsoft.label")}</Tag>
+        <span className={`size-1.5 shrink-0 rounded-full ${healthDotClass(status)}`} aria-hidden />
       </button>
-      <IconButton
-        label={t("account.signOut")}
-        size="sm"
-        danger
-        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-        onClick={onRemove}
-      >
-        <LogOut className="size-3.5" aria-hidden />
-      </IconButton>
+      {confirming ? (
+        <button
+          type="button"
+          onClick={onConfirmRemove}
+          className="inline-flex h-6 shrink-0 items-center gap-1 rounded-chip bg-danger px-2 font-medium text-2xs text-on-accent"
+        >
+          <Check className="size-3" aria-hidden />
+          {t("account.confirmSignOut")}
+        </button>
+      ) : (
+        <IconButton
+          label={t("account.signOut")}
+          size="sm"
+          danger
+          className="opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+          onClick={onRequestRemove}
+        >
+          <LogOut className="size-3.5" aria-hidden />
+        </IconButton>
+      )}
     </li>
   );
 }

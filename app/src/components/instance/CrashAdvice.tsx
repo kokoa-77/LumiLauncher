@@ -54,7 +54,7 @@ export function CrashAdvice({
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-panel border border-line bg-surface p-3">
       <CircleAlert className="size-4 shrink-0 self-start text-danger" aria-hidden />
-      <div role="status" className="min-w-40 flex-1">
+      <div role="status" className="min-w-40 flex-1 select-text">
         <p className="font-medium text-sm">{t(`diagnostics.${kind}.title`)}</p>
         <p className="mt-0.5 text-fg-muted text-xs">
           {t(kind === "files" && !action ? "diagnostics.files.linked" : `diagnostics.${kind}.hint`)}

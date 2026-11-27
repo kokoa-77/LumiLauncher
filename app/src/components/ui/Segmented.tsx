@@ -14,6 +14,8 @@ interface SegmentedProps<T extends string> {
   options: Option<T>[];
   onChange: (value: T) => void;
   label: string;
+  /** 占满父容器宽度、各选项等宽铺开（用于弹窗/筛选面板内对齐左右边界） */
+  fullWidth?: boolean;
 }
 
 /**
@@ -26,10 +28,13 @@ export function Segmented<T extends string>({
   options,
   onChange,
   label,
+  fullWidth = false,
 }: SegmentedProps<T>) {
   const id = useId();
   return (
-    <fieldset className="inline-flex shrink-0 rounded-control border border-line bg-surface p-[3px] shadow-raised">
+    <fieldset
+      className={`${fullWidth ? "flex w-full" : "inline-flex shrink-0"} rounded-control border border-line bg-surface p-[3px] shadow-raised`}
+    >
       <legend className="sr-only">{label}</legend>
       {options.map((option) => {
         const active = option.value === value;
@@ -40,9 +45,9 @@ export function Segmented<T extends string>({
             aria-pressed={active}
             disabled={option.disabled}
             onClick={() => onChange(option.value)}
-            className={`relative h-7 whitespace-nowrap rounded-inner px-3.5 text-sm transition-colors duration-(--motion-toggle) disabled:cursor-default disabled:opacity-45 ${
-              active ? "font-medium text-accent" : "text-fg-muted enabled:hover:text-fg"
-            }`}
+            className={`relative h-7 whitespace-nowrap rounded-inner transition-colors duration-(--motion-toggle) disabled:cursor-default disabled:opacity-45 ${
+              fullWidth ? "flex-1 px-2 text-xs" : "px-3.5 text-sm"
+            } ${active ? "font-medium text-accent" : "text-fg-muted enabled:hover:text-fg"}`}
           >
             {active && (
               <motion.span

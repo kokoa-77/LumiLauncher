@@ -8,8 +8,9 @@ use std::time::Duration;
 use launcher_core::content::curseforge as cf;
 use launcher_core::content::modrinth::{self, PlanItem, SearchPage, SearchQuery, Target};
 use launcher_core::content::{
-    ContentItem, ContentKind, ContentSource, HistoryView, InstanceContent, RollbackOffer,
-    SearchSort, UpdateCheckResult, UpdateInfo,
+    ContentItem, ContentKind, ContentSource, HistoryView, ImpactAction, InstanceContent,
+    ModDepsGraph, ModImpactReport, RollbackOffer, SearchSort, TimelineView, UpdateCheckResult,
+    UpdateInfo,
 };
 use launcher_core::install::loaders::{self, LoaderVersion};
 use launcher_core::install::neoforge::{self, NeoForgeVersion};
@@ -22,14 +23,14 @@ use launcher_core::launch::{
     GameEvent, GameState, LaunchOptions, LaunchOutcome, LogLine, MemoryChoice, PrepareContext,
     PrepareProgress, QuickPlay, QuickPlayRecord, RecordEnd, autocover, prepare, run_game,
 };
-use launcher_core::meta::fetch_manifest;
+use launcher_core::meta::{GameVersionEntry, fetch_manifest};
 use launcher_core::modpack::ready::{self, PackReadiness};
 use launcher_core::modpack::remote::{self, PackVersion};
 use launcher_core::modpack::{
     self, ImportContext, ImportProgress, PackFormat, PackOrigin, PackPlan, PackPreview, curseforge,
-    mrpack,
+    mrpack, multimc,
 };
-use launcher_core::net::{DownloadProgress, Downloader};
+use launcher_core::net::{DownloadPriority, DownloadProgress, Downloader};
 use launcher_core::paths::GameDir;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -54,14 +55,31 @@ fn now() -> f64 {
         .unwrap_or(0.0)
 }
 
-/// 下载器：CurseForge 的 CDN 要带 Key（只对 CurseForge 的域名带）
+/// 批量下载器（游戏本体/整合包等大任务，遵守 75% Batch 配额不饿死交互请求）
 pub(crate) fn downloader(state: &AppState) -> Downloader {
     let settings = state.settings.get();
-    Downloader::new(
-        state.http_client(),
+    Downloader::from_engine(
+        state.engine.clone(),
+        DownloadPriority::Batch,
         settings.download.max_concurrency as usize,
     )
     .with_host_header(state.curseforge.download_header())
+}
+
+/// 绑定任务 [`PauseControl`] 与优先级的下载器。
+pub(crate) fn downloader_for_job(
+    state: &AppState,
+    priority: DownloadPriority,
+    job: &JobHandle,
+) -> Downloader {
+    let settings = state.settings.get();
+    Downloader::from_engine(
+        state.engine.clone(),
+        priority,
+        settings.download.max_concurrency as usize,
+    )
+    .with_host_header(state.curseforge.download_header())
+    .with_pause(job.pause_control())
 }
 
 pub(crate) fn load_instance(state: &AppState, id: &str) -> Result<Instance, AppError> {
@@ -87,6 +105,7 @@ pub(crate) fn content_of(state: &AppState, id: &str) -> Result<InstanceContent, 
 pub(crate) fn report(job: &JobHandle, label: &str, p: &DownloadProgress) {
     // 换了一步（「下载整合包」→「下载整合包文件」）就记进步骤里（下载历史展开看每一步）
     job.set_step(label);
+    job.set_reused(p.reused_bytes, p.reused_files);
     job.set_download_progress(
         p.done_bytes as f64,
         Some(p.total_bytes as f64),
@@ -128,6 +147,16 @@ pub struct InstanceSummary {
     pub loader: Option<String>,
     /// 来自哪个整合包
     pub pack: Option<String>,
+    /// 当前安装的整合包版本号
+    pub pack_version: Option<String>,
+    /// 若来自在线整合包平台（Modrinth / CurseForge 且带 project_id），标识其平台
+    pub pack_source: Option<ContentSource>,
+    /// 整合包在平台上的项目 ID（在线一键检查更新用）
+    pub pack_project_id: Option<String>,
+    /// 整合包在平台上的当前版本 ID
+    pub pack_version_id: Option<String>,
+    /// 是否存在可一键无损回滚的整合包更新记录
+    pub pack_rollback: Option<launcher_core::modpack::update::PackRollbackSummary>,
     pub created_at: f64,
     pub last_played: Option<f64>,
     /// 实例库里的分组；没分组为空
@@ -136,25 +165,76 @@ pub struct InstanceSummary {
     pub pinned_at: Option<f64>,
     /// 挂上的别家版本：是哪家的；本启动器自己的实例为空
     pub linked: Option<launcher_core::external::Launcher>,
+    /// 实例级自定义封面（或整合包官方封面/图标 URL）；无自定义且非整合包时为空
+    pub cover_url: Option<String>,
+    /// 实例级自定义封面的显示方式
+    pub cover_fit: launcher_core::saves::cover::ImageFit,
+    /// 默认微光矢量封面预设（`<徽章>:<色板>`）；为空则按实例自动分配
+    pub cover_preset: Option<String>,
 }
 
-impl From<Instance> for InstanceSummary {
-    fn from(instance: Instance) -> Self {
-        let c = instance.config;
-        Self {
-            id: instance.id,
-            name: c.name,
-            game_version: c.game_version,
-            loader: c
-                .loader
-                .map(|l| format!("{} {}", l.kind.label(), l.version)),
-            pack: c.source.map(|s| s.name),
-            created_at: c.created_at,
-            last_played: c.last_played,
-            group: c.group,
-            pinned_at: c.pinned_at,
-            linked: c.link.map(|l| l.launcher),
+fn summarize_instance(state: &AppState, game: &GameDir, instance: Instance) -> InstanceSummary {
+    let c = instance.config;
+    let pack_cover = c
+        .source
+        .as_ref()
+        .and_then(|s| s.cover_url.clone())
+        .filter(|u| u.starts_with("https://"));
+    // 自定义封面放在 Lumi 自己的 `instances/<id>/Lumi/covers/`，关联实例也能安全保存不碰原启动器
+    let local_cover = game
+        .instance_dir(&instance.id)
+        .ok()
+        .and_then(|dir| launcher_core::saves::cover::instance_custom(&dir))
+        .map(|(path, fit)| (state.images.url_for(&path), fit));
+    let (cover_url, cover_fit) = match local_cover {
+        Some((url, fit)) => (Some(url), fit),
+        None => (pack_cover, launcher_core::saves::cover::ImageFit::Cover),
+    };
+    let pack_rollback = if c.link.is_none() {
+        game.instance_dir(&instance.id)
+            .ok()
+            .and_then(|dir| launcher_core::modpack::update::rollback_summary(&dir))
+    } else {
+        None
+    };
+    let (pack, pack_version, pack_source, pack_project_id, pack_version_id) = match c.source {
+        Some(s) => {
+            let platform = match s.kind.as_str() {
+                "mrpack" if s.project_id.is_some() => Some(ContentSource::Modrinth),
+                "curseforge" if s.project_id.is_some() => Some(ContentSource::CurseForge),
+                _ => None,
+            };
+            (
+                Some(s.name),
+                (!s.version.trim().is_empty()).then_some(s.version),
+                platform,
+                s.project_id,
+                s.version_id,
+            )
         }
+        None => (None, None, None, None, None),
+    };
+    InstanceSummary {
+        id: instance.id,
+        name: c.name,
+        game_version: c.game_version,
+        loader: c
+            .loader
+            .map(|l| format!("{} {}", l.kind.label(), l.version)),
+        pack,
+        pack_version,
+        pack_source,
+        pack_project_id,
+        pack_version_id,
+        pack_rollback,
+        created_at: c.created_at,
+        last_played: c.last_played,
+        group: c.group,
+        pinned_at: c.pinned_at,
+        linked: c.link.map(|l| l.launcher),
+        cover_url,
+        cover_fit,
+        cover_preset: c.cover_preset,
     }
 }
 
@@ -162,9 +242,10 @@ impl From<Instance> for InstanceSummary {
 #[tauri::command]
 #[specta::specta]
 pub fn instances_list(state: State<'_, AppState>) -> Vec<InstanceSummary> {
-    let mut list: Vec<InstanceSummary> = instance::list(&state.game())
+    let game = state.game();
+    let mut list: Vec<InstanceSummary> = instance::list(&game)
         .into_iter()
-        .map(Into::into)
+        .map(|inst| summarize_instance(&state, &game, inst))
         .collect();
     list.sort_by(|a, b| {
         let key = |i: &InstanceSummary| i.last_played.unwrap_or(0.0).max(i.created_at / 1e6);
@@ -231,7 +312,7 @@ pub fn instances_create(
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
         let result = async {
-            let downloader = downloader(&state);
+            let downloader = downloader_for_job(&state, DownloadPriority::Batch, &job);
             let java = pick_java_for(&state, &job, &downloader, &game_version).await?;
             let game = state.game();
             let work_dir = game.root().join(".mcl-tmp").join("create");
@@ -249,7 +330,7 @@ pub fn instances_create(
                 SetupProgress::Files(phase, d) => report(&job, phase_label(*phase), d),
             })
             .await
-            .map_err(AppError::from)
+            .map_err(|e| state.capture_app_error(&job, "下载实例文件", e))
         }
         .await;
         match result {
@@ -262,7 +343,7 @@ pub fn instances_create(
                 tracing::info!(error = %error.message, "新建实例已取消");
                 job.cancelled();
             }
-            Err(error) => job.fail(error.message),
+            Err(error) => state.finish_failed_job(job, error.message),
         }
     });
     Ok(job_id)
@@ -325,7 +406,8 @@ pub fn instances_repair_files(
         let cancel = job.cancel_token();
         let result: Result<(), AppError> = async {
             use launcher_core::install::setup::{repair_base_metadata, repair_version};
-            let downloader = downloader(&state).quick_verify(false);
+            let downloader =
+                downloader_for_job(&state, DownloadPriority::Batch, &job).quick_verify(false);
             let config = &instance.config;
             let version_id = instance.version_id();
             job.set_step("检查版本文件");
@@ -359,7 +441,8 @@ pub fn instances_repair_files(
                     }
                 },
             )
-            .await?;
+            .await
+            .map_err(|e| state.capture_app_error(&job, "校验并补全游戏文件", e))?;
             Ok(())
         }
         .await;
@@ -368,7 +451,7 @@ pub fn instances_repair_files(
             Err(error) if error.code == "job.cancelled" || cancel.is_cancelled() => job.cancelled(),
             Err(error) => {
                 tracing::warn!(message = %error.message, detail = ?error.detail, "修复游戏文件失败");
-                job.fail(error.message);
+                state.finish_failed_job(job, error.message);
             }
         }
     });
@@ -404,20 +487,17 @@ pub(crate) async fn pick_java_for(
 
 // ---------- 版本列表（新建实例向导用）----------
 
-/// 正式版列表（新的在前）
-#[tauri::command]
-#[specta::specta]
-pub async fn catalog_game_versions(state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
-    if let Some(cached) = state
-        .catalog
-        .game_versions
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
-    {
-        return Ok(cached);
-    }
-    let manifest = fetch_manifest(&state.http_client()).await?;
+async fn populate_game_catalog(
+    state: &State<'_, AppState>,
+) -> Result<(Vec<String>, Vec<GameVersionEntry>), AppError> {
+    let manifest = match fetch_manifest(&state.http_client()).await {
+        Ok(m) => m,
+        Err(_) if state.refresh_proxy_if_changed().is_some() => {
+            fetch_manifest(&state.http_client()).await?
+        }
+        Err(err) => return Err(err.into()),
+    };
+    let entries = manifest.version_entries();
     let mut versions: Vec<String> = manifest
         .versions
         .into_iter()
@@ -432,7 +512,48 @@ pub async fn catalog_game_versions(state: State<'_, AppState>) -> Result<Vec<Str
         .game_versions
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = Some(versions.clone());
+    *state
+        .catalog
+        .game_version_entries
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(entries.clone());
+    Ok((versions, entries))
+}
+
+/// 正式版列表（新的在前）
+#[tauri::command]
+#[specta::specta]
+pub async fn catalog_game_versions(state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
+    if let Some(cached) = state
+        .catalog
+        .game_versions
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+    {
+        return Ok(cached);
+    }
+    let (versions, _) = populate_game_catalog(&state).await?;
     Ok(versions)
+}
+
+/// 全量 Mojang 版本清单（含正式版 / 快照版 / 愚人节版 / 远古版分类与最新发布标记）
+#[tauri::command]
+#[specta::specta]
+pub async fn catalog_game_version_entries(
+    state: State<'_, AppState>,
+) -> Result<Vec<GameVersionEntry>, AppError> {
+    if let Some(cached) = state
+        .catalog
+        .game_version_entries
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+    {
+        return Ok(cached);
+    }
+    let (_, entries) = populate_game_catalog(&state).await?;
+    Ok(entries)
 }
 
 /// 某个游戏版本可用的 NeoForge（新的在前）
@@ -451,7 +572,17 @@ pub async fn catalog_neoforge_versions(
     let all = match cached {
         Some(all) => all,
         None => {
-            let all = neoforge::fetch_versions(&state.http_client()).await?;
+            let all =
+                match neoforge::fetch_versions_with_doh(&state.http_client(), Some(&state.doh))
+                    .await
+                {
+                    Ok(v) => v,
+                    Err(_) if state.refresh_proxy_if_changed().is_some() => {
+                        neoforge::fetch_versions_with_doh(&state.http_client(), Some(&state.doh))
+                            .await?
+                    }
+                    Err(err) => return Err(err.into()),
+                };
             *state
                 .catalog
                 .neoforge
@@ -489,7 +620,13 @@ pub async fn catalog_loader_versions(
                 .collect(),
         ));
     }
-    let versions = loaders::fetch_versions(&state.http_client(), &game_version, kind).await?;
+    let versions = match loaders::fetch_versions(&state.http_client(), &game_version, kind).await {
+        Ok(v) => v,
+        Err(_) if state.refresh_proxy_if_changed().is_some() => {
+            loaders::fetch_versions(&state.http_client(), &game_version, kind).await?
+        }
+        Err(err) => return Err(err.into()),
+    };
     Ok(Some(versions))
 }
 
@@ -603,7 +740,7 @@ pub fn launch_start(
             emit(&app, SessionUpdated(snapshot));
         }
         let settings = state.settings.get();
-        let downloader = downloader(&state);
+        let downloader = downloader_for_job(&state, DownloadPriority::Interactive, &job);
         let temp_root = game.root().join(".mcl-tmp");
         let cancel = job.cancel_token();
         let java_locator = state.java_locator();
@@ -692,9 +829,9 @@ pub fn launch_start(
                     let refreshed = verify_account().await?;
                     prepare_account(&refreshed, quick_play)
                         .await
-                        .map_err(AppError::from)
+                        .map_err(|e| state.capture_app_error(&job, "检查游戏文件", e))
                 }
-                result => result.map_err(AppError::from),
+                result => result.map_err(|e| state.capture_app_error(&job, "检查游戏文件", e)),
             }
         }
         .await;
@@ -723,7 +860,7 @@ pub fn launch_start(
                 if let Some(snapshot) = state.sessions.fail(&instance_id, error.message.clone()) {
                     emit(&app, SessionUpdated(snapshot));
                 }
-                job.fail(error.message);
+                state.finish_failed_job(job, error.message);
                 return;
             }
         };
@@ -866,9 +1003,7 @@ pub fn launch_start(
         let reached = reached_world.load(std::sync::atomic::Ordering::Relaxed);
         if let Err(error) = &result {
             let code = match error {
-                launcher_core::launch::LaunchError::Authorization(_) => {
-                    "auth.authorization_changed"
-                }
+                launcher_core::launch::LaunchError::Authorization(_) => "auth.account_changed",
                 launcher_core::launch::LaunchError::Parameters(_) => "launch.auth_parameters",
                 _ => "launch.failed",
             };
@@ -1047,6 +1182,9 @@ pub async fn modrinth_search(
     query: String,
     kind: ContentKind,
     instance_id: Option<String>,
+    game_version: Option<String>,
+    loader: Option<LoaderKind>,
+    client_only: bool,
     sort: SearchSort,
     category: Option<String>,
     offset: u32,
@@ -1054,17 +1192,26 @@ pub async fn modrinth_search(
     let instance = instance_id
         .map(|id| load_instance(&state, &id))
         .transpose()?;
-    let loader = instance
-        .as_ref()
-        .and_then(|i| i.config.loader.as_ref())
-        .map(|l| loader_slug(l.kind));
+    let resolved_gv = game_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| instance.as_ref().map(|i| i.config.game_version.as_str()));
+    let resolved_loader = loader.map(loader_slug).or_else(|| {
+        instance
+            .as_ref()
+            .and_then(|i| i.config.loader.as_ref())
+            .map(|l| loader_slug(l.kind))
+    });
+    let client_only = client_only && kind == ContentKind::Mod;
     let query = SearchQuery {
         text: &query,
         kind,
-        game_version: instance.as_ref().map(|i| i.config.game_version.as_str()),
-        loader,
+        game_version: resolved_gv,
+        loader: resolved_loader,
         sort,
         category: category.as_deref(),
+        client_only,
         offset,
         limit: SEARCH_PAGE,
     };
@@ -1074,6 +1221,7 @@ pub async fn modrinth_search(
         text: query.text,
         game_version: query.game_version,
         loader: query.loader,
+        client_only,
         sort,
         category: query.category,
         offset,
@@ -1089,20 +1237,22 @@ pub(crate) struct SearchKey<'a> {
     pub text: &'a str,
     pub game_version: Option<&'a str>,
     pub loader: Option<&'a str>,
+    pub client_only: bool,
     pub sort: SearchSort,
     pub category: Option<&'a str>,
     pub offset: u32,
 }
 
 impl SearchKey<'_> {
-    /// 平台、类型、版本、加载器、排序、分类、第几页、关键词（关键词放最后，里面可能有分隔符）
+    /// 平台、类型、版本、加载器、仅客户端、排序、分类、第几页、关键词（关键词放最后，里面可能有分隔符）
     pub(crate) fn build(&self) -> String {
         format!(
-            "{}|{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
             self.source,
             self.kind,
             self.game_version.unwrap_or(""),
             self.loader.unwrap_or(""),
+            u8::from(self.client_only),
             self.sort.key(),
             self.category.unwrap_or(""),
             self.offset,
@@ -1145,12 +1295,13 @@ fn loader_slug(kind: LoaderKind) -> &'static str {
 }
 
 /// 加载器在 CurseForge 上的编号
-fn curseforge_loader(kind: LoaderKind) -> u32 {
+fn curseforge_loader(kind: LoaderKind) -> Option<u32> {
     match kind {
-        LoaderKind::NeoForge => cf::LOADER_NEOFORGE,
-        LoaderKind::Forge => cf::LOADER_FORGE,
-        LoaderKind::Fabric => cf::LOADER_FABRIC,
-        LoaderKind::Quilt => cf::LOADER_QUILT,
+        LoaderKind::NeoForge => Some(cf::LOADER_NEOFORGE),
+        LoaderKind::Forge => Some(cf::LOADER_FORGE),
+        LoaderKind::Fabric => Some(cf::LOADER_FABRIC),
+        LoaderKind::Quilt => Some(cf::LOADER_QUILT),
+        LoaderKind::LegacyFabric | LoaderKind::Babric => None,
     }
 }
 
@@ -1165,6 +1316,8 @@ pub async fn curseforge_search(
     query: String,
     kind: ContentKind,
     instance_id: Option<String>,
+    game_version: Option<String>,
+    loader: Option<LoaderKind>,
     sort: SearchSort,
     category: Option<String>,
     offset: u32,
@@ -1172,28 +1325,38 @@ pub async fn curseforge_search(
     let instance = instance_id
         .map(|id| load_instance(&state, &id))
         .transpose()?;
-    let loader = instance
-        .as_ref()
-        .and_then(|i| i.config.loader.as_ref())
-        .map(|l| curseforge_loader(l.kind))
+    let resolved_gv = game_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| instance.as_ref().map(|i| i.config.game_version.as_str()));
+    let resolved_loader = loader
+        .and_then(curseforge_loader)
+        .or_else(|| {
+            instance
+                .as_ref()
+                .and_then(|i| i.config.loader.as_ref())
+                .and_then(|l| curseforge_loader(l.kind))
+        })
         .filter(|_| kind == ContentKind::Mod);
     let query = cf::SearchQuery {
         text: &query,
         class_id: cf::class_for(kind),
-        game_version: instance.as_ref().map(|i| i.config.game_version.as_str()),
-        loader,
+        game_version: resolved_gv,
+        loader: resolved_loader,
         sort,
         category: curseforge_category(category.as_deref())?,
         offset,
         limit: SEARCH_PAGE,
     };
-    let loader = loader.map(|l| l.to_string());
+    let loader_str = resolved_loader.map(|l| l.to_string());
     let key = SearchKey {
         source: "curseforge",
         kind: &format!("{kind:?}"),
         text: query.text,
         game_version: query.game_version,
-        loader: loader.as_deref(),
+        loader: loader_str.as_deref(),
+        client_only: false,
         sort,
         category: category.as_deref(),
         offset,
@@ -1265,7 +1428,7 @@ pub async fn content_resolve_version(
                 .config
                 .loader
                 .as_ref()
-                .map(|l| curseforge_loader(l.kind)),
+                .and_then(|l| curseforge_loader(l.kind)),
             installed: &installed,
         };
         return Ok(state
@@ -1327,7 +1490,7 @@ pub async fn content_resolve(
                 .config
                 .loader
                 .as_ref()
-                .map(|l| curseforge_loader(l.kind)),
+                .and_then(|l| curseforge_loader(l.kind)),
             installed: &installed,
         };
         return Ok(state
@@ -1344,12 +1507,12 @@ pub async fn content_resolve(
     Ok(modrinth::resolve(&state.http_client(), &target, &project_id, kind).await?)
 }
 
-/// 这个实例上有没有正在装的东西：正在改文件的（排到了的），加上还在下载、排队的安装和更新、
-/// 拖进来正在装的、正在装的地图（下载期间不占实例的锁，但装完要放进实例，这时启动游戏会冲突）
-fn instance_working(state: &AppState, instance_id: &str, directory: &std::path::Path) -> bool {
-    if state.turns.is_busy(directory) {
-        return true;
-    }
+/// 是否有后台安装 / 更新 / 拖入 / 备份任务正在操作此游戏目录。
+fn has_running_instance_job(
+    state: &AppState,
+    instance_id: &str,
+    directory: &std::path::Path,
+) -> bool {
     let prefixes = [
         format!("content:{instance_id}:"),
         format!("drop:{instance_id}:"),
@@ -1370,6 +1533,12 @@ fn instance_working(state: &AppState, instance_id: &str, directory: &std::path::
                         .and_then(|id| game_dir_of(state, id).ok())
                         .is_some_and(|dir| crate::turns::directory_key(&dir) == directory)))
     })
+}
+
+/// 这个实例上有没有正在装的东西：正在改文件的（排到了的），加上还在下载、排队的安装和更新、
+/// 拖进来正在装的、正在装的地图（下载期间不占实例的锁，但装完要放进实例，这时启动游戏会冲突）
+fn instance_working(state: &AppState, instance_id: &str, directory: &std::path::Path) -> bool {
+    state.turns.is_busy(directory) || has_running_instance_job(state, instance_id, directory)
 }
 
 /// 安装用户确认过的计划（后台任务），返回任务 ID。
@@ -1418,12 +1587,13 @@ pub fn content_install(
     let job_id = job.id().to_owned();
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
-        let downloader = downloader(&state);
+        let downloader = downloader_for_job(&state, DownloadPriority::Interactive, &job);
         let cancel = job.cancel_token();
         let result: Result<(), AppError> = async {
             let prepared = content
                 .prepare_install(&state.http_client(), &state.curseforge, &plan)
-                .await?;
+                .await
+                .map_err(|e| state.capture_app_error(&job, "下载", e))?;
             // 作者禁止第三方下载、Modrinth 上也没有同样文件的：开始补件，一边下载其他文件一边等
             let claim =
                 crate::claims::start(&app, &state, &job, title.clone(), prepared.manual.clone());
@@ -1436,7 +1606,8 @@ pub fn content_install(
                     &cancel,
                     |p| report(&job, "下载", &p),
                 )
-                .await?;
+                .await
+                .map_err(|e| state.capture_app_error(&job, "下载", e))?;
             drop(claim);
             // 放进实例要排队：同一个实例同一时间只有一个在改文件和来源记录
             let Some(_turn) = state.turns.wait(&directory, &job).await else {
@@ -1451,7 +1622,7 @@ pub fn content_install(
         match result {
             Ok(()) => job.succeed(),
             Err(_) if job.is_cancelled() => job.cancelled(),
-            Err(error) => job.fail(error.message),
+            Err(error) => state.finish_failed_job(job, error.message),
         }
     });
     Ok(job_id)
@@ -1477,13 +1648,40 @@ pub async fn content_set_enabled(
     enabled: bool,
 ) -> Result<(), AppError> {
     ensure_not_running(&state, &instance_id)?;
-    let _turn = take_content_turn(&state, &instance_id)?;
+    let dir = game_dir_of(&state, &instance_id)?;
+    // 真正有安装/更新/备份等后台任务在跑时直接拦住；
+    // 若只是玩家连续快点多个开关导致上一个瞬时改名还没释放锁，则安静排队顺序执行，不误报「正在装东西」。
+    let _turn = match state.turns.try_take(&dir) {
+        Some(turn) => turn,
+        None if has_running_instance_job(&state, &instance_id, &dir) => return Err(busy_error()),
+        None => {
+            let turn = state.turns.take(&dir).await;
+            ensure_not_running(&state, &instance_id)?;
+            turn
+        }
+    };
     let content = content_of(&state, &instance_id)?;
     // 上次改到一半的先退回
     content.recover().await?;
-    // 启用 / 停用也是改动：还没有快照的话先记一份
+    // 启用 / 停用也是改动：还没有快照的话先记一份，改完后再写入时间线节点
     content.snapshot_before_change().await;
-    Ok(content.set_enabled(kind, &file_name, enabled)?)
+    let tl_guard = content.begin_timeline_change().await;
+    content.set_enabled(kind, &file_name, enabled)?;
+    let verb = if enabled { "启用" } else { "停用" };
+    let stem = file_name
+        .strip_suffix(".jar")
+        .or_else(|| file_name.strip_suffix(".zip"))
+        .unwrap_or(&file_name);
+    content
+        .finish_timeline_toggle(
+            tl_guard,
+            kind,
+            &file_name,
+            enabled,
+            format!("{verb} {stem}"),
+        )
+        .await;
+    Ok(())
 }
 
 /// 一次启用 / 停用好几个：要么全改、要么一个不改。返回真的改了的那些，
@@ -1620,12 +1818,13 @@ fn start_update_job(
     let job_id = job.id().to_owned();
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
-        let downloader = downloader(&state);
+        let downloader = downloader_for_job(&state, DownloadPriority::Interactive, &job);
         let cancel = job.cancel_token();
         let result: Result<(), AppError> = async {
             let prepared = content
                 .prepare_update(&state.http_client(), &state.curseforge, &updates)
-                .await?;
+                .await
+                .map_err(|e| state.capture_app_error(&job, "下载新版本", e))?;
             let claim =
                 crate::claims::start(&app, &state, &job, title.clone(), prepared.manual.clone());
             let staged = content
@@ -1636,7 +1835,8 @@ fn start_update_job(
                     &cancel,
                     |p| report(&job, "下载新版本", &p),
                 )
-                .await?;
+                .await
+                .map_err(|e| state.capture_app_error(&job, "下载新版本", e))?;
             drop(claim);
             let Some(_turn) = state.turns.wait(&directory, &job).await else {
                 return Err(AppError::new("job.cancelled", "已取消"));
@@ -1650,7 +1850,7 @@ fn start_update_job(
         match result {
             Ok(()) => job.succeed(),
             Err(_) if job.is_cancelled() => job.cancelled(),
-            Err(error) => job.fail(error.message),
+            Err(error) => state.finish_failed_job(job, error.message),
         }
     });
     Ok(job_id)
@@ -1745,6 +1945,64 @@ pub async fn content_restore_snapshot(
     ensure_not_running(&state, &instance_id)?;
     let _turn = take_content_turn(&state, &instance_id)?;
     Ok(content_of(&state, &instance_id)?.restore_snapshot().await?)
+}
+
+/// 「永不玩坏」融合时间线（改动快照节点 + 历史启动/崩溃记录，按时间倒序排列）。
+#[tauri::command]
+#[specta::specta]
+pub async fn content_timeline(
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<TimelineView, AppError> {
+    let running = state.sessions.running_record(&instance_id);
+    Ok(content_of(&state, &instance_id)?
+        .timeline(running.as_deref())
+        .await?)
+}
+
+/// 一键恢复到时间线上的任意历史快照节点（恢复前自动为当前态留存保护节点，随时可前滚回来）。
+#[tauri::command]
+#[specta::specta]
+pub async fn content_restore_timeline_node(
+    state: State<'_, AppState>,
+    instance_id: String,
+    node_id: String,
+) -> Result<u32, AppError> {
+    ensure_not_running(&state, &instance_id)?;
+    let _turn = take_content_turn(&state, &instance_id)?;
+    Ok(content_of(&state, &instance_id)?
+        .restore_timeline_node(&node_id)
+        .await?)
+}
+
+/// 离线读取实例的模组正/反向依赖图（带缓存，供内容列表展示「被 XX 依赖」与「孤儿前置」标记）。
+#[tauri::command]
+#[specta::specta]
+pub async fn content_mod_deps(
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<ModDepsGraph, AppError> {
+    let content = content_of(&state, &instance_id)?;
+    tauri::async_runtime::spawn_blocking(move || content.mod_deps())
+        .await
+        .map_err(|e| AppError::new("content.deps_failed", "分析模组依赖失败").with_detail(e))?
+        .map_err(AppError::from)
+}
+
+/// 停用或卸载指定模组前的依赖影响分析（被依赖预警 + 卸载后将失去依赖方的孤儿前置列表）。
+#[tauri::command]
+#[specta::specta]
+pub async fn content_mod_impact(
+    state: State<'_, AppState>,
+    instance_id: String,
+    file_names: Vec<String>,
+    action: ImpactAction,
+) -> Result<ModImpactReport, AppError> {
+    let content = content_of(&state, &instance_id)?;
+    tauri::async_runtime::spawn_blocking(move || content.analyze_mod_impact(&file_names, action))
+        .await
+        .map_err(|e| AppError::new("content.impact_failed", "分析模组影响失败").with_detail(e))?
+        .map_err(AppError::from)
 }
 
 // ---------- 游戏目录 ----------
@@ -1930,7 +2188,7 @@ async fn blocking<T: Send + 'static>(
 }
 
 /// 读取并检查整合包：先认格式；CurseForge 包还要联网查清每个文件（要 API Key）
-async fn inspect_file(state: &AppState, path: PathBuf) -> Result<PackPlan, AppError> {
+pub(crate) async fn inspect_file(state: &AppState, path: PathBuf) -> Result<PackPlan, AppError> {
     let probe = path.clone();
     match blocking(move || modpack::detect(&probe)).await? {
         PackFormat::Modrinth => blocking(move || mrpack::inspect(&path)).await,
@@ -1938,6 +2196,7 @@ async fn inspect_file(state: &AppState, path: PathBuf) -> Result<PackPlan, AppEr
             let pack = blocking(move || curseforge::inspect(&path)).await?;
             Ok(curseforge::resolve(&state.http_client(), &state.curseforge, pack).await?)
         }
+        PackFormat::MultiMc => blocking(move || multimc::inspect(&path)).await,
     }
 }
 
@@ -1972,9 +2231,9 @@ pub(crate) fn clean_temp_packs(game: &GameDir, keep: &std::collections::HashSet<
             entries
                 .flatten()
                 .filter(|e| {
-                    e.file_name()
-                        .to_string_lossy()
-                        .starts_with(instance::COPY_TEMP_PREFIX)
+                    let name = e.file_name();
+                    let name = name.to_string_lossy();
+                    name.starts_with(instance::COPY_TEMP_PREFIX) || name.starts_with("pack-update-")
                 })
                 .map(|e| e.path()),
         );
@@ -2079,7 +2338,7 @@ fn start_file_import(
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
         let result = import_plan(&app, &state, &job, &plan, name.as_deref(), &resume_key).await;
-        finish_import(job, result);
+        finish_import(&state, job, result);
     });
     Ok(job_id)
 }
@@ -2095,23 +2354,32 @@ pub(crate) async fn import_file(
     start_file_import(app, &state, plan, name)
 }
 
-/// 搜整合包。Modrinth 按加载器筛选，CurseForge 的格式在拿到清单后确认。`category` 按平台是 Modrinth 的分类名或 CurseForge 的分类编号。
+/// 搜整合包。支持按游戏版本、加载器与分类筛选。`category` 按平台是 Modrinth 的分类名或 CurseForge 的分类编号。
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[specta::specta]
 pub async fn modpack_search(
     state: State<'_, AppState>,
     query: String,
     source: ContentSource,
+    game_version: Option<String>,
+    loader: Option<LoaderKind>,
     sort: SearchSort,
     category: Option<String>,
     offset: u32,
 ) -> Result<SearchPage, AppError> {
+    let gv = game_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let loader_str = loader.map(loader_slug);
     let key = SearchKey {
         source: source_key(source),
         kind: "modpack",
         text: &query,
-        game_version: None,
-        loader: None,
+        game_version: gv,
+        loader: loader_str,
+        client_only: false,
         sort,
         category: category.as_deref(),
         offset,
@@ -2123,6 +2391,8 @@ pub async fn modpack_search(
             let search = modrinth::search_modpacks(
                 &client,
                 &query,
+                gv,
+                loader_str,
                 sort,
                 category.as_deref(),
                 offset,
@@ -2134,8 +2404,8 @@ pub async fn modpack_search(
             let query = cf::SearchQuery {
                 text: &query,
                 class_id: cf::class::MODPACK,
-                game_version: None,
-                loader: None,
+                game_version: gv,
+                loader: loader.and_then(curseforge_loader),
                 sort,
                 category: curseforge_category(category.as_deref())?,
                 offset,
@@ -2229,7 +2499,7 @@ pub fn modpack_install(
     let job_id = job.id().to_owned();
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
-        let downloader = downloader(&state);
+        let downloader = downloader_for_job(&state, DownloadPriority::Batch, &job);
         let cancel = job.cancel_token();
         let result = async {
             // 整合包下到这次导入自己的临时目录里：没装完时留着，重试时校验通过就不重下
@@ -2237,37 +2507,37 @@ pub fn modpack_install(
             let dir = staging.join("pack");
             let progress = |p| report(&job, "下载整合包", &p);
             let path = match cf_file {
-                Some(file_id) => {
-                    remote::curseforge_download(
-                        &state.curseforge,
-                        &downloader,
-                        file_id,
-                        &dir,
-                        &cancel,
-                        progress,
-                    )
-                    .await?
-                }
-                None => {
-                    remote::download(
-                        &state.http_client(),
-                        &downloader,
-                        &version_id,
-                        &dir,
-                        &cancel,
-                        progress,
-                    )
-                    .await?
-                }
+                Some(file_id) => remote::curseforge_download(
+                    &state.curseforge,
+                    &downloader,
+                    file_id,
+                    &dir,
+                    &cancel,
+                    progress,
+                )
+                .await
+                .map_err(|e| state.capture_app_error(&job, "下载整合包", e))?,
+                None => remote::download(
+                    &state.http_client(),
+                    &downloader,
+                    &version_id,
+                    &dir,
+                    &cancel,
+                    progress,
+                )
+                .await
+                .map_err(|e| state.capture_app_error(&job, "下载整合包", e))?,
             };
             job.set_message("检查整合包");
             let mut plan = inspect_file(&state, path).await?;
             plan.origin = Some(PackOrigin {
-                project_id,
+                project_id: project_id.clone(),
                 version_id,
             });
             let instance =
                 import_plan(&app, &state, &job, &plan, name.as_deref(), &resume_key).await?;
+            // 尽量补齐整合包官方宽屏画廊图或图标作为默认封面（失败静默跳过，不影响安装成功）
+            attach_pack_cover(&state, &instance, source, &project_id).await;
             // 服务器要求的整合包：装好后把服务器加进这个实例的多人游戏列表
             if let Some(server) = &join_server {
                 crate::discover::add_server_to(&state, &instance, server);
@@ -2275,7 +2545,7 @@ pub fn modpack_install(
             Ok(instance)
         }
         .await;
-        finish_import(job, result);
+        finish_import(&state, job, result);
     });
     Ok(job_id)
 }
@@ -2290,7 +2560,7 @@ async fn import_plan(
     name: Option<&str>,
     resume_key: &str,
 ) -> Result<Instance, AppError> {
-    let downloader = downloader(state);
+    let downloader = downloader_for_job(state, DownloadPriority::Batch, job);
     let java = pick_java_for(state, job, &downloader, &plan.preview.game_version).await?;
     let claim = crate::claims::start(
         app,
@@ -2325,10 +2595,10 @@ async fn import_plan(
         ImportProgress::Game(phase, d) => report(job, phase_label(*phase), d),
     })
     .await
-    .map_err(AppError::from)
+    .map_err(|e| state.capture_app_error(job, "下载整合包文件", e))
 }
 
-fn finish_import(job: JobHandle, result: Result<Instance, AppError>) {
+fn finish_import(state: &AppState, job: JobHandle, result: Result<Instance, AppError>) {
     match result {
         Ok(instance) => {
             tracing::info!(instance = %instance.id, "整合包已导入");
@@ -2336,6 +2606,57 @@ fn finish_import(job: JobHandle, result: Result<Instance, AppError>) {
             job.succeed();
         }
         Err(_) if job.is_cancelled() => job.cancelled(),
-        Err(error) => job.fail(error.message),
+        Err(error) => state.finish_failed_job(job, error.message),
+    }
+}
+
+/// 整合包安装完成后尝试写入官方宽屏宣传图或图标地址，供无截图时作为实例默认封面兜底。
+async fn attach_pack_cover(
+    state: &AppState,
+    instance: &Instance,
+    source: ContentSource,
+    project_id: &str,
+) {
+    let client = state.http_client();
+    let cover_url = match source {
+        ContentSource::Modrinth => match modrinth::project_detail(&client, project_id).await {
+            Ok(detail) => detail
+                .hit
+                .gallery_url
+                .or_else(|| detail.gallery.first().map(|g| g.url.clone()))
+                .or(detail.hit.icon_url),
+            Err(error) => {
+                tracing::debug!(%error, project_id, "拉取 Modrinth 整合包封面信息失败，已忽略");
+                None
+            }
+        },
+        ContentSource::CurseForge => {
+            if let Ok(mod_id) = project_id.parse::<u32>() {
+                match state.curseforge.project_detail(mod_id).await {
+                    Ok(detail) => detail
+                        .hit
+                        .gallery_url
+                        .or_else(|| detail.gallery.first().map(|g| g.url.clone()))
+                        .or(detail.hit.icon_url),
+                    Err(error) => {
+                        tracing::debug!(%error, mod_id, "拉取 CurseForge 整合包封面信息失败，已忽略");
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        }
+    };
+    let Some(url) = cover_url.filter(|u| u.starts_with("https://")) else {
+        return;
+    };
+    let game = state.game();
+    if let Err(error) = instance::update(&game, &instance.id, |config| {
+        if let Some(pack) = &mut config.source {
+            pack.cover_url = Some(url.clone());
+        }
+    }) {
+        tracing::debug!(%error, instance = %instance.id, "写入整合包默认封面地址失败，已忽略");
     }
 }

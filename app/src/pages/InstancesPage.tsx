@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
 import { groupNames } from "@/components/GroupDialog";
 import { InstanceTile } from "@/components/InstanceTile";
+import { DeleteDialog } from "@/components/instance/CopyDeleteDialogs";
 import { NewInstanceDialog } from "@/components/NewInstanceDialog";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
@@ -108,6 +109,7 @@ const TileList = memo(function TileList({
   worldOf,
   pinnedSection,
   layoutKey,
+  onDelete,
 }: {
   items: InstanceSummary[];
   view: View;
@@ -115,6 +117,7 @@ const TileList = memo(function TileList({
   /** 是「置顶」那一块：进实例页的封面动画给这一份 */
   pinnedSection: boolean;
   layoutKey: string;
+  onDelete: (instance: InstanceSummary) => void;
 }) {
   return (
     <motion.ul
@@ -145,6 +148,7 @@ const TileList = memo(function TileList({
               world={worldOf.get(instance.id)}
               view={view}
               shared={pinnedSection || instance.pinnedAt === null}
+              onDelete={onDelete}
             />
           </motion.li>
         ))}
@@ -250,6 +254,7 @@ export function InstancesPage() {
   const [view, setView] = useState<View>(savedView);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [dissolving, setDissolving] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<InstanceSummary | null>(null);
   const importing = Object.values(jobs).filter(
     (j) => j.key.startsWith("modpack-import:") && j.state === "running",
   );
@@ -410,6 +415,7 @@ export function InstancesPage() {
                   worldOf={worldOf}
                   pinnedSection={section.pinned}
                   layoutKey={layoutKey}
+                  onDelete={setDeleting}
                 />
               </motion.section>
             ))}
@@ -417,6 +423,14 @@ export function InstancesPage() {
         </LayoutGroup>
       )}
       <NewInstanceDialog open={creating} onClose={() => setCreating(false)} />
+      {deleting && (
+        <DeleteDialog
+          instance={deleting}
+          open
+          onClose={() => setDeleting(null)}
+          onDeleted={() => setDeleting(null)}
+        />
+      )}
       <GroupActions
         renaming={renaming}
         dissolving={dissolving}

@@ -22,6 +22,7 @@ use launcher_core::java::{self, JavaContext, JavaInstall, JavaLocator, JavaReque
 use launcher_core::meta::{Environment, fetch_manifest, fetch_version_json, rules_allow};
 use launcher_core::modpack::{
     self, ImportContext, ImportProgress, ModpackError, PackFormat, PackPlan, curseforge, mrpack,
+    multimc,
 };
 use launcher_core::net::{DownloadError, DownloadItem, DownloadProgress, Downloader, build_client};
 use launcher_core::paths::GameDir;
@@ -139,15 +140,18 @@ enum Command {
         #[arg(long, default_value = ".mcl/game")]
         game_dir: PathBuf,
     },
-    /// 把实例导出成 Modrinth 整合包（.mrpack）。不写 --entry 时带上默认勾选的全部「别的文件」
+    /// 把实例导出为整合包（支持 modrinth / curseforge / multimc / offline）
     Export {
-        /// 实例 ID（versions 下的文件夹名）
+        /// 实例 ID（instances 下的文件夹名）
         id: String,
         /// 导出到哪个文件
         out: PathBuf,
         /// 游戏目录（.minecraft）
         #[arg(long, default_value = ".mcl/game")]
         game_dir: PathBuf,
+        /// 导出格式：modrinth（默认）/ curseforge / multimc / offline
+        #[arg(long, default_value = "modrinth")]
+        format: String,
         /// 整合包自己的版本号
         #[arg(long, default_value = "1.0.0")]
         version: String,
@@ -374,21 +378,55 @@ async fn main() -> Result<()> {
             id,
             out,
             game_dir,
+            format,
             version,
             entry,
             no_entries,
             world,
             dry_run,
         } => {
-            use launcher_core::modpack::export;
+            use launcher_core::content::curseforge::CurseForge;
+            use launcher_core::modpack::export::{self, ExportFormat, ExportGroup};
+            let export_format = match format.trim().to_ascii_lowercase().as_str() {
+                "modrinth" | "mrpack" => ExportFormat::Modrinth,
+                "curseforge" | "cf" => ExportFormat::CurseForge,
+                "multimc" | "mmc" | "prism" => ExportFormat::MultiMc,
+                "offline" | "full" | "full-offline" => ExportFormat::FullOffline,
+                other => bail!(
+                    "不支持的导出格式：{other}（可选：modrinth / curseforge / multimc / offline）"
+                ),
+            };
             let game = game_dir_from(&game_dir)?;
             let instance = instance::load(&game, &id)?.context("这不是本启动器的实例")?;
             let started = Instant::now();
-            let plan = export::plan(&build_client()?, &game, &instance).await?;
-            let preview = plan.preview();
+            let client = build_client()?;
+            let cf = CurseForge::from_env(client.clone());
+            let mut plan = export::scan_plan(&game, &instance).await?;
+            if matches!(
+                export_format,
+                ExportFormat::Modrinth | ExportFormat::CurseForge
+            ) {
+                let _ = export::match_platforms(&client, &cf, &mut plan).await;
+            }
+            let preview = plan.preview(cf.usable());
             let mb = |bytes: f64| bytes / 1024.0 / 1024.0;
+            let linked_count = preview
+                .items
+                .iter()
+                .filter(|item| match export_format {
+                    ExportFormat::Modrinth => item.modrinth_linked,
+                    ExportFormat::CurseForge => item.curseforge_linked,
+                    ExportFormat::MultiMc | ExportFormat::FullOffline => false,
+                })
+                .count();
+            let default_bytes: f64 = preview
+                .items
+                .iter()
+                .filter(|item| item.default_on)
+                .map(|item| item.size)
+                .sum();
             println!(
-                "{}（{}{}）：{} 个从 Modrinth 下载，{} 个直接打包（{:.1} MB），其中停用的 {} 个；查好用了 {:.1} 秒",
+                "{}（{}{}）：共 {} 项（外链 {} 项，默认体积约 {:.1} MB）；准备用了 {:.1} 秒",
                 preview.name,
                 preview.game_version,
                 preview
@@ -396,48 +434,69 @@ async fn main() -> Result<()> {
                     .as_deref()
                     .map(|l| format!(" · {l}"))
                     .unwrap_or_default(),
-                preview.linked,
-                preview.bundled.len(),
-                mb(preview.bundled_bytes),
-                preview.disabled,
+                preview.items.len(),
+                linked_count,
+                mb(default_bytes),
                 started.elapsed().as_secs_f64()
             );
-            for name in &preview.bundled {
-                println!("  直接打包：{name}");
-            }
-            for e in &preview.entries {
+            for item in &preview.items {
                 println!(
-                    "  别的文件：{}{}（{:.1} MB）{}",
-                    e.name,
-                    if e.folder { "/" } else { "" },
-                    mb(e.size),
-                    if e.default_on { "" } else { " 默认不带" }
+                    "  [{:?}] {}{}（{:.2} MB）{}",
+                    item.group,
+                    item.key,
+                    if item.folder { "/" } else { "" },
+                    mb(item.size),
+                    if item.default_on { "" } else { " 默认不带" }
                 );
-            }
-            for w in &preview.worlds {
-                println!("  世界：{}（{}，{:.1} MB）", w.name, w.folder, mb(w.size));
             }
             if dry_run {
                 return Ok(());
             }
-            let entries = if no_entries {
-                Vec::new()
-            } else if entry.is_empty() {
-                preview
-                    .entries
-                    .iter()
-                    .filter(|e| e.default_on)
-                    .map(|e| e.name.clone())
-                    .collect()
-            } else {
-                entry
-            };
+            let world_keys: std::collections::HashSet<String> = world
+                .into_iter()
+                .map(|w| {
+                    if w.starts_with("saves/") {
+                        w
+                    } else {
+                        format!("saves/{w}")
+                    }
+                })
+                .collect();
+            let mut selected_keys: Vec<String> = Vec::new();
+            for item in &preview.items {
+                if item.group == ExportGroup::Worlds {
+                    if world_keys.contains(&item.key) {
+                        selected_keys.push(item.key.clone());
+                    }
+                    continue;
+                }
+                if item.is_content_file {
+                    if item.default_on {
+                        selected_keys.push(item.key.clone());
+                    }
+                    continue;
+                }
+                if no_entries {
+                    continue;
+                }
+                if entry.is_empty() {
+                    if item.default_on {
+                        selected_keys.push(item.key.clone());
+                    }
+                } else if entry.iter().any(|prefix| {
+                    item.key == *prefix || item.key.starts_with(&format!("{prefix}/"))
+                }) {
+                    selected_keys.push(item.key.clone());
+                }
+            }
             let options = export::ExportOptions {
+                format: export_format,
                 name: preview.name.clone(),
                 version,
+                author: None,
                 summary: None,
-                entries,
-                worlds: world,
+                recommended_memory_mb: preview.recommended_memory_mb,
+                selected_keys,
             };
             let started = Instant::now();
             let summary = tokio::task::spawn_blocking(move || {
@@ -450,8 +509,10 @@ async fn main() -> Result<()> {
             })
             .await??;
             println!(
-                "已导出 {}（{:.1} MB，{:.1} 秒）",
+                "已导出 {}（外链 {} 项，内嵌 {} 项，{:.1} MB，{:.1} 秒）",
                 summary.path.display(),
+                summary.linked,
+                summary.bundled,
                 mb(summary.bytes as f64),
                 started.elapsed().as_secs_f64()
             );
@@ -854,6 +915,9 @@ async fn inspect_pack(pack: &Path, curseforge: &CurseForge) -> Result<PackPlan> 
                 .context("检查任务异常结束")??;
             curseforge::resolve(&curseforge.http(), curseforge, cf_pack).await?
         }
+        PackFormat::MultiMc => tokio::task::spawn_blocking(move || multimc::inspect(&path))
+            .await
+            .context("检查任务异常结束")??,
     })
 }
 

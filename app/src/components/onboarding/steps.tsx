@@ -364,9 +364,14 @@ export function FindStep({
 /** 第 2 步：登录 Microsoft 或跳过，稍后再登录。 */
 export function AccountStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
   const { t } = useTranslation();
+  const loaded = useAccountStore((s) => s.loaded);
   const current = useCurrentAccount();
   const skin = useSkin(current);
   const [adding, setAdding] = useState(current === null);
+  const hasCurrent = current !== null;
+  useEffect(() => {
+    if (loaded && hasCurrent) setAdding(false);
+  }, [loaded, hasCurrent]);
   const showForm = adding || current === null;
   return (
     <StepFrame
@@ -413,7 +418,7 @@ export function AccountStep({ onNext, onBack }: { onNext: () => void; onBack: ()
                 {t("onboarding.account.another")}
               </Button>
             </div>
-            <SkinControls />
+            <SkinControls account={current} />
           </div>
         )
       )}

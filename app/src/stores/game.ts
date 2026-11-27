@@ -22,7 +22,7 @@ import {
 import i18n from "@/lib/i18n";
 import { logError, reportError } from "@/lib/report";
 import { playLumiSound } from "@/lib/sound";
-import { microsoftLoginReasons, useAccountStore } from "./accounts";
+import { initAccountEvents, microsoftLoginReasons, useAccountStore } from "./accounts";
 import { initClaimEvents } from "./claims";
 import { initDropEvents } from "./drops";
 
@@ -36,11 +36,11 @@ function showLaunchAuthIssue(
   retry: () => void,
 ): boolean {
   if (microsoftLoginReasons.has(code)) {
-    useAccountStore.getState().setAddOpen(true, code);
+    useAccountStore.getState().setAddOpen(true, code, retry);
     return true;
   }
 
-  let explanation = message;
+  let explanation = getBackendErrorMessage({ code, message });
   switch (code) {
     case "auth.expired":
     case "auth.verify_failed":
@@ -49,8 +49,10 @@ function showLaunchAuthIssue(
     case "auth.timeout":
       explanation = i18n.t("account.microsoft.verifyTimeout");
       break;
-    case "auth.account_changed":
     case "auth.authorization_changed":
+      explanation = getBackendErrorMessage({ code: "auth.account_changed", message });
+      break;
+    case "auth.account_changed":
       break;
     default:
       return false;
@@ -154,6 +156,10 @@ interface GameStore {
   /** 读这个实例的日志（不打开日志窗口；实例页的「日志」页签用） */
   loadLog: (instanceId: string) => Promise<void>;
   cancelJob: (jobId: string) => Promise<void>;
+  pauseJob: (jobId: string) => Promise<void>;
+  resumeJob: (jobId: string) => Promise<void>;
+  /** 仅重试失败的文件条目，成功返回 true */
+  retryFailedJob: (jobId: string) => Promise<boolean>;
   bumpContent: () => void;
   /** 任务中心（标题栏右上角）开着吗 */
   tasksOpen: boolean;
@@ -276,6 +282,36 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return true;
     } catch (error) {
       reportError(error, "重试任务");
+      return false;
+    }
+  },
+
+  async pauseJob(jobId) {
+    try {
+      await commands.jobsPause(jobId);
+    } catch (error) {
+      reportError(error, "暂停任务");
+    }
+  },
+
+  async resumeJob(jobId) {
+    try {
+      await commands.jobsResume(jobId);
+    } catch (error) {
+      reportError(error, "恢复任务");
+    }
+  },
+
+  async retryFailedJob(jobId) {
+    try {
+      unwrap(await commands.jobsRetryFailed(jobId));
+      set((s) => {
+        const { [jobId]: _, ...jobs } = s.jobs;
+        return { jobs };
+      });
+      return true;
+    } catch (error) {
+      reportError(error, "重试失败项");
       return false;
     }
   },
@@ -443,15 +479,28 @@ export function rememberCopy(jobId: string, instanceId: string): void {
   copyTargets.set(jobId, instanceId);
 }
 
-/** 导出、复制实例结束：导出完能「打开所在文件夹」，复制完刷新实例列表、能「去看看」 */
+/** 导出、复制、版本切换/升级、整合包更新任务结束：刷新列表与内容，复制/克隆升级附带「去看看」 */
 function onInstanceJob(payload: JobSnapshot, store: typeof useGameStore): void {
   const isExport = payload.key.startsWith("instance-export:");
   const isCopy = payload.key.startsWith("instance-copy:");
-  if (!isExport && !isCopy) return;
+  const isUpgrade = payload.key.startsWith("instance-upgrade:");
+  const isPackUpdate = payload.key.startsWith("modpack-update:");
+  if (!isExport && !isCopy && !isUpgrade && !isPackUpdate) return;
   if (payload.state === "failed") {
-    toast.error(i18n.t(isExport ? "export.failed" : "copy.failed"), {
-      description: payload.error ?? undefined,
-    });
+    toast.error(
+      i18n.t(
+        isExport
+          ? "export.failed"
+          : isUpgrade
+            ? "upgrade.failed"
+            : isPackUpdate
+              ? "packUpdate.failed"
+              : "copy.failed",
+      ),
+      {
+        description: payload.error ?? undefined,
+      },
+    );
     return;
   }
   if (payload.state !== "succeeded") return;
@@ -469,18 +518,32 @@ function onInstanceJob(payload: JobSnapshot, store: typeof useGameStore): void {
     });
     return;
   }
-  const target = copyTargets.get(payload.id);
+  if (isPackUpdate) {
+    void store.getState().refreshInstances();
+    void store.getState().refreshRecentWorlds();
+    store.getState().bumpContent();
+    toast.success(i18n.t("packUpdate.done"), {
+      description: payload.progress.message || payload.title,
+    });
+    return;
+  }
+  const target = (isUpgrade ? payload.instanceId : null) ?? copyTargets.get(payload.id);
   copyTargets.delete(payload.id);
   void store.getState().refreshInstances();
   void store.getState().refreshRecentWorlds();
-  toast.success(i18n.t("copy.done"), {
-    description: payload.title,
-    action: target
+  if (isUpgrade) store.getState().bumpContent();
+  const detail = isUpgrade && payload.progress.message ? payload.progress.message : payload.title;
+  const isCloneUpgrade =
+    isUpgrade && target && target !== payload.key.slice("instance-upgrade:".length);
+  const openTarget = isUpgrade ? (isCloneUpgrade ? target : null) : target;
+  toast.success(i18n.t(isUpgrade ? "upgrade.done" : "copy.done"), {
+    description: detail,
+    action: openTarget
       ? {
           label: i18n.t("copy.open"),
           // 不从这里引用路由（会循环引用），哈希路由改地址就会跳过去
           onClick: () => {
-            window.location.hash = `#/instances/${encodeURIComponent(target)}`;
+            window.location.hash = `#/instances/${encodeURIComponent(openTarget)}`;
           },
         }
       : undefined,
@@ -580,7 +643,12 @@ export async function initGameEvents(): Promise<() => void> {
           toast.error(i18n.t("drop.failed"), { description: payload.error ?? undefined });
         }
       }
-      if (previous?.state === "running") onInstanceJob(payload, store);
+      if (
+        previous?.state !== payload.state &&
+        (payload.state === "succeeded" || payload.state === "failed")
+      ) {
+        onInstanceJob(payload, store);
+      }
       const justFinished = previous?.state === "running" && payload.state === "succeeded";
       if (!justFinished) return;
       if (!payload.key.startsWith("launch:")) playLumiSound("complete");
@@ -658,12 +726,17 @@ export async function initGameEvents(): Promise<() => void> {
     })
     .catch((error: unknown) => logError(error, "读取快捷方式的启动参数"));
 
-  const [stopClaims, stopDrops] = await Promise.all([initClaimEvents(), initDropEvents()]);
+  const [stopClaims, stopDrops, stopAccounts] = await Promise.all([
+    initClaimEvents(),
+    initDropEvents(),
+    initAccountEvents(),
+  ]);
 
   return () => {
     for (const stop of unlisten) stop();
     stopProgress();
     stopClaims();
     stopDrops();
+    stopAccounts();
   };
 }

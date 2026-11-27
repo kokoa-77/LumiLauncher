@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RecentWorld } from "@/lib/bindings";
 import { duration, ease, spring } from "@/lib/motion";
-import { useAccountStore } from "@/stores/accounts";
+import { useAccountStore, useCurrentAccount } from "@/stores/accounts";
 import { useGameStore } from "@/stores/game";
 import { LightField } from "../art/LightField";
 import { Button } from "../ui/Button";
@@ -20,6 +20,7 @@ export function Welcome({ choice, world }: { choice: ReadyChoice; world: RecentW
   const { t } = useTranslation();
   const navigate = useNavigate();
   const launch = useGameStore((s) => s.launch);
+  const current = useCurrentAccount();
   const finish = useAccountStore((s) => s.finishOnboarding);
   const startNew = useAccountStore((s) => s.setStartNew);
   const started = useRef(false);
@@ -32,7 +33,7 @@ export function Welcome({ choice, world }: { choice: ReadyChoice; world: RecentW
     switch (choice) {
       case "continue":
         navigate("/");
-        if (world) void launch(world.instanceId, quickWorld?.folder);
+        if (world && current) void launch(world.instanceId, quickWorld?.folder);
         break;
       case "new":
         navigate("/");

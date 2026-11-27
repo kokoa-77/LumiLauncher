@@ -3,7 +3,7 @@ import type { ContentItem, UpdateInfo } from "./bindings";
 import { logError } from "./report";
 
 export type ContentSort = "name" | "nameDesc" | "fileName" | "modified";
-export type ContentFilter = "all" | "enabled" | "disabled" | "updates";
+export type ContentFilter = "all" | "enabled" | "disabled" | "updates" | "orphans";
 /** 这个文件是怎么认出来的：Modrinth、CurseForge、文件自带的说明、还没认出来 */
 export type ContentOrigin = "modrinth" | "curseForge" | "file" | "unknown";
 export const CONTENT_ORIGINS: ContentOrigin[] = ["modrinth", "curseForge", "file", "unknown"];
@@ -68,6 +68,8 @@ export function viewContent(
     filter: ContentFilter;
     sort: ContentSort;
     updates: Record<string, UpdateInfo>;
+    /** 孤儿前置文件名集合（仅模组页签传入） */
+    orphans?: ReadonlySet<string>;
     /** 只看某一种来源；不给时都看 */
     origin?: ContentOrigin | "all";
   },
@@ -80,6 +82,7 @@ export function viewContent(
       if (options.filter === "enabled" && !item.enabled) return false;
       if (options.filter === "disabled" && item.enabled) return false;
       if (options.filter === "updates" && !options.updates[item.fileName]) return false;
+      if (options.filter === "orphans" && !options.orphans?.has(item.fileName)) return false;
       return matches(item, query);
     })
     .sort(compare[options.sort]);

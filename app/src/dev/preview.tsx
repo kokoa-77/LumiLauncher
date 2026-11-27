@@ -25,12 +25,20 @@ type PreviewInstance = {
   gameVersion: string;
   loader: string | null;
   pack: string | null;
+  packVersion?: string | null;
+  packSource?: "modrinth" | "curseForge" | null;
+  packProjectId?: string | null;
+  packVersionId?: string | null;
+  packRollback?: { fromVersion: string; toVersion: string; createdAt: number } | null;
   createdAt: number;
   lastPlayed: number | null;
   group: string | null;
   pinnedAt: number | null;
   /** 关联的别家版本是哪家的 */
   linked?: string | null;
+  coverUrl?: string | null;
+  coverFit?: "cover" | "contain";
+  coverPreset?: string | null;
 };
 
 const instances: PreviewInstance[] = [
@@ -197,6 +205,12 @@ type FakeNotes = {
   todos: { text: string; done: boolean }[];
   text: string;
 };
+const instanceNotes = new Map<string, string>([
+  [
+    DEMO_INSTANCE_ID,
+    "# 实例备忘\n\n- [x] 已调好光影与 6G 内存\n- [ ] 探索下界要塞\n\n常用指令：`/tp @s 0 80 0`",
+  ],
+]);
 const worldNotes = new Map<string, FakeNotes>([
   [
     `${DEMO_INSTANCE_ID}/${DEMO_WORLD_FOLDER}`,
@@ -682,7 +696,20 @@ let settings = {
   },
   download: {
     dohEnabled: true,
+    sourcePolicy: "officialOnly",
+    concurrencyMode: "auto",
     maxConcurrency: 32,
+    segmentMode: "auto",
+    maxSegmentsPerFile: 16,
+    diskWriteMode: "auto",
+    maxDiskWriters: 12,
+    speedLimitKibPerSec: 0,
+    meteredPolicy: "warn",
+    meteredSpeedLimitKibPerSec: 2048,
+    localReuseEnabled: true,
+    customDohUrl: null,
+    customMirrorRoot: null,
+    modrinthFallbackMirror: false,
     moveClaimedFiles: false,
     preferredPlatform: "modrinth",
     autoDependencies: true,
@@ -814,6 +841,10 @@ function fakeJob(key: string, title: string, onDone?: () => void): string {
     eta: running(state) && done > 0 ? (total - done) / 18_000_000 : null,
     retryable: key.startsWith("content:"),
     fallbacks: 0,
+    failedCount: 0,
+    reusedBytes: 0,
+    reusedFiles: 0,
+    diagnosis: null,
   });
   for (let i = 0; i < 10; i += 1) {
     setTimeout(() => emitPreview("job-updated", job("running", (total * i) / 10)), 50 + i * 200);
@@ -854,6 +885,10 @@ function fakeLaunch(instanceId: string) {
     eta: null,
     retryable: false,
     fallbacks: 0,
+    failedCount: 0,
+    reusedBytes: 0,
+    reusedFiles: 0,
+    diagnosis: null,
   });
   emitPreview("job-updated", job("running"));
   emitPreview("session-updated", session({ kind: "starting" }));
@@ -874,38 +909,204 @@ const fakeSessions = new Map<string, ReturnType<typeof fakeLaunch>>();
 
 function exportPreview(id: string) {
   const instance = instances.find((i) => i.id === id);
+  const items = [
+    {
+      key: "mods/sodium-fabric-0.6.5.jar",
+      label: "sodium-fabric-0.6.5.jar",
+      group: "mods",
+      folder: false,
+      size: 1_240_000,
+      defaultOn: true,
+      disabled: false,
+      isContentFile: true,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "mods/iris-fabric-1.8.1.jar",
+      label: "iris-fabric-1.8.1.jar",
+      group: "mods",
+      folder: false,
+      size: 2_680_000,
+      defaultOn: true,
+      disabled: false,
+      isContentFile: true,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "mods/appleskin-local-3.0.9.jar",
+      label: "appleskin-local-3.0.9.jar",
+      group: "mods",
+      folder: false,
+      size: 840_000,
+      defaultOn: true,
+      disabled: false,
+      isContentFile: true,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "mods/old-tweaks.jar.disabled",
+      label: "old-tweaks.jar",
+      group: "disabledMods",
+      folder: false,
+      size: 420_000,
+      defaultOn: false,
+      disabled: true,
+      isContentFile: true,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "resourcepacks/Stay_True.zip",
+      label: "Stay_True.zip",
+      group: "resourcePacks",
+      folder: false,
+      size: 14_200_000,
+      defaultOn: true,
+      disabled: false,
+      isContentFile: true,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "shaderpacks/ComplementaryReimagined_r5.4.zip",
+      label: "ComplementaryReimagined_r5.4.zip",
+      group: "shaderPacks",
+      folder: false,
+      size: 620_000,
+      defaultOn: true,
+      disabled: false,
+      isContentFile: true,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "shaderpacks/ComplementaryReimagined_r5.4.zip.txt",
+      label: "ComplementaryReimagined_r5.4.zip.txt",
+      group: "shaderPacks",
+      folder: false,
+      size: 900,
+      defaultOn: true,
+      disabled: false,
+      isContentFile: false,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "config/sodium-options.json",
+      label: "sodium-options.json",
+      group: "modConfigs",
+      folder: false,
+      size: 3_200,
+      defaultOn: true,
+      disabled: false,
+      isContentFile: false,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "config/jei/bookmarks.ini",
+      label: "bookmarks.ini",
+      group: "privacy",
+      folder: false,
+      size: 4_800,
+      defaultOn: false,
+      disabled: false,
+      isContentFile: false,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "kubejs/server_scripts/recipes.js",
+      label: "recipes.js",
+      group: "modConfigs",
+      folder: false,
+      size: 18_400,
+      defaultOn: true,
+      disabled: false,
+      isContentFile: false,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "options.txt",
+      label: "options.txt",
+      group: "gameOptions",
+      folder: false,
+      size: 4_050,
+      defaultOn: true,
+      disabled: false,
+      isContentFile: false,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "journeymap",
+      label: "journeymap/",
+      group: "privacy",
+      folder: true,
+      size: 286_000_000,
+      defaultOn: false,
+      disabled: false,
+      isContentFile: false,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    {
+      key: "servers.dat",
+      label: "servers.dat",
+      group: "privacy",
+      folder: false,
+      size: 2_048,
+      defaultOn: false,
+      disabled: false,
+      isContentFile: false,
+      modrinthLinked: false,
+      curseforgeLinked: false,
+    },
+    ...(id === DEMO_INSTANCE_ID
+      ? [
+          {
+            key: `saves/${DEMO_WORLD_FOLDER}`,
+            label: isEnPreview ? "Starlight Valley" : "星光山谷",
+            group: "worlds",
+            folder: true,
+            size: 38_000_000,
+            defaultOn: false,
+            disabled: false,
+            isContentFile: false,
+            modrinthLinked: false,
+            curseforgeLinked: false,
+          },
+          {
+            key: "saves/Voidblock",
+            label: "Voidblock 空岛",
+            group: "worlds",
+            folder: true,
+            size: 12_500_000,
+            defaultOn: false,
+            disabled: false,
+            isContentFile: false,
+            modrinthLinked: false,
+            curseforgeLinked: false,
+          },
+        ]
+      : []),
+  ];
   return {
-    name: instance?.name ?? id,
-    gameVersion: instance?.gameVersion ?? "1.21.1",
-    loader: instance?.loader ?? null,
-    linked: 64,
-    bundled: ["appleskin-local-3.0.9.jar", "Jade-15.10.3.jar", "我的材质包"],
-    bundledBytes: 3_400_000,
-    disabled: 2,
-    entries: [
-      { name: "config", folder: true, size: 4_800_000, defaultOn: true },
-      { name: "defaultconfigs", folder: true, size: 52_000, defaultOn: true },
-      { name: "journeymap", folder: true, size: 286_000_000, defaultOn: false },
-      { name: "kubejs", folder: true, size: 1_200_000, defaultOn: true },
-      { name: "options.txt", folder: false, size: 4_050, defaultOn: true },
-      {
-        name: "shaderpacks/ComplementaryReimagined_r5.4.zip.txt",
-        folder: false,
-        size: 900,
-        defaultOn: true,
-      },
-    ],
-    worlds:
-      id === DEMO_INSTANCE_ID
-        ? [
-            {
-              folder: DEMO_WORLD_FOLDER,
-              name: isEnPreview ? "Starlight Valley" : "星光山谷",
-              size: 38_000_000,
-            },
-            { folder: "Voidblock", name: "Voidblock 空岛", size: 12_500_000 },
-          ]
-        : [],
+    token: `preview-export-${Date.now()}`,
+    preview: {
+      name: instance?.name ?? id,
+      gameVersion: instance?.gameVersion ?? "1.21.1",
+      loader: instance?.loader ?? null,
+      recommendedMemoryMb: 4096,
+      patchCount: 1,
+      hasNotes: true,
+      curseforgeAvailable: true,
+      items,
+    },
   };
 }
 
@@ -1198,6 +1399,10 @@ const pastJob = (
   eta: null,
   retryable: false,
   fallbacks: 0,
+  failedCount: 0,
+  reusedBytes: 0,
+  reusedFiles: 0,
+  diagnosis: null,
   ...over,
 });
 let previewHistory = (() => {
@@ -1352,6 +1557,7 @@ const microsoftAccount: AccountView = {
   hasSkin: true,
   skinModel: "slim",
   skinHash: "skin-b",
+  capes: [],
 };
 let previewAccounts: AccountView[] =
   previewOnboarding || !previewMicrosoftAvailable ? [] : [microsoftAccount];
@@ -1361,6 +1567,20 @@ const previewAccountState = (): AccountsState => ({
   accounts: previewAccounts,
   onboarding: previewOnboarding,
   microsoftAvailable: previewMicrosoftAvailable,
+  security: {
+    vaultKind: "windowsCredentialManager",
+    vaultPersistent: true,
+    pkceMethod: "S256",
+    responseMode: "form_post",
+    sessionPipe: true,
+    callbackMode: "dualstack-localhost",
+  },
+  health: Object.fromEntries(
+    previewAccounts.map((a) => [
+      a.id,
+      { status: "ready", verifiedAtMs: Date.now() - 30_000, errorCode: null },
+    ]),
+  ),
 });
 const previewAuthFailure = (code: string) => ({
   code,
@@ -1373,6 +1593,7 @@ const accountHandlers: Record<string, (args: Record<string, unknown>) => unknown
     const hash = previewAccounts.find((a) => a.id === args.accountId)?.skinHash;
     return hash ? (previewSkins[hash] ?? null) : null;
   },
+  accounts_cape_texture: () => null,
   accounts_select: (args) => {
     const account = previewAccounts.find((a) => a.id === args.accountId);
     if (!account) throw { code: "accounts.not_found", message: "找不到这个账户", detail: null };
@@ -1382,12 +1603,13 @@ const accountHandlers: Record<string, (args: Record<string, unknown>) => unknown
   accounts_remove: (args) => {
     previewAccounts = previewAccounts.filter((a) => a.id !== args.accountId);
     if (previewSelected === args.accountId) previewSelected = previewAccounts[0]?.id ?? null;
-    return null;
+    return previewAccountState();
   },
   accounts_microsoft_login: () => {
     if (!previewMicrosoftAvailable) throw previewAuthFailure("auth.app_unavailable");
     if (cancelPreviewLogin) throw previewAuthFailure("auth.login_in_progress");
     return new Promise<AccountsState>((resolve, reject) => {
+      emitPreview("auth-progress-updated", { stage: "waitingBrowser", expiresInSecs: 300 });
       const timer = window.setTimeout(() => {
         cancelPreviewLogin = null;
         if (previewAuthError) {
@@ -1407,11 +1629,18 @@ const accountHandlers: Record<string, (args: Record<string, unknown>) => unknown
       };
     });
   },
+  accounts_microsoft_reopen_browser: () => null,
+  accounts_microsoft_copy_url: () => null,
   accounts_microsoft_cancel: () => {
     if (!cancelPreviewLogin) return false;
     cancelPreviewLogin();
     return true;
   },
+  accounts_prewarm: () => ({ status: "ready", verifiedAtMs: Date.now(), errorCode: null }),
+  accounts_skin_refresh: previewAccountState,
+  accounts_skin_upload: previewAccountState,
+  accounts_skin_reset: previewAccountState,
+  accounts_cape_set: previewAccountState,
   accounts_finish_onboarding: () => {
     previewOnboarding = false;
     return null;
@@ -1452,6 +1681,58 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     previewHistory = previewHistory.filter((j) => j.id !== args.id);
     return fakeJob(old?.key ?? `content:${DEMO_INSTANCE_ID}:retry`, old?.title ?? "重试");
   },
+  jobs_pause: () => true,
+  jobs_resume: () => true,
+  jobs_retry_failed: (args) => fakeJob(`retry:${String(args.jobId ?? "job")}`, "仅重试失败项"),
+  net_runtime_status: () => ({
+    seq: 1,
+    timestampMs: Date.now(),
+    speedBytesPerSec: 0,
+    routeKind: "direct",
+    routeLabel: "直连 (无代理)",
+    proxyEpoch: 1,
+    protocol: "h2",
+    activeConnections: 0,
+    maxConnections: 32,
+    activeH2Streams: 0,
+    activeH1Segments: 0,
+    memBufferUsedBytes: 0,
+    diskKind: "ssd",
+    diskWritersActive: 0,
+    diskWritersLimit: 12,
+    diskQueueDepth: 0,
+    diskWriteEwmaMs: 4,
+    reusedBytes: 0,
+    reusedFiles: 0,
+    workSteals: 0,
+    fallbacks: 0,
+    metered: false,
+    meteredThrottled: false,
+    effectiveSpeedLimitKib: 0,
+    recentEvents: [],
+    activeDiagnosis: null,
+    dohSummary: "阿里 DoH 32ms",
+  }),
+  net_test_proxy: () =>
+    new Promise((resolve) =>
+      setTimeout(
+        () =>
+          resolve({
+            ok: true,
+            latencyMs: 68,
+            httpStatus: 204,
+            error: null,
+          }),
+        450,
+      ),
+    ),
+  net_apply_quick_fix: () => ({
+    applied: true,
+    message: "已自动应用建议配置",
+    openSettingsSection: null,
+    focusSettingId: null,
+    retriedJobId: null,
+  }),
   net_doh_test: () =>
     new Promise((resolve) =>
       setTimeout(
@@ -1481,6 +1762,8 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
               httpStatus: 200,
               latencyMs: 148,
               error: null,
+              httpVersion: "HTTP/2",
+              failureCause: null,
             },
             {
               id: "mojang",
@@ -1489,6 +1772,8 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
               httpStatus: 200,
               latencyMs: 216,
               error: null,
+              httpVersion: "HTTP/2",
+              failureCause: null,
             },
             {
               id: "modrinth",
@@ -1497,6 +1782,8 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
               httpStatus: 200,
               latencyMs: 184,
               error: null,
+              httpVersion: "HTTP/2",
+              failureCause: null,
             },
             {
               id: "curseforge",
@@ -1505,6 +1792,28 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
               httpStatus: 403,
               latencyMs: 295,
               error: "HTTP 403",
+              httpVersion: "HTTP/2",
+              failureCause: "serverRejected",
+            },
+            {
+              id: "neoforgeMain",
+              host: "maven.neoforged.net",
+              status: "ok",
+              httpStatus: 200,
+              latencyMs: 260,
+              error: null,
+              httpVersion: "HTTP/2",
+              failureCause: null,
+            },
+            {
+              id: "neoforgeCdn",
+              host: "neoforged.forgecdn.net",
+              status: "ok",
+              httpStatus: 200,
+              latencyMs: 192,
+              error: null,
+              httpVersion: "HTTP/2",
+              failureCause: null,
             },
           ]),
         700,
@@ -1541,6 +1850,18 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
       error: null,
       startedAt,
       finishedAt: state === "running" ? null : Date.now(),
+      source: "local",
+      instanceId: String(args.instanceId),
+      iconUrl: null,
+      steps: [],
+      speed: null,
+      eta: null,
+      retryable: false,
+      fallbacks: 0,
+      failedCount: 0,
+      reusedBytes: 0,
+      reusedFiles: 0,
+      diagnosis: null,
     });
     // 慢慢走完，看得到任务中心里的进度（一大包也在 3 秒左右走完）
     const step = Math.min(500, 3000 / Math.max(n, 1));
@@ -1566,6 +1887,9 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
       manualFiles: [],
       fromModrinth: 0,
       recommendedMemoryMb: null,
+      patchCount: 0,
+      patchNames: [],
+      javaMajors: [],
     },
     readiness: {
       gameInstalled: true,
@@ -1578,7 +1902,12 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   // 界面开始监听拖放事件时调用；预览里没有通过双击 .mrpack 打开、等着交给界面的文件
   drops_shell_ready: () => null,
   modpack_discard: () => null,
-  app_info: () => ({ version: "0.6.2（预览）", backdrop: "solid", memoryMb: 32768 }),
+  app_info: () => ({
+    version: "0.6.2（预览）",
+    backdrop: "solid",
+    memoryMb: 32768,
+    communityMirrorsEnabled: false,
+  }),
   memory_status: () => {
     // 像真的一样每次读都有一点起伏
     availableMb = Math.max(1500, availableMb + Math.round((Math.random() - 0.5) * 120));
@@ -1808,7 +2137,86 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     return null;
   },
   game_dir_info: () => ({ path: String.raw`C:\Games\Lumi\.minecraft`, locked: true }),
-  catalog_game_versions: () => ["26.3", "1.21.1", "1.20.1", "1.16.5", "1.12.2", "1.1"],
+  catalog_game_versions: () => ["26.3", "1.21.1", "1.20.1", "1.16.5", "1.12.2", "1.7.10", "1.1"],
+  catalog_game_version_entries: () => [
+    {
+      id: "26.3",
+      category: "release",
+      releaseTime: "2026-06-10T12:00:00Z",
+      isLatestRelease: true,
+      isLatestSnapshot: false,
+    },
+    {
+      id: "1.21.1",
+      category: "release",
+      releaseTime: "2024-08-08T12:00:00Z",
+      isLatestRelease: false,
+      isLatestSnapshot: false,
+    },
+    {
+      id: "1.20.1",
+      category: "release",
+      releaseTime: "2023-06-12T12:00:00Z",
+      isLatestRelease: false,
+      isLatestSnapshot: false,
+    },
+    {
+      id: "1.16.5",
+      category: "release",
+      releaseTime: "2021-01-15T12:00:00Z",
+      isLatestRelease: false,
+      isLatestSnapshot: false,
+    },
+    {
+      id: "1.12.2",
+      category: "release",
+      releaseTime: "2017-09-18T12:00:00Z",
+      isLatestRelease: false,
+      isLatestSnapshot: false,
+    },
+    {
+      id: "1.7.10",
+      category: "release",
+      releaseTime: "2014-06-26T12:00:00Z",
+      isLatestRelease: false,
+      isLatestSnapshot: false,
+    },
+    {
+      id: "26.4-pre-1",
+      category: "snapshot",
+      releaseTime: "2026-07-01T12:00:00Z",
+      isLatestRelease: false,
+      isLatestSnapshot: true,
+    },
+    {
+      id: "25w14craftmine",
+      category: "aprilFools",
+      releaseTime: "2025-04-01T12:00:00Z",
+      isLatestRelease: false,
+      isLatestSnapshot: false,
+    },
+    {
+      id: "24w14potato",
+      category: "aprilFools",
+      releaseTime: "2024-04-01T12:00:00Z",
+      isLatestRelease: false,
+      isLatestSnapshot: false,
+    },
+    {
+      id: "b1.7.3",
+      category: "ancient",
+      releaseTime: "2011-07-08T12:00:00Z",
+      isLatestRelease: false,
+      isLatestSnapshot: false,
+    },
+    {
+      id: "a1.2.6",
+      category: "ancient",
+      releaseTime: "2010-12-03T12:00:00Z",
+      isLatestRelease: false,
+      isLatestSnapshot: false,
+    },
+  ],
   catalog_loader_versions: (args) => {
     const mc = String(args.gameVersion);
     switch (args.kind) {
@@ -1822,6 +2230,8 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
           "1.21.1": "52.1.20",
           "1.20.1": "47.4.28",
           "1.16.5": "36.2.34",
+          "1.12.2": "14.23.5.2860",
+          "1.7.10": "10.13.4.1614",
         };
         const version = versions[mc];
         return version ? [{ version, stable: true }] : null;
@@ -1830,6 +2240,10 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
         return [{ version: "0.16.10", stable: true }];
       case "quilt":
         return mc === "1.12.2" ? [] : [{ version: "0.24.0", stable: true }];
+      case "legacyfabric":
+        return mc === "1.12.2" || mc === "1.7.10" ? [{ version: "0.16.10", stable: true }] : [];
+      case "babric":
+        return mc === "b1.7.3" ? [{ version: "0.16.10", stable: true }] : [];
       default:
         return [];
     }
@@ -1843,6 +2257,8 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
       forge: "Forge",
       fabric: "Fabric",
       quilt: "Quilt",
+      legacyfabric: "Legacy Fabric",
+      babric: "Babric",
     };
     return fakeJob(`instance-create:${name}`, `新建实例 ${name}`, () => {
       instances.unshift({
@@ -1862,7 +2278,15 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   launch_sessions: () => [],
   launch_log: () => [],
   // 每次给一份副本：真的后端每次都是新数据，界面靠这个知道变了
-  instances_list: () => instances.map((i) => ({ ...i })),
+  instances_list: () =>
+    instances.map((i) => ({
+      ...i,
+      packVersion: i.packVersion ?? (i.pack ? "1.3.2" : null),
+      packSource: i.packSource ?? (i.pack ? "modrinth" : null),
+      packProjectId: i.packProjectId ?? (i.pack ? "demo-pack" : null),
+      packVersionId: i.packVersionId ?? (i.pack ? "pack-ver-prev" : null),
+      packRollback: i.packRollback ?? null,
+    })),
   instances_open_folder: () => null,
   instances_settings_get: (args) => {
     const id = String(args.instanceId);
@@ -1885,18 +2309,140 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
       autoJavaId: javaOverview().entries.find((e) => e.major === 21 && e.auto)?.id ?? null,
     };
   },
+  instances_notes_get: (args) => instanceNotes.get(String(args.instanceId)) ?? "",
+  instances_notes_set: (args) => {
+    const id = String(args.instanceId);
+    const text = String(args.content ?? "").replace(/\r\n?/g, "\n");
+    if (!text.trim()) {
+      instanceNotes.delete(id);
+      return "";
+    }
+    instanceNotes.set(id, text);
+    return text;
+  },
   instances_export_preview: async (args) => {
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    await new Promise((resolve) => setTimeout(resolve, 180));
     return exportPreview(String(args.instanceId));
   },
+  instances_export_match: async () => {
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    return {
+      modrinthLinked: [
+        "mods/sodium-fabric-0.6.5.jar",
+        "mods/iris-fabric-1.8.1.jar",
+        "shaderpacks/ComplementaryReimagined_r5.4.zip",
+      ],
+      curseforgeLinked: ["mods/sodium-fabric-0.6.5.jar", "resourcepacks/Stay_True.zip"],
+      modrinthError: null,
+      curseforgeError: null,
+    };
+  },
+  instances_export_discard: () => null,
   instances_export: (args) => {
-    const options = args.options as { name: string; version: string };
+    const options = args.options as { format?: string; name: string; version: string };
+    const ext = options.format === "modrinth" ? "mrpack" : "zip";
     return fakeJob(
       `instance-export:${args.instanceId}`,
-      `导出整合包 ${options.name}-${options.version || "1.0.0"}.mrpack`,
+      `导出整合包 ${options.name}-${options.version || "1.0.0"}.${ext}`,
     );
   },
   instances_reveal_export: () => null,
+  instances_upgrade_preview: (args) => {
+    const id = String(args.instanceId);
+    const inst = instances.find((i) => i.id === id);
+    const targetGame = String(args.gameVersion ?? "1.21.1");
+    const targetLoader = (args.loader ?? null) as { kind: string; version: string } | null;
+    return {
+      token: `preview-upgrade-${Date.now()}`,
+      preview: {
+        instanceId: id,
+        instanceName: inst?.name ?? id,
+        currentGameVersion: inst?.gameVersion ?? "1.21.1",
+        currentLoader: { kind: "neoforge", version: "21.1.209" },
+        targetGameVersion: targetGame,
+        targetLoader,
+        sameGameVersion: targetGame === (inst?.gameVersion ?? "1.21.1"),
+        sameLoaderKind: targetLoader?.kind === "neoforge",
+        lookupFailed: false,
+        manualCount: 0,
+        hasPatches: false,
+        patchNames: [],
+        isDowngrade: false,
+        hasCustomJava: false,
+        managedPackName: null,
+        isLinked: Boolean(inst?.linked),
+        hasWorlds: true,
+        counts: {
+          compatible: 1,
+          upgradable: targetLoader ? 1 : 0,
+          incompatible: targetLoader ? 1 : 3,
+          locked: 0,
+          unknown: 0,
+          disabled: 0,
+        },
+        mods: [
+          {
+            fileName: "sodium.jar",
+            title: "Sodium",
+            titleZh: "钠",
+            iconUrl: null,
+            pageUrl: "https://modrinth.com/project/AANobbMI",
+            currentVersion: "0.6.0",
+            targetVersion: targetLoader ? "0.6.5" : null,
+            status: targetLoader ? "upgradable" : "incompatible",
+            delivery: targetLoader ? "direct" : null,
+          },
+          {
+            fileName: "waystones.jar",
+            title: "Waystones",
+            titleZh: "传送石碑",
+            iconUrl: null,
+            pageUrl: "https://modrinth.com/project/LOpKHB2A",
+            currentVersion: "21.1.0",
+            targetVersion: null,
+            status: targetLoader ? "compatible" : "incompatible",
+            delivery: null,
+          },
+          {
+            fileName: "legacy-helper.jar",
+            title: "Legacy Helper",
+            titleZh: null,
+            iconUrl: null,
+            pageUrl: null,
+            currentVersion: "1.0.0",
+            targetVersion: null,
+            status: "incompatible",
+            delivery: null,
+          },
+        ],
+      },
+    };
+  },
+  instances_upgrade_cancel_preview: () => null,
+  instances_cover_pick: () => false,
+  instances_cover_set_preset: (args) => {
+    const target = instances.find((i) => i.id === args.instanceId);
+    if (target) {
+      target.coverUrl = null;
+      target.coverPreset = (args.preset as string | null) ?? null;
+    }
+    return null;
+  },
+  instances_cover_clear: (args) => {
+    const target = instances.find((i) => i.id === args.instanceId);
+    if (target) {
+      target.coverUrl = null;
+      target.coverPreset = null;
+    }
+    return null;
+  },
+  instances_upgrade_discard: () => null,
+  instances_upgrade_start: (args) => {
+    const options = (args.options ?? {}) as { mode?: string; cloneName?: string | null };
+    const id = options.mode === "clone" ? (options.cloneName ?? "upgraded-copy") : "demo";
+    const jobId = fakeJob(`instance-upgrade:${id}`, `切换版本 ${id}`, () => {});
+    return { jobId, instanceId: id };
+  },
   instances_copy: (args) => {
     const from = instances.find((i) => i.id === args.instanceId);
     const name = String(args.name);
@@ -2462,6 +3008,122 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   content_rollback: () => null,
   content_crash_offer: () => null,
   content_restore_snapshot: () => 2,
+  content_timeline: () => ({
+    latestVerifiedId: "tl-verified",
+    hasUnsavedChanges: false,
+    changedSinceVerified: true,
+    entries: [
+      {
+        kind: "launch",
+        recordId: "preview-rec-crash",
+        at: now - 3 * 60_000,
+        endedAt: now - 2 * 60_000,
+        outcome: "crashed",
+        reachedWorld: false,
+        exitCode: -1,
+        gameVersion: "1.21.1",
+        loader: "NeoForge 21.1.244",
+        modCount: 14,
+        hasCrashReport: true,
+        error: null,
+        crashedAfterChange: true,
+        verifiedPlay: false,
+      },
+      {
+        kind: "snapshot",
+        id: "tl-latest",
+        at: now - 5 * 60_000,
+        trigger: "change",
+        summary: "安装 Physics Mod",
+        verified: false,
+        isLatestVerified: false,
+        isCurrent: true,
+        sameAsCurrent: true,
+        gameVersion: "1.21.1",
+        versionMismatch: false,
+        crashedAfter: true,
+        fileCount: 15,
+        restorable: true,
+        changes: [
+          {
+            kind: "mod",
+            change: "added",
+            title: "Physics Mod",
+            fromVersion: null,
+            toVersion: "3.0.21",
+          },
+          {
+            kind: "mod",
+            change: "disabled",
+            title: "Entity Culling",
+            fromVersion: null,
+            toVersion: null,
+          },
+        ],
+      },
+      {
+        kind: "launch",
+        recordId: "preview-rec-good",
+        at: now - 40 * 60_000,
+        endedAt: now - 22 * 60_000,
+        outcome: "exited",
+        reachedWorld: true,
+        exitCode: 0,
+        gameVersion: "1.21.1",
+        loader: "NeoForge 21.1.244",
+        modCount: 13,
+        hasCrashReport: false,
+        error: null,
+        crashedAfterChange: false,
+        verifiedPlay: true,
+      },
+      {
+        kind: "snapshot",
+        id: "tl-verified",
+        at: now - 45 * 60_000,
+        trigger: "change",
+        summary: "更新 Sodium",
+        verified: true,
+        isLatestVerified: true,
+        isCurrent: false,
+        sameAsCurrent: false,
+        gameVersion: "1.21.1",
+        versionMismatch: false,
+        crashedAfter: false,
+        fileCount: 14,
+        restorable: true,
+        changes: [
+          {
+            kind: "mod",
+            change: "updated",
+            title: "Sodium",
+            fromVersion: "0.6.3",
+            toVersion: "0.6.5",
+          },
+        ],
+      },
+      {
+        kind: "snapshot",
+        id: "tl-init",
+        at: now - 2 * HOUR,
+        trigger: "initial",
+        summary: "初始状态",
+        verified: false,
+        isLatestVerified: false,
+        isCurrent: false,
+        sameAsCurrent: false,
+        gameVersion: "1.21.1",
+        versionMismatch: false,
+        crashedAfter: false,
+        fileCount: 14,
+        restorable: true,
+        changes: [],
+      },
+    ],
+  }),
+  content_restore_timeline_node: () => 2,
+  content_mod_deps: () => ({ items: {} }),
+  content_mod_impact: () => ({ dependentWarnings: [], orphans: [] }),
   game_dir_choose: () => null,
   modpack_pick: () => null,
   modpack_versions: () => [
@@ -2494,6 +3156,113 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   modpack_install: (args) =>
     fakeJob(`pack:${String(args.projectId)}`, `安装整合包 ${String(args.title)}`),
   modpack_import: (args) => fakeJob(`import:${String(args.token)}`, "导入本地整合包"),
+  modpack_update_versions: () => [
+    {
+      id: "pack-ver-latest",
+      versionNumber: "1.4.0",
+      gameVersions: ["1.21.1"],
+      loaders: ["NeoForge"],
+      release: true,
+      size: 2_400_000,
+      recommended: true,
+      published: new Date(now - 2 * 24 * HOUR).toISOString(),
+      changelog: "### 1.4.0\n- Updated Sodium & Iris\n- Fixed farm crop tick lag",
+      changelogFormat: "markdown",
+    },
+    {
+      id: "pack-ver-prev",
+      versionNumber: "1.3.2",
+      gameVersions: ["1.21.1"],
+      loaders: ["NeoForge"],
+      release: true,
+      size: 2_100_000,
+      recommended: false,
+      published: new Date(now - 14 * 24 * HOUR).toISOString(),
+      changelog: "### 1.3.2\n- Stability improvements",
+      changelogFormat: "markdown",
+    },
+  ],
+  modpack_update_preview_remote: (args) => {
+    const id = String(args.instanceId);
+    const inst = instances.find((i) => i.id === id);
+    return {
+      token: `preview-pack-update-${Date.now()}`,
+      preview: {
+        instanceId: id,
+        instanceName: inst?.name ?? id,
+        packName: inst?.pack ?? inst?.name ?? id,
+        format: "modrinth",
+        currentPackVersion: "1.3.2",
+        targetPackVersion: "1.4.0",
+        currentGameVersion: inst?.gameVersion ?? "1.21.1",
+        targetGameVersion: inst?.gameVersion ?? "1.21.1",
+        currentLoader: { kind: "neoforge", version: "21.1.209" },
+        targetLoader: { kind: "neoforge", version: "21.1.248" },
+        changelog: "### 1.4.0\n- Updated Sodium & Iris\n- Fixed farm crop tick lag",
+        changelogFormat: "markdown",
+        addedCount: 1,
+        updatedCount: 2,
+        removedCount: 1,
+        unchangedCount: 42,
+        playerAddedCount: 2,
+        playerModifiedCount: 1,
+        manualFiles: [],
+        downloadBytes: 18_400_000,
+        hasOriginBaseline: true,
+        mcVersionChanged: false,
+        loaderChanged: true,
+        isDowngrade: false,
+        hasWorlds: true,
+        items: [
+          {
+            path: "mods/sodium-0.6.5.jar",
+            kind: "updated",
+            category: "mod",
+            hasTarget: true,
+            manual: false,
+          },
+          {
+            path: "mods/iris-1.8.2.jar",
+            kind: "added",
+            category: "mod",
+            hasTarget: true,
+            manual: false,
+          },
+          {
+            path: "mods/legacy-fix.jar",
+            kind: "removed",
+            category: "mod",
+            hasTarget: false,
+            manual: false,
+          },
+          {
+            path: "config/farmersdelight.toml",
+            kind: "playerModified",
+            category: "config",
+            hasTarget: true,
+            manual: false,
+          },
+          {
+            path: "mods/my-extra-minimap.jar",
+            kind: "playerAdded",
+            category: "mod",
+            hasTarget: false,
+            manual: false,
+          },
+        ],
+      },
+    };
+  },
+  modpack_update_preview_file: () => null,
+  modpack_update_discard: () => null,
+  modpack_update_start: (args) => fakeJob(`modpack-update:${String(args.token)}`, "更新整合包"),
+  modpack_update_rollback: (args) => ({
+    instanceId: String(args.instanceId),
+    restoredVersion: "1.3.2",
+    revertedFrom: "1.4.0",
+    restoredFiles: 3,
+    removedFiles: 1,
+  }),
 };
 
 let callbackId = 1;

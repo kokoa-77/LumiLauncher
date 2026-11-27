@@ -97,9 +97,13 @@ pub fn check(
     let mut issues = Vec::new();
 
     // 1. Java 主版本预检（仅在本地版本 JSON 可读且用户显式指定了更低版本 Java 时提示）
+    let instance_dir = instance.game_dir(game).ok();
     if let Some(actual_major) = selected_java_major
-        && let Some(required_major) =
-            local_required_java(&instance.files(game), &instance.version_id())
+        && let Some(required_major) = local_required_java(
+            &instance.files(game),
+            &instance.version_id(),
+            instance_dir.as_deref(),
+        )
         && actual_major < required_major
     {
         issues.push(PreflightIssue {
@@ -127,8 +131,12 @@ pub fn check(
     }
 }
 
-fn local_required_java(files: &GameDir, version_id: &str) -> Option<u32> {
-    let merged = version::resolve(version_id, |id| {
+fn local_required_java(
+    files: &GameDir,
+    version_id: &str,
+    instance_dir: Option<&Path>,
+) -> Option<u32> {
+    let mut merged = version::resolve(version_id, |id| {
         let path = files
             .version_json(id)
             .map_err(|_| MetaError::InvalidId(id.to_owned()))?;
@@ -136,6 +144,12 @@ fn local_required_java(files: &GameDir, version_id: &str) -> Option<u32> {
         VersionJson::parse(id, &bytes)
     })
     .ok()?;
+    if let Some(dir) = instance_dir
+        && let Ok(Some(bundle)) = crate::meta::patches::load_for_instance(dir)
+        && let Ok(patched) = crate::meta::patches::apply(merged.clone(), &bundle, dir)
+    {
+        merged = patched;
+    }
     Some(merged.required_java())
 }
 
@@ -272,7 +286,9 @@ fn evaluate_mods(mods: &[ParsedMod], instance_loader: Option<LoaderKind>) -> Vec
 
 fn ecos_compatible(ecos: &[ModEco], loader: LoaderKind) -> bool {
     match loader {
-        LoaderKind::Fabric => ecos.contains(&ModEco::Fabric),
+        LoaderKind::Fabric | LoaderKind::LegacyFabric | LoaderKind::Babric => {
+            ecos.contains(&ModEco::Fabric)
+        }
         // Quilt 原生兼容大部分 Fabric 模组
         LoaderKind::Quilt => ecos.contains(&ModEco::Quilt) || ecos.contains(&ModEco::Fabric),
         LoaderKind::NeoForge => ecos.contains(&ModEco::NeoForge) || ecos.contains(&ModEco::Forge),
@@ -795,6 +811,42 @@ displayName="Sinytra Connector"
             bad.issues
                 .iter()
                 .any(|i| { i.kind == PreflightIssueKind::JavaTooOld && i.target == "Java 21" })
+        );
+        let ok = check(&game, &instance, Some(21));
+        assert!(ok.issues.is_empty());
+    }
+
+    #[test]
+    fn detects_java_too_old_against_instance_patches() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = GameDir::new(dir.path().to_path_buf());
+        let ver_dir = game.version_dir("1.7.10").unwrap();
+        std::fs::create_dir_all(&ver_dir).unwrap();
+        std::fs::write(
+            ver_dir.join("1.7.10.json"),
+            r#"{"id":"1.7.10","type":"release","mainClass":"net.minecraft.client.main.Main","libraries":[]}"#,
+        )
+        .unwrap();
+        let inst_dir = game.instance_dir("gtnh").unwrap();
+        std::fs::create_dir_all(&inst_dir).unwrap();
+        let config = crate::instance::InstanceConfig::new("gtnh", "1.7.10", None);
+        let instance = crate::instance::register(&game, "gtnh", &config).unwrap();
+        let patch = crate::meta::patches::parse_patch(
+            "lwjgl3ify.json",
+            br#"{"uid":"com.gtnewhorizons.lwjgl3ify","compatibleJavaMajors":[17,21]}"#,
+        )
+        .unwrap();
+        crate::meta::patches::save_for_instance(
+            &inst_dir,
+            &crate::meta::patches::InstancePatches::new(vec![patch], true),
+        )
+        .unwrap();
+
+        let bad = check(&game, &instance, Some(8));
+        assert!(
+            bad.issues
+                .iter()
+                .any(|i| i.kind == PreflightIssueKind::JavaTooOld && i.target == "Java 21")
         );
         let ok = check(&game, &instance, Some(21));
         assert!(ok.issues.is_empty());

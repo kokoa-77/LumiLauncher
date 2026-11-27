@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
+import { LoaderBadgeIcon } from "@/components/art/LoaderBadgeIcon";
 import {
   availableOn,
   DEFAULT_FILTER,
@@ -28,6 +29,7 @@ import {
   type ContentKind,
   type ContentSource,
   commands,
+  type LoaderKind,
   type NameMatch,
   type ProjectHit,
   type SearchPage,
@@ -145,6 +147,18 @@ export function DiscoverPage() {
   const category =
     foundCategory && availableOn(foundCategory, kind, sourceFilter) ? foundCategory : undefined;
   const hideInstalled = params.get("hide") === "1";
+  const gvParam = params.get("gv");
+  const customGameVersion = gvParam?.trim() ? gvParam.trim() : null;
+  const loaderParam = params.get("loader");
+  const customLoader: LoaderKind | null =
+    loaderParam === "neoforge" ||
+    loaderParam === "fabric" ||
+    loaderParam === "forge" ||
+    loaderParam === "quilt"
+      ? loaderParam
+      : null;
+  const clientOnly =
+    params.get("client") === "1" && kind === "mod" && sourceFilter !== "curseForge";
   const instanceId = pickTarget(instances, params.get("instance"));
   const instance = instances.find((i) => i.id === instanceId);
   const worldOf = useMemo(
@@ -186,13 +200,17 @@ export function DiscoverPage() {
   const matches = wantsNames && names?.query === query ? names.matches : [];
   const searchText = matches.length > 0 ? (picked ?? matches[0]?.en ?? query) : query;
 
-  // 按实例筛：只有模组、资源包、光影包看实例；解锁后不筛
+  // 按实例筛：只有模组、资源包、光影包、地图看实例；解锁后改为可选手动版本/加载器
   const searchTarget = (isContentKind(kind) || kind === "map") && !unlocked ? instanceId : "";
+  const effectiveGameVersion = searchTarget ? null : customGameVersion;
+  const effectiveLoader =
+    searchTarget || (kind !== "modpack" && kind !== "mod") ? null : customLoader;
   // 首选平台：两个平台都有的项目显示、安装哪边的；「全部来源」时也先排它
   const preferred = useAppStore((s) => s.settings?.download.preferredPlatform ?? "modrinth");
-  const key = `${resultsKey(kind, sourceFilter, searchTarget, searchText, sort, category?.key ?? null)}|${preferred}`;
-  // 要搜的平台：只有一个平台有的分类，只搜那一个
-  const only = fixedSource(kind);
+  const filterExtra = `${effectiveGameVersion ?? ""}:${effectiveLoader ?? ""}:${clientOnly ? "1" : "0"}`;
+  const key = `${resultsKey(kind, sourceFilter, searchTarget, searchText, sort, category?.key ?? null, filterExtra)}|${preferred}`;
+  // 要搜的平台：只有一个平台有的分类或开启「仅客户端」时，只搜对应平台
+  const only = fixedSource(kind) ?? (clientOnly ? "modrinth" : null);
   const activeSources: ContentSource[] = (
     only
       ? [only]
@@ -240,6 +258,9 @@ export function DiscoverPage() {
       sort: next.sort === "relevance" ? null : next.sort,
       cat: next.category,
       hide: next.hideInstalled ? "1" : null,
+      gv: next.gameVersion,
+      loader: next.loader,
+      client: next.clientOnly ? "1" : null,
     });
 
   // 地址里的关键词从外面变了（已经在资源中心时又用命令面板搜了一次）：跟着换
@@ -267,16 +288,54 @@ export function DiscoverPage() {
     const cat = categoryFor(category, source) ?? null;
     const text = searchText;
     if (kind === "modpack")
-      return unwrap(await commands.modpackSearch(text, source, sort, cat, offset));
+      return unwrap(
+        await commands.modpackSearch(
+          text,
+          source,
+          effectiveGameVersion,
+          effectiveLoader,
+          sort,
+          cat,
+          offset,
+        ),
+      );
     if (kind === "map")
-      return unwrap(await commands.mapsSearch(text, searchTarget || null, sort, cat, offset));
+      return unwrap(
+        await commands.mapsSearch(
+          text,
+          searchTarget || null,
+          effectiveGameVersion,
+          sort,
+          cat,
+          offset,
+        ),
+      );
     if (kind === "server") return unwrap(await commands.serversSearch(text, sort, cat, offset));
     const target = searchTarget || null;
     const contentKind = kind as ContentKind;
     return unwrap(
       source === "curseForge"
-        ? await commands.curseforgeSearch(text, contentKind, target, sort, cat, offset)
-        : await commands.modrinthSearch(text, contentKind, target, sort, cat, offset),
+        ? await commands.curseforgeSearch(
+            text,
+            contentKind,
+            target,
+            effectiveGameVersion,
+            effectiveLoader,
+            sort,
+            cat,
+            offset,
+          )
+        : await commands.modrinthSearch(
+            text,
+            contentKind,
+            target,
+            effectiveGameVersion,
+            effectiveLoader,
+            clientOnly,
+            sort,
+            cat,
+            offset,
+          ),
     );
   };
 
@@ -464,6 +523,9 @@ export function DiscoverPage() {
     sort,
     category: category?.key ?? null,
     hideInstalled,
+    gameVersion: effectiveGameVersion,
+    loader: effectiveLoader,
+    clientOnly,
   };
 
   const footer = (
@@ -486,7 +548,14 @@ export function DiscoverPage() {
             <div className="min-w-0 flex-1">
               <p className="text-fg-muted text-xs">{t("discover.addTo")}</p>
               <h1 className="truncate font-semibold text-2xl">{instance.name}</h1>
-              <p className="truncate text-fg-muted text-xs">{instanceSubtitle(instance)}</p>
+              <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-fg-muted text-xs">
+                <LoaderBadgeIcon
+                  loader={instance.loader}
+                  title={instance.loader ?? t("create.vanilla")}
+                  className="size-3.5 shrink-0"
+                />
+                <span className="truncate">{instanceSubtitle(instance)}</span>
+              </p>
             </div>
           </header>
         ) : (
@@ -503,7 +572,7 @@ export function DiscoverPage() {
           </header>
         )}
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Segmented
             label={t("discover.kind")}
             value={kind}
@@ -522,7 +591,7 @@ export function DiscoverPage() {
               options={SOURCES.map((s) => ({ value: s, label: t(`discover.sourceName.${s}`) }))}
             />
           )}
-          <div className="flex min-w-72 flex-1 items-center gap-3">
+          <div className="flex min-w-52 flex-1 items-center gap-2.5">
             <div className="relative min-w-0 flex-1">
               <Search
                 className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3.5 size-4 text-fg-muted"
@@ -542,6 +611,12 @@ export function DiscoverPage() {
                 source={sourceFilter}
                 value={filterValue}
                 canHide={canHide}
+                lockedInstance={
+                  searchTarget && instance
+                    ? { gameVersion: instance.gameVersion, loader: instance.loader }
+                    : null
+                }
+                onUnlockInstance={() => setParam("unlock", "1")}
                 onChange={changeFilter}
               />
             )}

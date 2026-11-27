@@ -4,11 +4,16 @@
 
 pub mod manifest;
 pub mod maven;
+pub mod patches;
 pub mod rules;
 pub mod version;
 
-pub use manifest::{ManifestEntry, VersionManifest, fetch_manifest, fetch_version_json};
+pub use manifest::{
+    GameVersionCategory, GameVersionEntry, ManifestEntry, VersionManifest, fetch_manifest,
+    fetch_version_json, is_april_fools,
+};
 pub use maven::MavenCoord;
+pub use patches::{InstancePatches, MetaPatch, PatchLibrary};
 pub use rules::{Environment, Rule, RuleAction, rules_allow};
 pub use version::{
     ArgValue, Argument, Arguments, Artifact, AssetIndexRef, JavaVersionReq, Library, VersionJson,
@@ -23,6 +28,8 @@ pub enum MetaError {
     NotFound(String),
     #[error("版本号不合法：{0}")]
     InvalidId(String),
+    #[error("补丁配置不合法：{0}")]
+    InvalidPatch(String),
     #[error("版本 {id} 的描述文件格式不对")]
     Parse {
         id: String,

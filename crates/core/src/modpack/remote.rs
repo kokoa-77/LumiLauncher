@@ -10,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::ModpackError;
 use crate::content::curseforge::{self, CurseForge};
+use crate::content::detail::BodyFormat;
 use crate::content::modrinth::{self, PACK_LOADERS, Version};
 use crate::instance::LoaderKind;
 use crate::net::{DownloadItem, DownloadProgress, Downloader};
@@ -25,12 +26,20 @@ pub struct PackVersion {
     pub id: String,
     pub version_number: String,
     pub game_versions: Vec<String>,
+    /// 该版本使用的加载器（如 `["Fabric"]`、`["NeoForge"]`；未标明时为空）
+    pub loaders: Vec<String>,
     /// 正式版（不是测试版）
     pub release: bool,
     /// `.mrpack` 文件本身的大小（不含要下载的模组）
     pub size: f64,
     /// 默认选它：最新的正式版，没有正式版就是最新的
     pub recommended: bool,
+    /// 发布时间（ISO 8601）
+    pub published: Option<String>,
+    /// 更新日志（Modrinth 直接携带 Markdown；CurseForge 需懒加载 HTML）
+    pub changelog: Option<String>,
+    /// 更新日志格式（Markdown / HTML）
+    pub changelog_format: BodyFormat,
 }
 
 /// 列出能装的版本（新的在前）。没有能装的版本时返回空列表。
@@ -55,11 +64,39 @@ fn to_pack_versions(versions: &[Version]) -> Vec<PackVersion> {
             id: v.id.clone(),
             version_number: v.version_number.clone(),
             game_versions: v.game_versions.clone(),
+            loaders: normalize_loaders(&v.loaders),
             release: v.version_type == "release",
             size: v.primary_file().map_or(0.0, |f| f.size as f64),
             recommended: i == recommended,
+            published: v.date_published.clone(),
+            changelog: v
+                .changelog
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned),
+            changelog_format: BodyFormat::Markdown,
         })
         .collect()
+}
+
+fn normalize_loaders(raw: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    for item in raw {
+        let label = match item.to_ascii_lowercase().as_str() {
+            "neoforge" => "NeoForge",
+            "fabric" => "Fabric",
+            "forge" => "Forge",
+            "quilt" => "Quilt",
+            "legacyfabric" | "legacy-fabric" => "Legacy Fabric",
+            "babric" => "Babric",
+            _ => continue,
+        };
+        if !out.iter().any(|existing| existing == label) {
+            out.push(label.to_owned());
+        }
+    }
+    out
 }
 
 fn is_supported(version: &Version) -> bool {
@@ -158,9 +195,13 @@ fn to_curseforge_versions(files: &[curseforge::File]) -> Vec<PackVersion> {
                 .filter(|v| v.starts_with(|c: char| c.is_ascii_digit()))
                 .cloned()
                 .collect(),
+            loaders: normalize_loaders(&f.game_versions),
             release: f.is_release(),
             size: f.file_length as f64,
             recommended: i == recommended,
+            published: f.file_date.clone(),
+            changelog: None,
+            changelog_format: BodyFormat::Html,
         })
         .collect()
 }
@@ -260,11 +301,14 @@ mod tests {
 
     #[test]
     fn recommends_the_newest_release_among_supported_loaders() {
-        let mut legacy_forge = version("legacy", "release", "forge", CDN);
+        let mut unsupported_forge = version("very-old", "release", "forge", CDN);
+        unsupported_forge.game_versions = vec!["1.4.7".to_owned()];
+        let mut legacy_forge = version("1.12.2-forge", "release", "forge", CDN);
         legacy_forge.game_versions = vec!["1.12.2".to_owned()];
         let list = to_pack_versions(&[
             version("3-beta", "beta", "neoforge", CDN),
             version("unsupported", "release", "liteloader", CDN),
+            unsupported_forge,
             legacy_forge,
             version("2-fabric", "release", "fabric", CDN),
             version("2-forge", "release", "forge", CDN),
@@ -273,10 +317,21 @@ mod tests {
             version("1", "release", "neoforge", CDN),
         ]);
         let ids: Vec<&str> = list.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, ["3-beta", "2-fabric", "2-forge", "2-quilt", "2", "1"]);
+        assert_eq!(
+            ids,
+            [
+                "3-beta",
+                "1.12.2-forge",
+                "2-fabric",
+                "2-forge",
+                "2-quilt",
+                "2",
+                "1"
+            ]
+        );
         let recommended: Vec<_> = list.iter().filter(|v| v.recommended).collect();
         assert_eq!(recommended.len(), 1);
-        assert_eq!(recommended[0].id, "2-fabric");
+        assert_eq!(recommended[0].id, "1.12.2-forge");
         assert!(!list[0].release);
 
         let only_beta = to_pack_versions(&[version("1-beta", "beta", "neoforge", CDN)]);
@@ -357,8 +412,12 @@ mod tests {
         assert!(pack_file(&fabric, dir).is_ok());
         let mut legacy_forge = version("1", "release", "forge", CDN);
         legacy_forge.game_versions = vec!["1.12.2".to_owned()];
+        assert!(pack_file(&legacy_forge, dir).is_ok());
+
+        let mut too_old_forge = version("1", "release", "forge", CDN);
+        too_old_forge.game_versions = vec!["1.4.7".to_owned()];
         assert!(matches!(
-            pack_file(&legacy_forge, dir),
+            pack_file(&too_old_forge, dir),
             Err(ModpackError::UnsupportedLoader(_))
         ));
         let mut no_hash = version("1", "release", "neoforge", CDN);

@@ -65,6 +65,44 @@ pub fn check(bytes: &[u8]) -> Result<SkinModel, SkinError> {
     Ok(guess_model(&image))
 }
 
+/// 检查是不是一张官方披风贴图（PNG 且宽高在官方披风范围内）。
+pub fn check_cape(bytes: &[u8]) -> Result<(), SkinError> {
+    if bytes.len() > MAX_SKIN_BYTES {
+        return Err(SkinError::TooLarge);
+    }
+    let (width, height) = png_size(bytes).ok_or(SkinError::NotPng)?;
+    if !(64..=512).contains(&width) || !(32..=256).contains(&height) {
+        return Err(SkinError::Size(width, height));
+    }
+    image::load_from_memory_with_format(bytes, ImageFormat::Png).map_err(|_| SkinError::NotPng)?;
+    Ok(())
+}
+
+/// 清理 `skins/` 中已无任何账户引用的孤儿贴图缓存。
+pub fn gc_unused(dir: &Path, keep_hashes: &std::collections::HashSet<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("png") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if stem.len() != 64 || !stem.bytes().all(|b| b.is_ascii_hexdigit()) {
+            continue;
+        }
+        let lower = stem.to_ascii_lowercase();
+        if !keep_hashes.contains(&lower)
+            && let Err(error) = std::fs::remove_file(&path)
+        {
+            tracing::warn!(%error, path = %path.display(), "清理孤儿皮肤或披风缓存失败");
+        }
+    }
+}
+
 /// PNG 文件头（IHDR）里的宽高
 fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
     if !bytes.starts_with(PNG_SIGNATURE) || bytes.get(12..16) != Some(b"IHDR") {
@@ -236,5 +274,27 @@ pub(crate) mod tests {
         );
         let empty = STANDARD.encode(r#"{"textures":{}}"#);
         assert_eq!(parse_textures(&empty), None);
+    }
+
+    #[test]
+    fn validates_capes_and_gcs_unused_assets() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let cape_png = sample_png(64, 32, false);
+        assert!(check_cape(&cape_png).is_ok());
+        assert!(matches!(
+            check_cape(&sample_png(32, 32, false)),
+            Err(SkinError::Size(32, 32))
+        ));
+        let keep_hash = save(dir.path(), &cape_png).unwrap_or_else(|e| panic!("{e}"));
+        let dead_hash = "0".repeat(64);
+        std::fs::write(dir.path().join(format!("{dead_hash}.png")), b"stale").unwrap();
+        std::fs::write(dir.path().join("notes.txt"), b"keep-non-png").unwrap();
+
+        let keep = std::collections::HashSet::from([keep_hash.clone()]);
+        gc_unused(dir.path(), &keep);
+
+        assert!(path_of(dir.path(), &keep_hash).unwrap().is_file());
+        assert!(!path_of(dir.path(), &dead_hash).unwrap().exists());
+        assert!(dir.path().join("notes.txt").is_file());
     }
 }

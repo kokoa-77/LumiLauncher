@@ -321,12 +321,21 @@ pub fn copy(
         pinned_at: None,
         ..from.config
     };
-    if config.link.take().is_some() {
+    let was_linked = config.link.take().is_some();
+    if was_linked {
         // 别家的版本复制成自己的实例：版本按游戏版本和加载器由本启动器自己装
         config.version_id = String::new();
     }
     match register(game, &options.id, &config) {
         Ok(instance) => {
+            // 外部关联实例的笔记存放在 Lumi 元数据目录，不在外部游戏目录内，复制时顺带迁入副本
+            if was_linked
+                && let Ok(notes) = super::read_notes(game, from_id)
+                && !notes.is_empty()
+                && let Err(error) = super::write_notes(game, &options.id, &notes)
+            {
+                tracing::warn!(%error, from = %from_id, to = %options.id, "复制关联实例笔记失败");
+            }
             tracing::info!(from = %from_id, to = %options.id, "实例已复制");
             Ok(instance)
         }

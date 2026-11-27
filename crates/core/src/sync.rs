@@ -1360,6 +1360,7 @@ mod tests {
             },
             group: None,
             pinned_at: None,
+            cover_preset: None,
             link: None,
         };
         let inst_dir = game.instances().join(id);

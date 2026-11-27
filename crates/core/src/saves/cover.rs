@@ -78,7 +78,7 @@ pub enum CoverError {
     Read(#[from] ReadJsonError),
 }
 
-/// `custom.json`：存档文件夹名 → 选的图 / 锁定的自动封面
+/// `custom.json`：存档文件夹名 → 选的图 / 锁定的自动封面；另含实例级默认自定义封面
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CustomIndex {
     #[serde(default)]
@@ -86,6 +86,9 @@ struct CustomIndex {
     /// 锁定了某张自动封面的世界：存档文件夹名 → `auto/<world_key>/` 下的文件名
     #[serde(default)]
     locked_auto: BTreeMap<String, String>,
+    /// 实例自身选定的自定义封面（或整合包官方封面缓存）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    instance: Option<CustomEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,6 +189,32 @@ impl Covers {
 
 // ---------- 自定义背景 ----------
 
+fn validate_image_bytes(bytes: &[u8]) -> Result<(&'static str, ImageFit), CoverError> {
+    if bytes.len() as u64 > CUSTOM_MAX_BYTES {
+        return Err(CoverError::TooLarge);
+    }
+    // 按文件内容认格式，不看扩展名
+    let format = image::guess_format(bytes).map_err(|_| CoverError::Unsupported)?;
+    let ext = match format {
+        ImageFormat::Png => "png",
+        ImageFormat::Jpeg => "jpg",
+        _ => return Err(CoverError::Unsupported),
+    };
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(MAX_ALLOC);
+    reader.limits(limits);
+    let picture = reader.decode().map_err(|error| match error {
+        image::ImageError::Limits(_) => CoverError::TooLarge,
+        other => CoverError::Image(other),
+    })?;
+    let (width, height) = picture.dimensions();
+    if width < MIN_SIDE || height < MIN_SIDE {
+        return Err(CoverError::TooSmall);
+    }
+    Ok((ext, default_fit(&picture)))
+}
+
 /// 给一个世界换成自己选的图：检查是真的 PNG / JPG、大小合适，原样复制一份到实例自己的文件夹。
 /// 返回默认的显示方式（竖图、透明底的图完整显示，其余铺满）。`now_ms` 用来起新文件名。
 pub fn set_custom(
@@ -198,26 +227,7 @@ pub fn set_custom(
         return Err(CoverError::TooLarge);
     }
     let bytes = std::fs::read(source)?;
-    // 按文件内容认格式，不看扩展名
-    let format = image::guess_format(&bytes).map_err(|_| CoverError::Unsupported)?;
-    let ext = match format {
-        ImageFormat::Png => "png",
-        ImageFormat::Jpeg => "jpg",
-        _ => return Err(CoverError::Unsupported),
-    };
-    let mut reader = image::ImageReader::with_format(Cursor::new(&bytes), format);
-    let mut limits = image::Limits::default();
-    limits.max_alloc = Some(MAX_ALLOC);
-    reader.limits(limits);
-    let picture = reader.decode().map_err(|error| match error {
-        image::ImageError::Limits(_) => CoverError::TooLarge,
-        other => CoverError::Image(other),
-    })?;
-    let (width, height) = picture.dimensions();
-    if width < MIN_SIDE || height < MIN_SIDE {
-        return Err(CoverError::TooSmall);
-    }
-    let fit = default_fit(&picture);
+    let (ext, fit) = validate_image_bytes(&bytes)?;
 
     let custom_dir = covers_dir(instance_dir).join(CUSTOM_DIR);
     let file = format!("{}-{now_ms}.{ext}", world_key(folder));
@@ -238,6 +248,65 @@ pub fn set_custom(
         remove_quietly(&path);
     }
     Ok(fit)
+}
+
+/// 读取实例级自定义封面（文件仍在磁盘上时返回路径与显示方式）。
+pub fn instance_custom(instance_dir: &Path) -> Option<(PathBuf, ImageFit)> {
+    let index = load_index(instance_dir).ok()?;
+    let entry = index.instance?;
+    let path = safe_join(&covers_dir(instance_dir).join(CUSTOM_DIR), &entry.file).ok()?;
+    path.is_file().then_some((path, entry.fit))
+}
+
+/// 给实例本身设置自定义封面（从本地图片文件校验并复制进 `Lumi/covers/custom/`）。
+pub fn set_instance_custom(
+    instance_dir: &Path,
+    source: &Path,
+    now_ms: u64,
+) -> Result<ImageFit, CoverError> {
+    if std::fs::metadata(source)?.len() > CUSTOM_MAX_BYTES {
+        return Err(CoverError::TooLarge);
+    }
+    let bytes = std::fs::read(source)?;
+    set_instance_custom_bytes(instance_dir, &bytes, now_ms)
+}
+
+/// 给实例本身设置自定义封面（从内存图片字节校验并保存，供整合包封面缓存复用）。
+pub fn set_instance_custom_bytes(
+    instance_dir: &Path,
+    bytes: &[u8],
+    now_ms: u64,
+) -> Result<ImageFit, CoverError> {
+    let (ext, fit) = validate_image_bytes(bytes)?;
+    let custom_dir = covers_dir(instance_dir).join(CUSTOM_DIR);
+    let file = format!("instance-{now_ms}.{ext}");
+    write_atomic(&custom_dir.join(&file), bytes)?;
+    let mut index = load_index(instance_dir)?;
+    let old = index.instance.replace(CustomEntry {
+        file: file.clone(),
+        fit,
+    });
+    write_json_atomic(&index_path(instance_dir), &index)?;
+    if let Some(old) = old
+        && old.file != file
+        && let Ok(path) = safe_join(&custom_dir, &old.file)
+    {
+        remove_quietly(&path);
+    }
+    Ok(fit)
+}
+
+/// 清除实例级自定义封面，恢复自动/预设封面。
+pub fn clear_instance_custom(instance_dir: &Path) -> Result<bool, CoverError> {
+    let mut index = load_index(instance_dir)?;
+    let Some(old) = index.instance.take() else {
+        return Ok(false);
+    };
+    write_json_atomic(&index_path(instance_dir), &index)?;
+    if let Ok(path) = safe_join(&covers_dir(instance_dir).join(CUSTOM_DIR), &old.file) {
+        remove_quietly(&path);
+    }
+    Ok(true)
 }
 
 /// 竖图、方图、透明底的图（立绘）完整显示，横图铺满
@@ -930,5 +999,25 @@ mod tests {
             "进世界以后没有存档被打开（多人游戏）"
         );
         assert_eq!(open_world(&dir.path().join("nothing"), UNIX_EPOCH), None);
+    }
+
+    #[test]
+    fn instance_custom_cover_saves_loads_and_clears() {
+        let dir = tempfile::tempdir().unwrap();
+        let img = RgbImage::from_pixel(320, 180, Rgb([72, 130, 180]));
+        let mut bytes = Vec::new();
+        DynamicImage::ImageRgb8(img)
+            .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
+            .unwrap();
+
+        let fit = set_instance_custom_bytes(dir.path(), &bytes, 1_000).unwrap();
+        assert_eq!(fit, ImageFit::Cover);
+        let (path, loaded_fit) = instance_custom(dir.path()).unwrap();
+        assert!(path.is_file());
+        assert_eq!(loaded_fit, ImageFit::Cover);
+
+        assert!(clear_instance_custom(dir.path()).unwrap());
+        assert!(instance_custom(dir.path()).is_none());
+        assert!(!path.exists());
     }
 }

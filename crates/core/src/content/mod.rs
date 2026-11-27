@@ -12,6 +12,7 @@ pub mod bundle;
 pub mod cache;
 pub mod claim;
 pub mod curseforge;
+pub mod deps;
 pub mod detail;
 pub mod dropped;
 pub mod favorites;
@@ -23,6 +24,7 @@ pub mod modrinth;
 pub mod names;
 pub mod snapshot;
 pub mod store;
+pub mod timeline;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -37,13 +39,17 @@ use crate::fs::{
 use crate::instance::META_DIR;
 use crate::net::{DownloadItem, DownloadProgress, Downloader, sha1_file};
 use crate::paths::GameDir;
-use claim::{ClaimSession, ManualFile};
+pub use claim::{ClaimSession, ManualFile};
+pub use deps::{
+    DepRef, DependentWarning, ImpactAction, ModDepInfo, ModDepsGraph, ModImpactReport, OrphanDep,
+};
 pub use identify::IdentitySource;
 use identify::{Identity, IdentityCache, file_key, icon_data_url, read_local_meta, save_icon};
 pub use journal::Recovered;
 use journal::{Plan, read_text};
 pub use snapshot::{ChangeType, OfferChange, RollbackOffer};
 use store::{ContentStore, STORE_DIR};
+pub use timeline::{TimelineEntry, TimelineTrigger, TimelineView};
 
 /// 本启动器记录「这个文件是从哪个项目装的」
 const RECORDS_FILE: &str = "content.json";
@@ -261,6 +267,12 @@ struct Record {
     icon_url: Option<String>,
     #[serde(default)]
     source: ContentSource,
+    /// 是否由启动器在安装其他模组时作为必选前置自动拉入
+    #[serde(default)]
+    auto_dependency: bool,
+    /// 安装本模组时一并解析出的前置项目 ID 列表（辅助离线依赖图匹配）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    dep_projects: Vec<String>,
 }
 
 /// 要装进实例的一个本地文件（[`InstanceContent::add_local`]）
@@ -516,6 +528,10 @@ pub struct UpdateCheckResult {
     pub unchecked: u32,
     /// 整次平台查询失败，调用方应显示失败说明。
     pub lookup_failed: bool,
+    /// 当前文件本身已兼容目标版本且已是最新（供版本切换/升级向导区分「兼容」与「不兼容」）
+    #[serde(skip)]
+    #[cfg_attr(feature = "specta", specta(skip))]
+    pub compatible_files: Vec<String>,
 }
 
 /// 内容管理针对的实例目录。
@@ -653,13 +669,28 @@ impl InstanceContent {
     }
 
     /// 草稿收尾：改过的来源记录、光影 / 材质包设置、改动历史（`history` 是写进去的完整历史）排进计划，
-    /// 写改动日志、执行（[`Self::apply`]）。`summary` 是这次做什么，出事时告诉用户
+    /// 写改动日志、执行（[`Self::apply`]），成功后自动在时间线记下一个节点。
     async fn commit(
         &self,
         draft: Draft,
         summary: &str,
         history: Option<Vec<HistoryEntry>>,
     ) -> Result<(), ContentError> {
+        self.commit_inner(draft, summary, history, true).await
+    }
+
+    async fn commit_inner(
+        &self,
+        draft: Draft,
+        summary: &str,
+        history: Option<Vec<HistoryEntry>>,
+        record_timeline: bool,
+    ) -> Result<(), ContentError> {
+        let before_snap = if record_timeline {
+            self.capture(false).await.ok()
+        } else {
+            None
+        };
         let Draft {
             mut plan,
             records,
@@ -673,7 +704,14 @@ impl InstanceContent {
         if let Some(history) = history {
             plan.write(meta_rel(HISTORY_FILE), json_bytes(&history)?);
         }
-        self.apply(plan, summary).await
+        self.apply(plan, summary).await?;
+        if record_timeline {
+            if let Some(before) = &before_snap {
+                self.ensure_timeline_baseline(before);
+            }
+            self.record_timeline_change(summary.to_owned()).await;
+        }
+        Ok(())
     }
 
     fn folder(&self, kind: ContentKind) -> PathBuf {
@@ -871,6 +909,17 @@ impl InstanceContent {
         let key = file_key(kind.folder(), &scanned.disk_name, &scanned.metadata);
         if let Some(sha1) = cache.hash_of(&key) {
             return Ok(sha1.clone());
+        }
+        // 启用/停用仅重命名 `.disabled` 后缀，文件内容、大小与修改时间不变，直接复用另一状态的哈希
+        let alt_name = if scanned.disabled {
+            scanned.file_name.clone()
+        } else {
+            format!("{}{DISABLED_SUFFIX}", scanned.file_name)
+        };
+        let alt_key = file_key(kind.folder(), &alt_name, &scanned.metadata);
+        if let Some(sha1) = cache.hash_of(&alt_key).cloned() {
+            cache.remember_hash(key, sha1.clone());
+            return Ok(sha1);
         }
         let path = self.folder(kind).join(&scanned.disk_name);
         let sha1 = sha1_file(&path)
@@ -1233,6 +1282,11 @@ impl InstanceContent {
         plan: &[modrinth::PlanItem],
     ) -> Result<PreparedInstall, ContentError> {
         let mut entries = Vec::new();
+        let plan_dep_projects: Vec<String> = plan
+            .iter()
+            .filter(|p| p.kind == ContentKind::Mod && p.reason == modrinth::PlanReason::Dependency)
+            .map(|p| p.project_id.clone())
+            .collect();
         let modrinth_ids: Vec<String> = plan
             .iter()
             .filter(|p| p.source == ContentSource::Modrinth)
@@ -1250,6 +1304,18 @@ impl InstanceContent {
                 file.hashes.get("sha1").cloned().ok_or_else(|| {
                     ContentError::Api(format!("{file_name} 没有 SHA-1，无法校验"))
                 })?;
+            let auto_dependency =
+                planned.is_some_and(|p| p.reason == modrinth::PlanReason::Dependency);
+            let dep_projects =
+                if !auto_dependency && planned.is_some_and(|p| p.kind == ContentKind::Mod) {
+                    plan_dep_projects
+                        .iter()
+                        .filter(|pid| **pid != version.project_id)
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
             entries.push(Prepared {
                 kind: planned.map_or(ContentKind::Mod, |p| p.kind),
                 record: Record {
@@ -1259,6 +1325,8 @@ impl InstanceContent {
                     version_number: version.version_number.clone(),
                     icon_url: planned.and_then(|p| p.icon_url.clone()),
                     source: ContentSource::Modrinth,
+                    auto_dependency,
+                    dep_projects,
                 },
                 file_name,
                 sha1,
@@ -1297,6 +1365,16 @@ impl InstanceContent {
                 let sha1 = file.sha1().ok_or_else(|| {
                     ContentError::CurseForge(format!("{file_name} 没有 SHA-1，无法校验"))
                 })?;
+                let auto_dependency = item.reason == modrinth::PlanReason::Dependency;
+                let dep_projects = if !auto_dependency && item.kind == ContentKind::Mod {
+                    plan_dep_projects
+                        .iter()
+                        .filter(|pid| **pid != item.project_id)
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 let entry = Prepared {
                     kind: item.kind,
                     file_name,
@@ -1310,6 +1388,8 @@ impl InstanceContent {
                         version_number: item.version_number.clone(),
                         icon_url: item.icon_url.clone(),
                         source: ContentSource::CurseForge,
+                        auto_dependency,
+                        dep_projects,
                     },
                 };
                 if entry.urls.is_some() {
@@ -1439,6 +1519,15 @@ impl InstanceContent {
                     .await
                     .map_err(|source| io_error(&path, source))?;
                 if old.eq_ignore_ascii_case(&entry.sha1) {
+                    // 若该文件此前只是自动前置，而这次用户显式请求安装它，则解除自动前置标记
+                    if !entry.record.auto_dependency
+                        && let Some(existing_rec) = draft
+                            .records
+                            .get_mut(&record_key(entry.kind, &entry.file_name))
+                        && existing_rec.auto_dependency
+                    {
+                        existing_rec.auto_dependency = false;
+                    }
                     tracing::info!(file = %entry.file_name, "实例里已经有一模一样的文件，不重复装");
                     continue;
                 }
@@ -1746,6 +1835,7 @@ impl InstanceContent {
                         result.checked += 1;
                         result.unchecked = result.unchecked.saturating_sub(1);
                         if current {
+                            result.compatible_files.push(scanned.file_name.clone());
                             continue;
                         }
                         let item = items.iter().find(|i| i.file_name == scanned.file_name);
@@ -2223,6 +2313,10 @@ impl InstanceContent {
                 version_number: update.version_number.clone(),
                 icon_url: carried_icon(old_record.as_ref(), &cache, &old_sha1),
                 source: entry.source,
+                auto_dependency: old_record.as_ref().is_some_and(|r| r.auto_dependency),
+                dep_projects: old_record
+                    .as_ref()
+                    .map_or_else(Vec::new, |r| r.dep_projects.clone()),
             };
             draft.records.insert(new_key, record.clone());
             changes.push(Change {
@@ -2887,6 +2981,7 @@ fn apply_curseforge_updates(
         result.checked += 1;
         result.unchecked = result.unchecked.saturating_sub(1);
         if current {
+            result.compatible_files.push(scanned.file_name.clone());
             continue;
         }
         let delivery = if file.usable_download_url().is_some() {
@@ -2945,6 +3040,8 @@ mod tests {
                 version_number: "1.0".to_owned(),
                 icon_url: None,
                 source: ContentSource::Modrinth,
+                auto_dependency: false,
+                dep_projects: Vec::new(),
             },
         };
         let path = staged.path_of(&entry).unwrap();
@@ -3173,6 +3270,8 @@ mod tests {
             version_number: "15.10.3".to_owned(),
             icon_url: Some("https://cdn.modrinth.com/record.webp".to_owned()),
             source: ContentSource::Modrinth,
+            auto_dependency: false,
+            dep_projects: Vec::new(),
         };
         assert_eq!(
             carried_icon(Some(&record), &cache, &old_sha1).as_deref(),

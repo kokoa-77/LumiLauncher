@@ -18,8 +18,8 @@ use tauri::{AppHandle, Manager};
 
 use crate::error::AppError;
 use crate::game::{
-    SEARCH_PAGE, SearchKey, cached_search, curseforge_category, curseforge_id, downloader,
-    load_instance, report,
+    SEARCH_PAGE, SearchKey, cached_search, curseforge_category, curseforge_id, load_instance,
+    report,
 };
 use crate::state::AppState;
 
@@ -157,12 +157,14 @@ pub fn favorites_toggle(
 
 /// 搜地图。给了实例时只列适用于它的游戏版本的（老地图在新版本也能开，所以装的时候还会再放宽一次）。
 /// `category` 是 CurseForge 的分类编号（冒险、跑酷、解谜……）。
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[specta::specta]
 pub async fn maps_search(
     state: State<'_, AppState>,
     query: String,
     instance_id: Option<String>,
+    game_version: Option<String>,
     sort: SearchSort,
     category: Option<String>,
     offset: u32,
@@ -170,7 +172,11 @@ pub async fn maps_search(
     let instance = instance_id
         .map(|id| load_instance(&state, &id))
         .transpose()?;
-    let game_version = instance.as_ref().map(|i| i.config.game_version.as_str());
+    let game_version = game_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| instance.as_ref().map(|i| i.config.game_version.as_str()));
     let search = cf::SearchQuery {
         text: &query,
         class_id: cf::class::WORLD,
@@ -187,6 +193,7 @@ pub async fn maps_search(
         text: &query,
         game_version,
         loader: None,
+        client_only: false,
         sort,
         category: category.as_deref(),
         offset,
@@ -233,7 +240,11 @@ pub fn maps_install(
                 return Err(AppError::new("job.cancelled", "已取消"));
             };
             let temp = game.root().join(".mcl-tmp").join("maps");
-            let downloader = downloader(&state);
+            let downloader = crate::game::downloader_for_job(
+                &state,
+                launcher_core::net::DownloadPriority::Interactive,
+                &job,
+            );
             let cancel = job.cancel_token();
             let ctx = MapInstall {
                 curseforge: &state.curseforge,
@@ -245,7 +256,7 @@ pub fn maps_install(
             };
             maps::install(&ctx, mod_id, &title, |p| report(&job, "下载地图", &p))
                 .await
-                .map_err(AppError::from)
+                .map_err(|e| state.capture_app_error(&job, "下载地图", e))
         }
         .await;
         match result {
@@ -254,7 +265,7 @@ pub fn maps_install(
                 job.succeed();
             }
             Err(_) if job.is_cancelled() => job.cancelled(),
-            Err(error) => job.fail(error.message),
+            Err(error) => state.finish_failed_job(job, error.message),
         }
     });
     Ok(job_id)
@@ -278,6 +289,7 @@ pub async fn servers_search(
         text: &query,
         game_version: None,
         loader: None,
+        client_only: false,
         sort,
         category: category.as_deref(),
         offset,

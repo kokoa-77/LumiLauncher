@@ -396,6 +396,7 @@ mod tests {
             client_jar: PathBuf::from("D:/mc/versions/1.21.1/1.21.1.jar"),
             natives_dir: PathBuf::from("D:/mc/versions/1.21.1/natives-windows-x86_64"),
             legacy_assets_dir: None,
+            map_to_resources: false,
             log_config: Some(PathBuf::from("D:/mc/assets/log_configs/client-1.12.xml")),
         }
     }

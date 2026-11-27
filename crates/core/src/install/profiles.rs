@@ -34,9 +34,14 @@ fn is_sha1(value: Option<&str>) -> bool {
     value.is_some_and(|s| s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
+fn is_legacy_meta_profile(id: &str) -> bool {
+    id.starts_with("legacy-fabric-loader-") || id.starts_with("babric-loader-")
+}
+
 fn cached_profile(game: &GameDir, mc: &str, id: &str) -> Option<VersionJson> {
     let raw = std::fs::read(game.version_json(id).ok()?).ok()?;
     let profile = checked_profile(&raw, mc, id).ok()?;
+    let allow_missing_hash = is_legacy_meta_profile(id);
     profile
         .libraries
         .iter()
@@ -45,7 +50,7 @@ fn cached_profile(game: &GameDir, mc: &str, id: &str) -> Option<VersionJson> {
                 Some(artifact) => artifact.sha1.as_deref(),
                 None => library.sha1.as_deref(),
             };
-            is_sha1(hash)
+            is_sha1(hash) || allow_missing_hash
         })
         .then_some(profile)
 }
@@ -79,7 +84,8 @@ fn library_url(game: &GameDir, library: &Library) -> Result<String, InstallError
     let base = library
         .url
         .as_deref()
-        .unwrap_or("https://libraries.minecraft.net");
+        .map(super::vanilla::normalize_library_repo_url)
+        .unwrap_or_else(|| "https://libraries.minecraft.net".to_owned());
     let url = artifact.map_or_else(
         || format!("{}/{relative}", base.trim_end_matches('/')),
         |a| a.url.clone(),
@@ -87,7 +93,14 @@ fn library_url(game: &GameDir, library: &Library) -> Result<String, InstallError
     let parsed = reqwest::Url::parse(&url).map_err(|_| bad_profile("加载器库的下载地址无效"))?;
     let official = matches!(
         parsed.host_str(),
-        Some("maven.fabricmc.net" | "maven.quiltmc.org" | "libraries.minecraft.net")
+        Some(
+            "maven.fabricmc.net"
+                | "maven.quiltmc.org"
+                | "maven.legacyfabric.net"
+                | "maven.glass-launcher.net"
+                | "repo1.maven.org"
+                | "libraries.minecraft.net"
+        )
     );
     if parsed.scheme() != "https"
         || !official
@@ -117,9 +130,22 @@ pub(super) async fn install(
     let base = meta_base(loader.kind).ok_or_else(|| bad_profile("没有这个加载器的版本描述接口"))?;
     let url = format!("{base}/{mc}/{}/profile/json", loader.version);
     let mut json: Value = get_json(ctx.client, std::slice::from_ref(&url)).await?;
+    // Legacy Fabric / Babric 上游返回有时沿用 `fabric-loader-...` 作为 id，统一规整为不撞名的版本 ID
+    let allow_missing_hash = matches!(
+        loader.kind,
+        crate::instance::LoaderKind::LegacyFabric | crate::instance::LoaderKind::Babric
+    );
+    if allow_missing_hash {
+        let upstream_id = json["id"].as_str().unwrap_or_default();
+        let valid_upstream =
+            upstream_id == id || upstream_id == format!("fabric-loader-{}-{mc}", loader.version);
+        if valid_upstream && let Some(obj) = json.as_object_mut() {
+            obj.insert("id".to_owned(), Value::String(id.clone()));
+        }
+    }
     let raw = serde_json::to_vec(&json).map_err(|err| bad_profile(err.to_string()))?;
     let profile = checked_profile(&raw, mc, &id)?;
-    let updates: Vec<(usize, String, Option<u64>, bool)> =
+    let updates: Vec<(usize, Option<String>, Option<u64>, bool)> =
         stream::iter(profile.libraries.into_iter().enumerate())
             .map(|(index, library)| async move {
                 let artifact = library.downloads.as_ref().and_then(|d| d.artifact.as_ref());
@@ -127,8 +153,12 @@ pub(super) async fn install(
                 let expected = artifact.map_or(library.sha1.as_deref(), |a| a.sha1.as_deref());
                 let declared_size = artifact.map_or(library.size, |a| a.size);
                 let hash = match expected.filter(|s| is_sha1(Some(s))) {
-                    Some(hash) => hash.to_ascii_lowercase(),
-                    None => fetch_maven_sha1(ctx.client, &url).await?,
+                    Some(hash) => Some(hash.to_ascii_lowercase()),
+                    None => match fetch_maven_sha1(ctx.client, &url).await {
+                        Ok(hash) => Some(hash),
+                        Err(_) if allow_missing_hash => None,
+                        Err(err) => return Err(err),
+                    },
                 };
                 let size = if declared_size.is_some() {
                     declared_size
@@ -165,7 +195,9 @@ pub(super) async fn install(
         } else {
             lib
         };
-        dest["sha1"] = hash.into();
+        if let Some(hash) = hash {
+            dest["sha1"] = hash.into();
+        }
         if let Some(size) = size {
             dest["size"] = size.into();
         }
@@ -184,5 +216,37 @@ mod tests {
         let id = "fabric-loader-0.16.10-1.21.1";
         assert!(checked_profile(json, "1.21.1", id).is_ok());
         assert!(checked_profile(json, "1.21", id).is_err());
+    }
+
+    #[test]
+    fn allows_legacy_fabric_and_babric_official_repositories_only() {
+        let game = GameDir::new("D:/mc");
+        let lf = Library {
+            name: "net.legacyfabric:intermediary:1.8.9".into(),
+            url: Some("https://maven.legacyfabric.net/".into()),
+            ..Library::default()
+        };
+        assert!(library_url(&game, &lf).is_ok());
+
+        let babric = Library {
+            name: "babric:intermediary:b1.7.3".into(),
+            url: Some("https://maven.glass-launcher.net/babric/".into()),
+            ..Library::default()
+        };
+        assert!(library_url(&game, &babric).is_ok());
+
+        let central = Library {
+            name: "org.ow2.asm:asm:9.7".into(),
+            url: Some("https://repo1.maven.org/maven2/".into()),
+            ..Library::default()
+        };
+        assert!(library_url(&game, &central).is_ok());
+
+        let evil = Library {
+            name: "com.evil:mod:1.0".into(),
+            url: Some("https://evil.example.com/maven/".into()),
+            ..Library::default()
+        };
+        assert!(library_url(&game, &evil).is_err());
     }
 }

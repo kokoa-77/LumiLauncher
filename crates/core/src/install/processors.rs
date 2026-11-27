@@ -19,8 +19,10 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, LazyLock, Mutex, Weak};
 
+use futures_util::{StreamExt, stream};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio_util::sync::CancellationToken;
 
@@ -28,7 +30,10 @@ use super::InstallError;
 use super::vanilla::{load_or_fetch_version, run_blocking};
 use crate::fs::{read_json, safe_join, write_atomic, write_json_atomic};
 use crate::meta::{Library, MavenCoord, VersionJson};
-use crate::net::{DownloadError, DownloadItem, DownloadProgress, Downloader, get_bytes, sha1_file};
+use crate::net::{
+    DownloadError, DownloadItem, DownloadProgress, Downloader, get_bytes, official_fallback_urls,
+    sha1_file,
+};
 use crate::paths::GameDir;
 use crate::process::hidden_command;
 
@@ -109,6 +114,27 @@ struct InstallProfile {
     processors: Vec<Processor>,
     #[serde(default)]
     data: HashMap<String, DataEntry>,
+}
+
+/// 1.5.2 – 1.12.2（14.23.5.2847 及以前）旧版 Forge 安装器的 `install_profile.json` 结构。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyInstallProfile {
+    install: LegacyInstallMeta,
+    version_info: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyInstallMeta {
+    minecraft: String,
+    path: String,
+    file_path: String,
+}
+
+enum ParsedInstaller {
+    Modern(InstallProfile, Vec<u8>),
+    Legacy(LegacyInstallProfile),
 }
 
 #[derive(Debug, Deserialize)]
@@ -255,9 +281,15 @@ where
         })
         .await?;
 
-    let (profile, version_raw) = {
+    let parsed = {
         let installer = installer.clone();
         run_blocking(move || read_installer(&installer)).await?
+    };
+    let (profile, version_raw) = match parsed {
+        ParsedInstaller::Modern(profile, version_raw) => (profile, version_raw),
+        ParsedInstaller::Legacy(legacy) => {
+            return install_legacy_forge(ctx, src, &installer, installer_sha1, legacy).await;
+        }
     };
     if profile.minecraft != src.game_version {
         return Err(InstallError::Installer(format!(
@@ -486,7 +518,8 @@ where
 
 /// Maven 仓库每个文件旁边都有 `.sha1`，用它校验安装器。
 pub(super) async fn fetch_maven_sha1(client: &Client, url: &str) -> Result<String, InstallError> {
-    let bytes = get_bytes(client, &[format!("{url}.sha1")]).await?;
+    let candidates = official_fallback_urls(&format!("{url}.sha1"), None);
+    let bytes = get_bytes(client, &candidates).await?;
     let text = String::from_utf8_lossy(&bytes);
     let hash = text
         .split_whitespace()
@@ -502,18 +535,338 @@ pub(super) async fn fetch_maven_sha1(client: &Client, url: &str) -> Result<Strin
     }
 }
 
-/// 读出 `install_profile.json` 和 `version.json`（原始字节，原样保存）。
-fn read_installer(installer: &Path) -> Result<(InstallProfile, Vec<u8>), InstallError> {
+/// 读出 `install_profile.json` 和 `version.json`（兼容现代 v2 与老版本 Forge v1）。
+fn read_installer(installer: &Path) -> Result<ParsedInstaller, InstallError> {
     let mut archive = open_zip(installer)?;
     let profile_raw = read_entry(&mut archive, installer, "install_profile.json")?;
-    let profile: InstallProfile = serde_json::from_slice(&profile_raw).map_err(|e| {
-        InstallError::Installer(format!(
-            "安装器格式不认识（可能是 1.12.2 及更早的老安装器，暂不支持）：{e}"
-        ))
-    })?;
+    let value: Value = serde_json::from_slice(&profile_raw)
+        .map_err(|e| InstallError::Installer(format!("安装器格式不认识：{e}")))?;
+    if value.get("install").is_some()
+        && value.get("versionInfo").is_some()
+        && value.get("json").is_none()
+    {
+        let legacy: LegacyInstallProfile = serde_json::from_value(value)
+            .map_err(|e| InstallError::Installer(format!("旧版 Forge 安装器描述格式不对：{e}")))?;
+        return Ok(ParsedInstaller::Legacy(legacy));
+    }
+    let profile: InstallProfile = serde_json::from_value(value)
+        .map_err(|e| InstallError::Installer(format!("安装器格式不认识：{e}")))?;
     let json_entry = profile.json.trim_start_matches('/').to_owned();
     let version_raw = read_entry(&mut archive, installer, &json_entry)?;
-    Ok((profile, version_raw))
+    Ok(ParsedInstaller::Modern(profile, version_raw))
+}
+
+struct LegacyLibProbe {
+    index: usize,
+    rel: String,
+    candidates: Vec<String>,
+}
+
+/// 将 1.5.2–1.12.2 旧版 Forge 安装器的 `versionInfo` 规整为标准 `VersionJson` 骨架：
+/// - 统一改写 `id`、`inheritsFrom`（1.7.10 等早期安装器缺省）与 `jar`
+/// - 剔除 `clientreq: false` 服务端专用库
+/// - 将内嵌 universal jar 锚定为本地 `downloads.artifact`（空 URL + 实测 SHA-1/size）
+/// - 为其余无 `downloads` 的库提取官方 HTTPS 候选仓库列表供校验补充
+fn build_legacy_version_json_skeleton(
+    id: &str,
+    mc: &str,
+    universal_coord_str: &str,
+    universal_rel: &str,
+    universal_sha1: &str,
+    universal_size: u64,
+    mut version_info: Value,
+) -> Result<(Value, Vec<LegacyLibProbe>), InstallError> {
+    let obj = version_info.as_object_mut().ok_or_else(|| {
+        InstallError::Installer("旧版 Forge 安装器 versionInfo 不是对象".to_owned())
+    })?;
+    obj.insert("id".to_owned(), Value::String(id.to_owned()));
+    let needs_inherits = obj
+        .get("inheritsFrom")
+        .and_then(Value::as_str)
+        .is_none_or(|s| s.trim().is_empty());
+    if needs_inherits {
+        obj.insert("inheritsFrom".to_owned(), Value::String(mc.to_owned()));
+    }
+    let needs_jar = obj
+        .get("jar")
+        .and_then(Value::as_str)
+        .is_none_or(|s| s.trim().is_empty());
+    if needs_jar {
+        obj.insert("jar".to_owned(), Value::String(mc.to_owned()));
+    }
+
+    let raw_libs = obj
+        .get_mut("libraries")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| InstallError::Installer("旧版 Forge 安装器缺少 libraries".to_owned()))?;
+
+    let mut kept = Vec::with_capacity(raw_libs.len() + 1);
+    let mut probes = Vec::new();
+    let mut saw_universal = false;
+
+    for mut lib in std::mem::take(raw_libs) {
+        if lib.get("clientreq").and_then(Value::as_bool) == Some(false) {
+            continue;
+        }
+        let Some(lib_obj) = lib.as_object_mut() else {
+            continue;
+        };
+        let name = lib_obj
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let coord_path = MavenCoord::parse(&name).map(|c| c.path());
+
+        lib_obj.remove("serverreq");
+        lib_obj.remove("clientreq");
+        lib_obj.remove("checksums");
+
+        if coord_path.as_deref() == Some(universal_rel) {
+            saw_universal = true;
+            lib_obj.remove("url");
+            lib_obj.insert(
+                "downloads".to_owned(),
+                serde_json::json!({
+                    "artifact": {
+                        "path": universal_rel,
+                        "url": "",
+                        "sha1": universal_sha1,
+                        "size": universal_size
+                    }
+                }),
+            );
+            kept.push(lib);
+            continue;
+        }
+
+        let has_artifact_url = lib_obj
+            .get("downloads")
+            .and_then(|d| d.get("artifact"))
+            .and_then(|a| a.get("url"))
+            .and_then(Value::as_str)
+            .is_some_and(|u| !u.is_empty());
+        if has_artifact_url {
+            if let Some(url_val) = lib_obj
+                .get_mut("downloads")
+                .and_then(|d| d.get_mut("artifact"))
+                .and_then(|a| a.get_mut("url"))
+                && let Some(raw_url) = url_val.as_str()
+            {
+                let upgraded = super::vanilla::normalize_library_repo_url(raw_url);
+                *url_val = Value::String(upgraded);
+            }
+            kept.push(lib);
+            continue;
+        }
+
+        if let Some(rel) = coord_path {
+            let declared = lib_obj
+                .remove("url")
+                .and_then(|v| v.as_str().map(str::to_owned));
+            let candidates = super::vanilla::library_fallback_urls(declared.as_deref(), &rel);
+            let primary_base = declared
+                .as_deref()
+                .map(super::vanilla::normalize_library_repo_url)
+                .unwrap_or_else(|| "https://libraries.minecraft.net".to_owned());
+            // 暂写规范化顶层 `url`，待下文联网探测确认后才固化 `downloads.artifact`；
+            // 若某个库探测失败则保留顶层 `url`，让下游 `vanilla::main_file` 走三官方源候选回退。
+            lib_obj.insert("url".to_owned(), Value::String(primary_base));
+            let idx = kept.len();
+            kept.push(lib);
+            probes.push(LegacyLibProbe {
+                index: idx,
+                rel,
+                candidates,
+            });
+        } else {
+            kept.push(lib);
+        }
+    }
+
+    if !saw_universal {
+        kept.insert(
+            0,
+            serde_json::json!({
+                "name": universal_coord_str,
+                "downloads": {
+                    "artifact": {
+                        "path": universal_rel,
+                        "url": "",
+                        "sha1": universal_sha1,
+                        "size": universal_size
+                    }
+                }
+            }),
+        );
+        for probe in &mut probes {
+            probe.index += 1;
+        }
+    }
+
+    *raw_libs = kept;
+    Ok((version_info, probes))
+}
+
+struct ProbedLibMeta {
+    url: String,
+    sha1: Option<String>,
+    size: Option<u64>,
+}
+
+async fn probe_official_library_meta(
+    client: &Client,
+    candidates: &[String],
+) -> Option<ProbedLibMeta> {
+    for url in candidates {
+        let sha1_url = format!("{url}.sha1");
+        if let Ok(resp) = client.get(&sha1_url).send().await
+            && resp.status().is_success()
+            && let Ok(bytes) = resp.bytes().await
+        {
+            let text = String::from_utf8_lossy(&bytes);
+            if let Some(hash) = text
+                .split_whitespace()
+                .next()
+                .map(str::to_ascii_lowercase)
+                .filter(|h| h.len() == 40 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+            {
+                let size = head_content_length(client, url).await;
+                return Some(ProbedLibMeta {
+                    url: url.clone(),
+                    sha1: Some(hash),
+                    size,
+                });
+            }
+        }
+        if let Some(size) = head_content_length(client, url).await {
+            return Some(ProbedLibMeta {
+                url: url.clone(),
+                sha1: None,
+                size: Some(size),
+            });
+        }
+    }
+    None
+}
+
+async fn head_content_length(client: &Client, url: &str) -> Option<u64> {
+    client
+        .head(url)
+        .send()
+        .await
+        .ok()
+        .filter(|r| r.status().is_success())
+        .and_then(|r| {
+            r.headers()
+                .get(reqwest::header::CONTENT_LENGTH)?
+                .to_str()
+                .ok()?
+                .parse::<u64>()
+                .ok()
+        })
+        .filter(|size| *size > 0)
+}
+
+async fn install_legacy_forge(
+    ctx: &LoaderContext<'_>,
+    src: &InstallerSource,
+    installer: &Path,
+    installer_sha1: String,
+    legacy: LegacyInstallProfile,
+) -> Result<String, InstallError> {
+    let id = src.expected_id.clone();
+    if legacy.install.minecraft != src.game_version {
+        return Err(InstallError::Installer(format!(
+            "安装器对应的游戏版本是 {}，不是 {}",
+            legacy.install.minecraft, src.game_version
+        )));
+    }
+    let coord = MavenCoord::parse(&legacy.install.path).ok_or_else(|| {
+        InstallError::Installer(format!("无法识别的库坐标：{}", legacy.install.path))
+    })?;
+    let universal_rel = coord.path();
+    let universal_dest = ctx.game.library(&universal_rel)?;
+    let entry_name = legacy.install.file_path.trim_start_matches('/').to_owned();
+    let maven_fallback = format!("maven/{universal_rel}");
+    {
+        let installer = installer.to_path_buf();
+        let dest = universal_dest.clone();
+        run_blocking(move || {
+            let mut archive = open_zip(&installer)?;
+            let bytes = read_entry(&mut archive, &installer, &entry_name)
+                .or_else(|_| read_entry(&mut archive, &installer, &maven_fallback))?;
+            write_atomic(&dest, &bytes)?;
+            Ok(())
+        })
+        .await?;
+    }
+
+    let universal_size = tokio::fs::metadata(&universal_dest)
+        .await
+        .map_err(|source| io_error(&universal_dest, source))?
+        .len();
+    let universal_sha1 = sha1_file(&universal_dest)
+        .await
+        .map_err(|source| io_error(&universal_dest, source))?;
+
+    let (mut json, probes) = build_legacy_version_json_skeleton(
+        &id,
+        &src.game_version,
+        &legacy.install.path,
+        &universal_rel,
+        &universal_sha1,
+        universal_size,
+        legacy.version_info,
+    )?;
+
+    let enriched: Vec<(usize, String, Option<ProbedLibMeta>)> = stream::iter(probes)
+        .map(|probe| async move {
+            let found = probe_official_library_meta(ctx.client, &probe.candidates).await;
+            (probe.index, probe.rel, found)
+        })
+        .buffer_unordered(8)
+        .collect()
+        .await;
+    if ctx.cancel.is_cancelled() {
+        return Err(DownloadError::Cancelled.into());
+    }
+    if let Some(libs) = json.get_mut("libraries").and_then(Value::as_array_mut) {
+        for (idx, rel, found) in enriched {
+            if let Some(meta) = found
+                && let Some(lib_obj) = libs.get_mut(idx).and_then(Value::as_object_mut)
+            {
+                lib_obj.remove("url");
+                let mut artifact = serde_json::Map::from_iter([
+                    ("path".to_owned(), Value::String(rel)),
+                    ("url".to_owned(), Value::String(meta.url)),
+                ]);
+                if let Some(sha1) = meta.sha1 {
+                    artifact.insert("sha1".to_owned(), Value::String(sha1));
+                }
+                if let Some(size) = meta.size {
+                    artifact.insert("size".to_owned(), Value::from(size));
+                }
+                lib_obj.insert(
+                    "downloads".to_owned(),
+                    serde_json::json!({ "artifact": Value::Object(artifact) }),
+                );
+            }
+        }
+    }
+
+    let normalized_bytes = serde_json::to_vec_pretty(&json)
+        .map_err(|e| InstallError::Installer(format!("生成版本描述失败：{e}")))?;
+    VersionJson::parse(&id, &normalized_bytes)?;
+    write_atomic(&ctx.game.version_json(&id)?, &normalized_bytes)?;
+
+    let receipt = build_receipt(ctx.game, installer_sha1, &[universal_dest]).await?;
+    write_json_atomic(&receipt_path(ctx.game, &id)?, &receipt)?;
+    if let Err(error) = tokio::fs::remove_dir_all(ctx.work_dir).await {
+        tracing::warn!(%error, dir = %ctx.work_dir.display(), "清理临时目录失败");
+    }
+    tracing::info!(version = %id, "旧版 Forge 安装完成");
+    Ok(id)
 }
 
 fn open_zip(path: &Path) -> Result<zip::ZipArchive<std::fs::File>, InstallError> {
@@ -991,5 +1344,92 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn parses_and_normalizes_legacy_forge_v1_installer() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        let dir = tempfile::tempdir().unwrap();
+        let installer_path = dir.path().join("forge-1.7.10-installer.jar");
+        let file = std::fs::File::create(&installer_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let opts = SimpleFileOptions::default();
+
+        let profile_json = serde_json::json!({
+            "install": {
+                "minecraft": "1.7.10",
+                "path": "net.minecraftforge:forge:1.7.10-10.13.4.1614-1.7.10",
+                "filePath": "forge-1.7.10-10.13.4.1614-1.7.10-universal.jar"
+            },
+            "versionInfo": {
+                "id": "1.7.10-Forge10.13.4.1614-1.7.10",
+                "mainClass": "net.minecraft.launchwrapper.Launch",
+                "minecraftArguments": "--username ${auth_player_name} --session ${auth_session}",
+                "libraries": [
+                    {
+                        "name": "net.minecraftforge:forge:1.7.10-10.13.4.1614-1.7.10",
+                        "url": "http://files.minecraftforge.net/maven/"
+                    },
+                    {
+                        "name": "com.typesafe.akka:akka-actor_2.11:2.3.3",
+                        "url": "http://files.minecraftforge.net/maven/",
+                        "checksums": ["deadbeef"],
+                        "clientreq": true
+                    },
+                    {
+                        "name": "org.server:only:1.0",
+                        "clientreq": false
+                    }
+                ]
+            }
+        });
+        zip.start_file("install_profile.json", opts).unwrap();
+        zip.write_all(&serde_json::to_vec(&profile_json).unwrap())
+            .unwrap();
+        zip.start_file("forge-1.7.10-10.13.4.1614-1.7.10-universal.jar", opts)
+            .unwrap();
+        zip.write_all(b"universal-jar-bytes").unwrap();
+        zip.finish().unwrap();
+
+        let ParsedInstaller::Legacy(legacy) = read_installer(&installer_path).unwrap() else {
+            panic!("应识别为旧版 Forge v1 安装器");
+        };
+        assert_eq!(legacy.install.minecraft, "1.7.10");
+
+        let (normalized, probes) = build_legacy_version_json_skeleton(
+            "1.7.10-forge-10.13.4.1614",
+            "1.7.10",
+            &legacy.install.path,
+            "net/minecraftforge/forge/1.7.10-10.13.4.1614-1.7.10/forge-1.7.10-10.13.4.1614-1.7.10.jar",
+            "0123456789abcdef0123456789abcdef01234567",
+            19,
+            legacy.version_info,
+        )
+        .unwrap();
+
+        assert_eq!(normalized["id"], "1.7.10-forge-10.13.4.1614");
+        assert_eq!(normalized["inheritsFrom"], "1.7.10");
+        let libs = normalized["libraries"].as_array().unwrap();
+        assert_eq!(libs.len(), 2, "clientreq=false 的服务端库应被剔除");
+        assert_eq!(libs[0]["downloads"]["artifact"]["url"], "");
+        assert_eq!(libs[0]["downloads"]["artifact"]["size"], 19);
+        assert_eq!(libs[1]["url"], "https://maven.minecraftforge.net");
+        assert!(
+            libs[1]["downloads"].is_null(),
+            "探测确认前保留顶层 HTTPS url 以保留多源回退"
+        );
+        assert_eq!(probes.len(), 1);
+        assert!(probes[0].rel.ends_with("akka-actor_2.11-2.3.3.jar"));
+        assert!(probes[0].candidates[0].starts_with("https://maven.minecraftforge.net/"));
+
+        let parsed = VersionJson::parse(
+            "1.7.10-forge-10.13.4.1614",
+            &serde_json::to_vec(&normalized).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.inherits_from.as_deref(), Some("1.7.10"));
+        assert_eq!(parsed.libraries.len(), 2);
     }
 }

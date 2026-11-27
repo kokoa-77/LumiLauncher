@@ -296,8 +296,22 @@ where
             files.root().display().to_string(),
         ));
     }
-    // 挂上的版本加载器已经由别家装好了，不再装
-    let loader = (!linked)
+    // 实例的游戏目录是实例文件夹本身；直接启动某个版本时用游戏目录根
+    let game_dir = match &instance {
+        Some(instance) => instance.game_dir(&files)?,
+        None => files.root().to_path_buf(),
+    };
+    let instance_patches = if !linked && instance.is_some() {
+        crate::meta::patches::load_for_instance(&game_dir).map_err(InstallError::from)?
+    } else {
+        None
+    };
+    let loader_from_patches = instance_patches.is_some()
+        && instance
+            .as_ref()
+            .is_some_and(|i| i.version_id() == i.config.game_version);
+    // 挂上的版本或由补丁自带加载器的实例（如 1.7.10 GTNH）不走标准加载器安装器
+    let loader = (!linked && !loader_from_patches)
         .then(|| {
             instance
                 .as_ref()
@@ -356,7 +370,11 @@ where
         .await?;
     }
 
-    let version = load_or_fetch_version(ctx.game, &version_id, ctx.client).await?;
+    let mut version = load_or_fetch_version(ctx.game, &version_id, ctx.client).await?;
+    if let Some(bundle) = &instance_patches {
+        version =
+            crate::meta::patches::apply(version, bundle, &game_dir).map_err(InstallError::from)?;
+    }
     let env = Environment::current();
     ctx.account.ensure_selected(ctx.cancel)?;
     validate_version(&version, &env, resolution, quick_play.as_ref())?;
@@ -369,13 +387,20 @@ where
         |phase, p| on_progress(PrepareProgress::Files(phase, p)),
     )
     .await?;
-    let java = pick_game_java(ctx, &JavaRequest::of(&installed.version), &on_progress).await?;
+    if installed.map_to_resources
+        && game_dir != ctx.game.root()
+        && let Some(shared_resources) = installed.legacy_assets_dir.as_deref()
+    {
+        let instance_resources = game_dir.join("resources");
+        let src = shared_resources.to_path_buf();
+        tokio::task::spawn_blocking(move || sync_instance_resources(&src, &instance_resources))
+            .await
+            .map_err(|e| LaunchError::Process(std::io::Error::other(e)))??;
+    }
+    let java_request =
+        java_request_for(&installed.version, instance_patches.as_ref(), ctx.java).await;
+    let java = pick_game_java(ctx, &java_request, &on_progress).await?;
 
-    // 实例的游戏目录是实例文件夹本身；直接启动某个版本时用游戏目录根
-    let game_dir = match &instance {
-        Some(instance) => instance.game_dir(ctx.game)?,
-        None => ctx.game.root().to_path_buf(),
-    };
     let recommended = instance
         .as_ref()
         .and_then(|i| i.config.recommended_memory_mb);
@@ -417,6 +442,43 @@ where
         account: ctx.account.clone(),
         default_language: ctx.options.default_language.clone(),
     })
+}
+
+/// 结合实例补丁声明的 `compatibleJavaMajors` 生成 Java 需求：
+/// 如果本机已经安装了补丁兼容列表里的某个主版本，优先使用它，避免重复下载。
+async fn java_request_for(
+    version: &crate::meta::VersionJson,
+    patches: Option<&crate::meta::patches::InstancePatches>,
+    locator: &JavaLocator,
+) -> JavaRequest {
+    let mut request = JavaRequest::of(version);
+    let Some(bundle) = patches else {
+        return request;
+    };
+    let majors = bundle.compatible_java_majors();
+    if majors.is_empty() {
+        return request;
+    }
+    let scan_locator = locator.clone();
+    let installs = tokio::task::spawn_blocking(move || scan_locator.scan())
+        .await
+        .unwrap_or_default();
+    for preferred in [21, 17, 8] {
+        if majors.contains(&preferred) && java::select(&installs, preferred).is_some() {
+            request.major = preferred;
+            request.component = None;
+            return request;
+        }
+    }
+    if let Some(found) = majors
+        .iter()
+        .copied()
+        .find(|&m| java::select(&installs, m).is_some())
+    {
+        request.major = found;
+        request.component = None;
+    }
+    request
 }
 
 /// 游戏用的 Java：实例固定了一个就用它（找不到了记一行日志、照常挑）；没固定就照常挑
@@ -511,6 +573,45 @@ pub fn ensure_default_game_language(game_dir: &Path, lang: &str) -> std::io::Res
     Ok(true)
 }
 
+/// 将共享 `resources/` 映射到隔离实例的 `<game_dir>/resources/`，保证 pre-1.6 / Beta / Alpha 音效正常读取。
+/// 优先创建硬链接节省磁盘空间，跨分区失败时自动回退复制。
+fn sync_instance_resources(shared: &Path, target: &Path) -> Result<(), LaunchError> {
+    if !shared.is_dir() {
+        return Ok(());
+    }
+    let mut stack = vec![(shared.to_path_buf(), target.to_path_buf())];
+    while let Some((src_dir, dst_dir)) = stack.pop() {
+        std::fs::create_dir_all(&dst_dir)?;
+        for entry in std::fs::read_dir(&src_dir)? {
+            let entry = entry?;
+            let ty = entry.file_type()?;
+            if ty.is_symlink() {
+                continue;
+            }
+            let src = entry.path();
+            let dst = dst_dir.join(entry.file_name());
+            if ty.is_dir() {
+                stack.push((src, dst));
+            } else if ty.is_file() {
+                let src_len = entry.metadata()?.len();
+                let same = std::fs::metadata(&dst)
+                    .map(|m| m.is_file() && m.len() == src_len)
+                    .unwrap_or(false);
+                if same {
+                    continue;
+                }
+                if dst.exists() {
+                    let _ = std::fs::remove_file(&dst);
+                }
+                if std::fs::hard_link(&src, &dst).is_err() {
+                    std::fs::copy(&src, &dst)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod default_language_tests {
     use super::*;
@@ -542,5 +643,19 @@ mod default_language_tests {
         assert!(ensure_default_game_language(dir.path(), "zh_cn").unwrap());
         let text = std::fs::read_to_string(&path).unwrap();
         assert_eq!(text, "fov:0.5\nrenderDistance:12\nlang:zh_cn\n");
+    }
+
+    #[test]
+    fn syncs_legacy_resources_into_isolated_instance_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = dir.path().join("resources");
+        let inst = dir.path().join("instances/beta/resources");
+        std::fs::create_dir_all(shared.join("sound3/step")).unwrap();
+        std::fs::write(shared.join("sound3/step/grass1.ogg"), b"ogg-bytes").unwrap();
+        sync_instance_resources(&shared, &inst).unwrap();
+        assert_eq!(
+            std::fs::read(inst.join("sound3/step/grass1.ogg")).unwrap(),
+            b"ogg-bytes"
+        );
     }
 }

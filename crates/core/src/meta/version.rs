@@ -8,6 +8,7 @@
 //!   同一层的不同系统版本和旧式本地库条目需要保留。
 
 use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -106,6 +107,12 @@ pub struct Library {
     pub sha1: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<u64>,
+    /// 实例本地库路径（例如 MultiMC / Prism `MMC-hint: "local"` 补丁库），不写进 Mojang version json
+    #[serde(skip)]
+    pub local_path: Option<PathBuf>,
+    /// 仅下载到 `libraries/` 而不加入主 classpath（MultiMC / Prism 补丁的 `mavenFiles`）
+    #[serde(skip)]
+    pub download_only: bool,
 }
 
 impl Library {

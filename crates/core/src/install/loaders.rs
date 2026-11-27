@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{InstallError, LoaderContext, LoaderProgress, neoforge, processors, profiles};
 use crate::instance::{LoaderKind, LoaderRef};
-use crate::net::{get_bytes, get_json};
+use crate::net::get_bytes;
 use crate::paths::GameDir;
 
 const FORGE_MAVEN: &str = "https://maven.minecraftforge.net/net/minecraftforge/forge";
@@ -32,6 +32,8 @@ pub(super) fn meta_base(kind: LoaderKind) -> Option<&'static str> {
     match kind {
         LoaderKind::Fabric => Some("https://meta.fabricmc.net/v2/versions/loader"),
         LoaderKind::Quilt => Some("https://meta.quiltmc.org/v3/versions/loader"),
+        LoaderKind::LegacyFabric => Some("https://meta.legacyfabric.net/v2/versions/loader"),
+        LoaderKind::Babric => Some("https://meta.babric.glass-launcher.net/v2/versions/loader"),
         _ => None,
     }
 }
@@ -91,12 +93,45 @@ pub async fn fetch_versions(
             let bytes = get_bytes(client, &[format!("{FORGE_MAVEN}/maven-metadata.xml")]).await?;
             Ok(forge_versions(&String::from_utf8_lossy(&bytes), mc))
         }
-        LoaderKind::Fabric | LoaderKind::Quilt => {
+        LoaderKind::Fabric | LoaderKind::Quilt | LoaderKind::LegacyFabric | LoaderKind::Babric => {
             let Some(base) = meta_base(kind) else {
                 return Ok(Vec::new());
             };
             let url = format!("{base}/{mc}");
-            let entries: Vec<MetaEntry> = get_json(client, std::slice::from_ref(&url)).await?;
+            let response =
+                client
+                    .get(&url)
+                    .send()
+                    .await
+                    .map_err(|source| crate::net::HttpError::Request {
+                        url: url.clone(),
+                        source,
+                    })?;
+            let status = response.status();
+            // Fabric / Quilt / Legacy Fabric / Babric 官方接口对不支持的旧游戏版本会返回 400 或 404，视为无可用版本而非网络错误
+            if matches!(
+                status,
+                reqwest::StatusCode::BAD_REQUEST | reqwest::StatusCode::NOT_FOUND
+            ) {
+                return Ok(Vec::new());
+            }
+            if !status.is_success() {
+                return Err(crate::net::HttpError::Status {
+                    url,
+                    status: status.as_u16(),
+                }
+                .into());
+            }
+            let bytes =
+                response
+                    .bytes()
+                    .await
+                    .map_err(|source| crate::net::HttpError::Request {
+                        url: url.clone(),
+                        source,
+                    })?;
+            let entries: Vec<MetaEntry> = serde_json::from_slice(&bytes)
+                .map_err(|source| crate::net::HttpError::Decode { url, source })?;
             Ok(sorted_versions(entries.into_iter().map(|entry| {
                 let v = entry.loader;
                 LoaderVersion {
@@ -118,14 +153,85 @@ fn sorted_versions(entries: impl IntoIterator<Item = LoaderVersion>) -> Vec<Load
     versions
 }
 
+/// 剥离老版本 Forge 在 `maven-metadata.xml` 中附带的 MC 分支后缀（如 `10.13.4.1614-1.7.10` → `10.13.4.1614`、`10.12.2.1161-mc172` → `10.12.2.1161`）。
+fn strip_forge_branch_suffix<'a>(ver: &'a str, mc: &str) -> &'a str {
+    if let Some(stripped) = ver.strip_suffix(&format!("-{mc}")) {
+        return stripped;
+    }
+    let compact = format!("-mc{}", mc.replace('.', ""));
+    if let Some(stripped) = ver.strip_suffix(&compact) {
+        return stripped;
+    }
+    ver
+}
+
+fn is_legacy_forge_mc(mc: &str) -> bool {
+    let mut parts = mc.split('.');
+    let Some(1) = parts.next().and_then(|s| s.parse::<u32>().ok()) else {
+        return false;
+    };
+    parts
+        .next()
+        .and_then(|s| s.parse::<u32>().ok())
+        .is_some_and(|minor| (5..=12).contains(&minor))
+}
+
+fn match_forge_artifact_in_xml(xml: &str, mc: &str, short: &str, clean: &str) -> Option<String> {
+    let exact_short = format!("{mc}-{short}");
+    let exact_clean = format!("{mc}-{clean}");
+    let with_mc = format!("{mc}-{clean}-{mc}");
+    let with_compact = format!("{mc}-{clean}-mc{}", mc.replace('.', ""));
+    let prefix = format!("{mc}-{clean}-");
+
+    let mut fallback_mc = None;
+    let mut fallback_compact = None;
+    let mut fallback_prefix = None;
+
+    for chunk in xml.split("<version>").skip(1) {
+        let Some((token, _)) = chunk.split_once("</version>") else {
+            continue;
+        };
+        let token = token.trim();
+        if token == exact_short || token == exact_clean {
+            return Some(token.to_owned());
+        }
+        if token == with_mc && fallback_mc.is_none() {
+            fallback_mc = Some(token.to_owned());
+        } else if token == with_compact && fallback_compact.is_none() {
+            fallback_compact = Some(token.to_owned());
+        } else if token.starts_with(&prefix) && fallback_prefix.is_none() {
+            fallback_prefix = Some(token.to_owned());
+        }
+    }
+    fallback_mc.or(fallback_compact).or(fallback_prefix)
+}
+
+async fn resolve_forge_artifact(client: &Client, mc: &str, raw_version: &str) -> String {
+    let short = raw_version
+        .strip_prefix(&format!("{mc}-"))
+        .unwrap_or(raw_version);
+    let clean = strip_forge_branch_suffix(short, mc);
+    if !is_legacy_forge_mc(mc) {
+        return format!("{mc}-{short}");
+    }
+    if let Ok(bytes) = get_bytes(client, &[format!("{FORGE_MAVEN}/maven-metadata.xml")]).await
+        && let Some(matched) =
+            match_forge_artifact_in_xml(&String::from_utf8_lossy(&bytes), mc, short, clean)
+    {
+        return matched;
+    }
+    format!("{mc}-{short}")
+}
+
 fn forge_versions(xml: &str, mc: &str) -> Vec<LoaderVersion> {
     let prefix = format!("{mc}-");
     sorted_versions(xml.split("<version>").skip(1).filter_map(|chunk| {
         let (version, _) = chunk.split_once("</version>")?;
-        let version = version.trim().strip_prefix(&prefix)?;
+        let raw = version.trim().strip_prefix(&prefix)?;
+        let clean = strip_forge_branch_suffix(raw, mc);
         Some(LoaderVersion {
-            version: version.to_owned(),
-            stable: !version.contains('-'),
+            version: clean.to_owned(),
+            stable: !clean.contains('-'),
         })
     }))
 }
@@ -178,16 +284,14 @@ where
 {
     validate(mc, loader)?;
     match loader.kind {
-        LoaderKind::Fabric | LoaderKind::Quilt => profiles::install(ctx, mc, loader).await,
+        LoaderKind::Fabric | LoaderKind::Quilt | LoaderKind::LegacyFabric | LoaderKind::Babric => {
+            profiles::install(ctx, mc, loader).await
+        }
         LoaderKind::NeoForge => {
             neoforge::install(ctx, &loader.version, verify_receipt, on_progress).await
         }
         LoaderKind::Forge => {
-            let version = loader
-                .version
-                .strip_prefix(&format!("{mc}-"))
-                .unwrap_or(&loader.version);
-            let artifact = format!("{mc}-{version}");
+            let artifact = resolve_forge_artifact(ctx.client, mc, &loader.version).await;
             let source = processors::InstallerSource {
                 expected_id: loader.version_id(mc),
                 accepted_installer_id: None,
@@ -204,8 +308,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn forge_catalog_matches_the_exact_minecraft_version_and_sorts_numerically() {
-        let xml = "<version>1.21-52.0.1</version><version>1.21.1-52.1.9</version><version>1.21.1-52.1.20</version><version>1.21.1-52.1.20</version>";
+    fn forge_catalog_matches_the_exact_minecraft_version_and_strips_branch_suffix() {
+        let xml = concat!(
+            "<version>1.21-52.0.1</version>",
+            "<version>1.21.1-52.1.9</version>",
+            "<version>1.21.1-52.1.20</version>",
+            "<version>1.21.1-52.1.20</version>",
+            "<version>1.7.10-10.13.4.1558-1.7.10</version>",
+            "<version>1.7.10-10.13.4.1614-1.7.10</version>",
+            "<version>1.7.2-10.12.2.1161-mc172</version>"
+        );
         let versions = forge_versions(xml, "1.21.1");
         assert_eq!(
             versions
@@ -214,16 +326,93 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["52.1.20", "52.1.9"]
         );
+        let old_1710 = forge_versions(xml, "1.7.10");
+        assert_eq!(
+            old_1710
+                .iter()
+                .map(|v| (v.version.as_str(), v.stable))
+                .collect::<Vec<_>>(),
+            [("10.13.4.1614", true), ("10.13.4.1558", true)]
+        );
+        assert_eq!(
+            forge_versions(xml, "1.7.2")
+                .iter()
+                .map(|v| v.version.as_str())
+                .collect::<Vec<_>>(),
+            ["10.12.2.1161"]
+        );
+        assert_eq!(
+            match_forge_artifact_in_xml(xml, "1.7.10", "10.13.4.1614", "10.13.4.1614").as_deref(),
+            Some("1.7.10-10.13.4.1614-1.7.10")
+        );
+        assert_eq!(
+            match_forge_artifact_in_xml(xml, "1.7.2", "10.12.2.1161", "10.12.2.1161").as_deref(),
+            Some("1.7.2-10.12.2.1161-mc172")
+        );
     }
 
     #[test]
-    fn rejects_legacy_forge_and_versions_that_are_not_url_segments() {
-        let mut loader = LoaderRef {
-            kind: LoaderKind::Forge,
-            version: "14.23.5.2860".into(),
-        };
-        assert!(validate("1.12.2", &loader).is_err());
-        loader.version = "../52.1.20".into();
-        assert!(validate("1.21.1", &loader).is_err());
+    fn validates_legacy_forge_legacy_fabric_babric_and_rejects_invalid_tokens() {
+        assert!(
+            validate(
+                "1.12.2",
+                &LoaderRef {
+                    kind: LoaderKind::Forge,
+                    version: "14.23.5.2860".into(),
+                }
+            )
+            .is_ok()
+        );
+        assert!(
+            validate(
+                "1.7.10",
+                &LoaderRef {
+                    kind: LoaderKind::Forge,
+                    version: "10.13.4.1614".into(),
+                }
+            )
+            .is_ok()
+        );
+        assert!(
+            validate(
+                "1.8.9",
+                &LoaderRef {
+                    kind: LoaderKind::LegacyFabric,
+                    version: "0.16.10".into(),
+                }
+            )
+            .is_ok()
+        );
+        assert!(
+            validate(
+                "b1.7.3",
+                &LoaderRef {
+                    kind: LoaderKind::Babric,
+                    version: "0.16.10".into(),
+                }
+            )
+            .is_ok()
+        );
+
+        assert!(
+            validate(
+                "1.5.1",
+                &LoaderRef {
+                    kind: LoaderKind::Forge,
+                    version: "7.7.2.682".into(),
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            validate(
+                "1.21.1",
+                &LoaderRef {
+                    kind: LoaderKind::Forge,
+                    version: "../52.1.20".into(),
+                }
+            )
+            .is_err()
+        );
     }
 }

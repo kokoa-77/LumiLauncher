@@ -91,6 +91,10 @@ describe("下载中心", () => {
     eta: null,
     retryable: false,
     fallbacks: 0,
+    failedCount: 0,
+    reusedBytes: 0,
+    reusedFiles: 0,
+    diagnosis: null,
     ...over,
   });
 
